@@ -144,7 +144,7 @@ fun InferenceScreen(
                         )
                     }
                     Text(
-                        text = "Tap to switch • ${accelerationSettings.computeBackend.shortName} • ${accelerationSettings.threadCount} Thr",
+                        text = "Tap to switch • \${accelerationSettings.computeBackend.shortName} • \${accelerationSettings.threadCount} Thr",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontFamily = FontFamily.Monospace,
@@ -199,14 +199,14 @@ fun InferenceScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${streamingChunk?.tokensPerSecond ?: 0f} tok/sec",
+                            text = "\${streamingChunk?.tokensPerSecond ?: 0f} tok/sec",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "TTFT: ${streamingChunk?.timeToFirstTokenMs ?: 0}ms",
+                            text = "TTFT: \${streamingChunk?.timeToFirstTokenMs ?: 0}ms",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -387,14 +387,14 @@ fun InferenceScreen(
             title = { Text("Inference Hyperparameters") },
             text = {
                 Column {
-                    Text("Temperature: ${String.format("%.2f", tempValue)}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Temperature: \${String.format("%.2f", tempValue)}", style = MaterialTheme.typography.bodyMedium)
                     Slider(
                         value = tempValue,
                         onValueChange = { tempValue = it },
                         valueRange = 0.1f..1.5f
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Top-P Nucleus: ${String.format("%.2f", topPValue)}", style = MaterialTheme.typography.bodyMedium)
+                    Text("Top-P Nucleus: \${String.format("%.2f", topPValue)}", style = MaterialTheme.typography.bodyMedium)
                     Slider(
                         value = topPValue,
                         onValueChange = { topPValue = it },
@@ -402,7 +402,7 @@ fun InferenceScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Max Generation Tokens: ${params.maxNewTokens}",
+                        "Max Generation Tokens: \${params.maxNewTokens}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -433,16 +433,16 @@ fun InferenceScreen(
         ModelSelectorSheet(
             models = models,
             activeModel = activeModel,
-            onSelectModel = { modelId ->
+            onSelectModel = { modelId: String ->
                 viewModel.setActiveModel(modelId)
             },
-            onDownloadModel = { modelId ->
+            onDownloadModel = { modelId: String ->
                 viewModel.downloadModel(modelId)
             },
-            onPauseDownload = { modelId ->
+            onPauseDownload = { modelId: String ->
                 viewModel.pauseDownload(modelId)
             },
-            onCancelDownload = { modelId ->
+            onCancelDownload = { modelId: String ->
                 viewModel.cancelDownload(modelId)
             },
             onDismiss = { showModelPickerSheet = false }
@@ -494,7 +494,7 @@ fun ChatMessageBubble(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "${message.tokensGenerated} tokens • ${message.tokensPerSecond} tok/s • TTFT ${message.timeToFirstTokenMs}ms",
+                            text = "\${message.tokensGenerated} tokens • \${message.tokensPerSecond} tok/s • TTFT \${message.timeToFirstTokenMs}ms",
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.primary,
@@ -559,7 +559,7 @@ fun StreamingResponseBubble(chunk: com.example.engine.StreamTokenChunk) {
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Generating on-device (${chunk.tokensPerSecond} tok/s)...",
+                        text = "Generating on-device (\${chunk.tokensPerSecond} tok/s)...",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontFamily = FontFamily.Monospace,
