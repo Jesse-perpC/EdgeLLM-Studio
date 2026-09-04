@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.screens.BackgroundTasksScreen
+import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.DeviceAndModelsScreen
 import com.example.ui.screens.EncryptedVaultScreen
 import com.example.ui.screens.InferenceScreen
@@ -53,6 +55,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
 
 enum class AppDestination(val label: String, val icon: ImageVector) {
+    DASHBOARD("Dashboard", Icons.Default.Dashboard),
     MODELS("Models", Icons.Default.Memory),
     CHAT("Inference", Icons.Default.Chat),
     QUEUE("Queue", Icons.Default.Schedule),
@@ -69,7 +72,7 @@ fun EdgeLLMApp(
     val themeMode by viewModel.themeMode.collectAsState()
     val accentPalette by viewModel.accentPalette.collectAsState()
 
-    var currentDestination by remember { mutableStateOf(AppDestination.MODELS) }
+    var currentDestination by remember { mutableStateOf(AppDestination.DASHBOARD) }
     var isInSettings by remember { mutableStateOf(false) }
     var prefilledExportText by remember { mutableStateOf("") }
 
@@ -189,6 +192,11 @@ fun EdgeLLMApp(
                         label = "tab_transition"
                     ) { dest ->
                         when (dest) {
+                            AppDestination.DASHBOARD -> DashboardScreen(
+                                viewModel = viewModel,
+                                onNavigateToChat = { currentDestination = AppDestination.CHAT },
+                                onNavigateToModels = { currentDestination = AppDestination.MODELS }
+                            )
                             AppDestination.MODELS -> DeviceAndModelsScreen(
                                 viewModel = viewModel
                             )

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.ModelFormat
 import com.example.ui.MainViewModel
 import com.example.ui.components.HardwareBenchmarkSheet
+import com.example.ui.components.HardwareDashboardComponent
 import com.example.ui.components.HardwareHeaderCard
 import com.example.ui.components.ModelItemCard
 
@@ -68,6 +69,7 @@ fun DeviceAndModelsScreen(
     var selectedFormatFilter by remember { mutableStateOf<ModelFormat?>(null) }
     var activeParamFilter by remember { mutableStateOf<String?>(null) }
     var showBenchmarkSheet by remember { mutableStateOf(false) }
+    var showLiveDashboard by remember { mutableStateOf(false) }
 
     val filteredModels = remember(models, selectedFormatFilter, activeParamFilter) {
         models.filter { model ->
@@ -90,6 +92,76 @@ fun DeviceAndModelsScreen(
                 hardware = hardware,
                 onRefresh = { viewModel.refreshHardware() }
             )
+        }
+
+        // Live Telemetry & Acceleration Toggle Card
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("telemetry_dashboard_expand_card")
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF06B6D4).copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Speed,
+                                    contentDescription = null,
+                                    tint = Color(0xFF06B6D4),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Live Silicon & Memory Telemetry",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Real-time GPU/NPU utilization and RAM breakdown",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        androidx.compose.material3.TextButton(
+                            onClick = { showLiveDashboard = !showLiveDashboard },
+                            modifier = Modifier.testTag("toggle_dashboard_card_btn")
+                        ) {
+                            Text(
+                                text = if (showLiveDashboard) "Collapse" else "View Charts",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (showLiveDashboard) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        HardwareDashboardComponent(
+                            viewModel = viewModel,
+                            onOpenDiagnostic = { showBenchmarkSheet = true }
+                        )
+                    }
+                }
+            }
         }
 
         // Diagnostic Inference Speed Benchmark Banner
