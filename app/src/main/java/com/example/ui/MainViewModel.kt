@@ -168,6 +168,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         downloadManager.startDownload(modelId)
     }
 
+    fun pauseDownload(modelId: String) {
+        downloadManager.pauseDownload(modelId)
+    }
+
     fun cancelDownload(modelId: String) {
         downloadManager.cancelDownload(modelId)
     }

@@ -55,6 +55,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.components.HardwareBenchmarkSheet
 import com.example.ui.components.HardwareDashboardComponent
 import com.example.ui.components.HardwareHeaderCard
+import com.example.ui.components.ModelDownloadProgressBanner
 import com.example.ui.components.ModelItemCard
 
 @Composable
@@ -92,6 +93,19 @@ fun DeviceAndModelsScreen(
                 hardware = hardware,
                 onRefresh = { viewModel.refreshHardware() }
             )
+        }
+
+        // Active Downloads Banner (Visible whenever any models are downloading or paused)
+        val downloadingModels = models.filter { it.isDownloading || it.isPaused }
+        if (downloadingModels.isNotEmpty()) {
+            item {
+                ModelDownloadProgressBanner(
+                    downloadingModels = downloadingModels,
+                    onPause = { viewModel.pauseDownload(it) },
+                    onResume = { viewModel.downloadModel(it) },
+                    onCancel = { viewModel.cancelDownload(it) }
+                )
+            }
         }
 
         // Live Telemetry & Acceleration Toggle Card
@@ -360,6 +374,8 @@ fun DeviceAndModelsScreen(
                 model = model,
                 compatibility = compatibility,
                 onDownload = { viewModel.downloadModel(model.id) },
+                onPauseDownload = { viewModel.pauseDownload(model.id) },
+                onResumeDownload = { viewModel.downloadModel(model.id) },
                 onCancelDownload = { viewModel.cancelDownload(model.id) },
                 onDelete = { viewModel.deleteModel(model.id) },
                 onSetActive = { viewModel.setActiveModel(model.id) }

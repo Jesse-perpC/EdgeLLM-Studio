@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
 import com.example.ui.components.HardwareBenchmarkSheet
 import com.example.ui.components.HardwareDashboardComponent
+import com.example.ui.components.ModelDownloadProgressBanner
 
 @Composable
 fun DashboardScreen(
@@ -59,6 +60,7 @@ fun DashboardScreen(
 ) {
     val telemetryState by viewModel.telemetryState.collectAsState()
     val hardware by viewModel.hardwareInfo.collectAsState()
+    val models by viewModel.models.collectAsState()
     var showBenchmarkSheet by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -100,6 +102,19 @@ fun DashboardScreen(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
+            }
+        }
+
+        // Active Downloads Banner if any
+        val downloadingModels = models.filter { it.isDownloading || it.isPaused }
+        if (downloadingModels.isNotEmpty()) {
+            item {
+                ModelDownloadProgressBanner(
+                    downloadingModels = downloadingModels,
+                    onPause = { viewModel.pauseDownload(it) },
+                    onResume = { viewModel.downloadModel(it) },
+                    onCancel = { viewModel.cancelDownload(it) }
+                )
             }
         }
 

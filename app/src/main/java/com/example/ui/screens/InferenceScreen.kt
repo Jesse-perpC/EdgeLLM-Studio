@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Lock
@@ -64,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.InferenceMessage
 import com.example.data.model.MessageSender
 import com.example.ui.MainViewModel
+import com.example.ui.components.ModelSelectorSheet
 
 @Composable
 fun InferenceScreen(
@@ -84,6 +87,7 @@ fun InferenceScreen(
 
     var inputText by remember { mutableStateOf("") }
     var showParamsDialog by remember { mutableStateOf(false) }
+    var showModelPickerSheet by remember { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
@@ -100,7 +104,7 @@ fun InferenceScreen(
             .fillMaxSize()
             .testTag("inference_screen")
     ) {
-        // Top Active Model & Telemetry Bar
+        // Top Active Model & Telemetry Bar (Clickable to switch or download models)
         Surface(
             tonalElevation = 2.dp,
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
@@ -112,7 +116,11 @@ fun InferenceScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .clickable { showModelPickerSheet = true }
+                        .testTag("active_model_header_selector")
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
@@ -127,9 +135,16 @@ fun InferenceScreen(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Switch Model",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                     Text(
-                        text = "100% Offline • ${accelerationSettings.computeBackend.shortName} • ${accelerationSettings.threadCount} Threads",
+                        text = "Tap to switch • ${accelerationSettings.computeBackend.shortName} • ${accelerationSettings.threadCount} Thr",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontFamily = FontFamily.Monospace,
@@ -410,6 +425,27 @@ fun InferenceScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    // Interactive Model Selector Sheet
+    if (showModelPickerSheet) {
+        ModelSelectorSheet(
+            models = models,
+            activeModel = activeModel,
+            onSelectModel = { modelId ->
+                viewModel.setActiveModel(modelId)
+            },
+            onDownloadModel = { modelId ->
+                viewModel.downloadModel(modelId)
+            },
+            onPauseDownload = { modelId ->
+                viewModel.pauseDownload(modelId)
+            },
+            onCancelDownload = { modelId ->
+                viewModel.cancelDownload(modelId)
+            },
+            onDismiss = { showModelPickerSheet = false }
         )
     }
 }

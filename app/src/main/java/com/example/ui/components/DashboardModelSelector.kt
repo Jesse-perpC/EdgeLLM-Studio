@@ -29,6 +29,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -225,6 +226,13 @@ fun ModelSelectorChip(
                             )
                         }
                     }
+                } else if (model.isDownloading || model.isPaused) {
+                    Text(
+                        text = if (model.isPaused) "Paused" else "${model.downloadProgressPercent}%",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (model.isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
                 } else if (!model.isDownloaded) {
                     Text(
                         text = "Download",
@@ -258,17 +266,38 @@ fun ModelSelectorChip(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // RAM footprint pill
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ) {
-                Text(
-                    text = "VRAM: ${(model.requiredRamBytes / (1024 * 1024))} MB",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                )
+            // Progress bar if downloading or paused, otherwise RAM footprint pill
+            if (model.isDownloading || model.isPaused) {
+                Column {
+                    LinearProgressIndicator(
+                        progress = { model.downloadProgressPercent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = if (model.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (model.downloadSpeedFormatted.isNotBlank()) model.downloadSpeedFormatted else "${model.downloadProgressPercent}%",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Text(
+                        text = "VRAM: ${(model.requiredRamBytes / (1024 * 1024))} MB",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }

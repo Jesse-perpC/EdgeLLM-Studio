@@ -21,8 +21,10 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -40,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +55,8 @@ fun ModelItemCard(
     model: ModelSpec,
     compatibility: CompatibilityRating,
     onDownload: () -> Unit,
+    onPauseDownload: () -> Unit,
+    onResumeDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onDelete: () -> Unit,
     onSetActive: () -> Unit,
@@ -188,35 +193,66 @@ fun ModelItemCard(
                 }
             }
 
-            // Download Progress Bar if downloading
-            AnimatedVisibility(visible = model.isDownloading) {
-                Column(modifier = Modifier.padding(top = 12.dp)) {
+            // Download Progress Bar if downloading or paused
+            AnimatedVisibility(visible = model.isDownloading || model.isPaused) {
+                Column(
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (model.downloadStatusText.isNotBlank()) model.downloadStatusText else "Downloading offline weights...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (model.isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (model.downloadSpeedFormatted.isNotBlank()) {
+                            Text(
+                                text = model.downloadSpeedFormatted,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = if (model.isPaused) MaterialTheme.colorScheme.error else Color(0xFF10B981)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { model.downloadProgressPercent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(7.dp)
+                            .clip(RoundedCornerShape(3.5.dp)),
+                        color = if (model.isPaused) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Downloading offline weights...",
+                            text = "${model.downloadedBytesFormatted} of ${model.fileSizeFormatted}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = "${model.downloadProgressPercent}%",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { model.downloadProgressPercent / 100f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
                 }
             }
 
@@ -228,15 +264,36 @@ fun ModelItemCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (model.isDownloading) {
-                    OutlinedButton(
-                        onClick = onCancelDownload,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.testTag("cancel_download_${model.id}")
+                if (model.isDownloading || model.isPaused) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Cancel")
+                        Button(
+                            onClick = if (model.isPaused) onResumeDownload else onPauseDownload,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.testTag("pause_resume_btn_${model.id}")
+                        ) {
+                            Icon(
+                                imageVector = if (model.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (model.isPaused) "Resume" else "Pause")
+                        }
+
+                        OutlinedButton(
+                            onClick = onCancelDownload,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.testTag("cancel_download_${model.id}")
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Cancel")
+                        }
                     }
                 } else if (!model.isDownloaded) {
                     Button(

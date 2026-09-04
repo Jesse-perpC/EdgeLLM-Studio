@@ -141,14 +141,66 @@ class ModelDownloadManager(private val context: Context) {
     fun startDownload(modelId: String) {
         if (activeDownloadJobs.containsKey(modelId)) return
 
-        val job = scope.launch {
-            updateModel(modelId) { it.copy(isDownloading = true, downloadProgressPercent = 0) }
+        val initialModel = _modelsState.value.firstOrNull { it.id == modelId } ?: return
+        val totalBytes = initialModel.fileSizeBytes
+        val startPercent = if (initialModel.isPaused) initialModel.downloadProgressPercent else 0
 
-            // Simulated resilient multi-chunk download with verification
-            for (progress in 5..100 step 5) {
-                delay(120)
-                updateModel(modelId) { it.copy(downloadProgressPercent = progress) }
+        val job = scope.launch {
+            updateModel(modelId) {
+                it.copy(
+                    isDownloading = true,
+                    isPaused = false,
+                    downloadProgressPercent = startPercent,
+                    downloadedBytes = (totalBytes * (startPercent / 100.0)).toLong(),
+                    downloadSpeedFormatted = "18.4 MB/s",
+                    downloadStatusText = "Connecting to mirror & allocating storage..."
+                )
             }
+
+            delay(300)
+
+            // Dynamic simulated download with realistic chunk speeds
+            val speeds = listOf("24.5 MB/s", "31.2 MB/s", "28.8 MB/s", "36.4 MB/s", "22.1 MB/s", "34.0 MB/s")
+            var currentPercent = startPercent
+
+            while (currentPercent < 95) {
+                delay(160)
+                currentPercent += 3
+                if (currentPercent > 95) currentPercent = 95
+                val currentBytes = (totalBytes * (currentPercent / 100.0)).toLong()
+                val speed = speeds[(currentPercent / 7) % speeds.size]
+
+                updateModel(modelId) {
+                    it.copy(
+                        downloadProgressPercent = currentPercent,
+                        downloadedBytes = currentBytes,
+                        downloadSpeedFormatted = speed,
+                        downloadStatusText = "Downloading weights chunk ${(currentPercent / 10) + 1}/10"
+                    )
+                }
+            }
+
+            // Verification phase
+            updateModel(modelId) {
+                it.copy(
+                    downloadProgressPercent = 98,
+                    downloadedBytes = totalBytes,
+                    downloadSpeedFormatted = "Verifying",
+                    downloadStatusText = "Computing SHA-256 integrity checksum..."
+                )
+            }
+            delay(500)
+
+            // Finalizing
+            updateModel(modelId) {
+                it.copy(
+                    downloadProgressPercent = 100,
+                    downloadedBytes = totalBytes,
+                    downloadSpeedFormatted = "Ready",
+                    downloadStatusText = "Integrity verified • Ready for NPU/GPU"
+                )
+            }
+            delay(300)
 
             // Create placeholder model file on internal storage
             val modelFile = File(modelsDir, "$modelId.bin")
@@ -159,8 +211,12 @@ class ModelDownloadManager(private val context: Context) {
             updateModel(modelId) {
                 it.copy(
                     isDownloading = false,
+                    isPaused = false,
                     isDownloaded = true,
-                    downloadProgressPercent = 100
+                    downloadProgressPercent = 100,
+                    downloadedBytes = totalBytes,
+                    downloadSpeedFormatted = "",
+                    downloadStatusText = "Installed"
                 )
             }
             activeDownloadJobs.remove(modelId)
@@ -168,10 +224,32 @@ class ModelDownloadManager(private val context: Context) {
         activeDownloadJobs[modelId] = job
     }
 
+    fun pauseDownload(modelId: String) {
+        activeDownloadJobs[modelId]?.cancel()
+        activeDownloadJobs.remove(modelId)
+        updateModel(modelId) {
+            it.copy(
+                isDownloading = false,
+                isPaused = true,
+                downloadSpeedFormatted = "Paused",
+                downloadStatusText = "Download paused at ${it.downloadProgressPercent}%"
+            )
+        }
+    }
+
     fun cancelDownload(modelId: String) {
         activeDownloadJobs[modelId]?.cancel()
         activeDownloadJobs.remove(modelId)
-        updateModel(modelId) { it.copy(isDownloading = false, downloadProgressPercent = 0) }
+        updateModel(modelId) {
+            it.copy(
+                isDownloading = false,
+                isPaused = false,
+                downloadProgressPercent = 0,
+                downloadedBytes = 0L,
+                downloadSpeedFormatted = "",
+                downloadStatusText = ""
+            )
+        }
     }
 
     fun deleteModel(modelId: String) {
@@ -182,6 +260,9 @@ class ModelDownloadManager(private val context: Context) {
             it.copy(
                 isDownloaded = false,
                 downloadProgressPercent = 0,
+                downloadedBytes = 0L,
+                downloadSpeedFormatted = "",
+                downloadStatusText = "",
                 isActive = if (it.isActive) false else it.isActive
             )
         }

@@ -36,8 +36,21 @@ data class ModelSpec(
     val isDownloaded: Boolean = false,
     val downloadProgressPercent: Int = 0,
     val isDownloading: Boolean = false,
+    val isPaused: Boolean = false,
+    val downloadSpeedFormatted: String = "",
+    val downloadedBytes: Long = 0L,
+    val downloadStatusText: String = "",
     val isActive: Boolean = false
 ) {
+    val downloadedBytesFormatted: String
+        get() {
+            val mb = downloadedBytes / (1024 * 1024)
+            return if (mb >= 1024) {
+                String.format("%.2f GB", mb / 1024.0)
+            } else {
+                "$mb MB"
+            }
+        }
     val fileSizeFormatted: String
         get() {
             val mb = fileSizeBytes / (1024 * 1024)
