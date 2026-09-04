@@ -1,0 +1,6 @@
+{
+  "name": "EdgeLLM Studio",
+  "description": "On-device private LLM and ML runtime with hardware acceleration, background processing, modular data plugins, and encrypted export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
