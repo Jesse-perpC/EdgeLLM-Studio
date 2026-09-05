@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.screens.BackgroundTasksScreen
@@ -162,14 +163,21 @@ fun EdgeLLMApp(
                                 icon = {
                                     Icon(
                                         imageVector = destination.icon,
-                                        contentDescription = destination.label
+                                        contentDescription = destination.label,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 },
                                 label = {
                                     Text(
                                         text = destination.label,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.5.sp,
+                                            letterSpacing = (-0.3).sp
+                                        ),
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 },
                                 modifier = Modifier.testTag("nav_${destination.name.lowercase()}")

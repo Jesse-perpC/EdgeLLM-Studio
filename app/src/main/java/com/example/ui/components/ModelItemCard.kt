@@ -37,6 +37,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,9 +64,12 @@ fun ModelItemCard(
     onCancelDownload: () -> Unit,
     onDelete: () -> Unit,
     onSetActive: () -> Unit,
+    onVerifyChecksum: ((onResult: (Boolean, String) -> Unit) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isActive = model.isActive && model.isDownloaded
+    var checksumStatus by remember { mutableStateOf<String?>(null) }
+    var isVerifyingChecksum by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier
@@ -143,6 +150,21 @@ fun ModelItemCard(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Compatibility badge
+                if (model.isImported) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFFA855F7).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = if (model.sourceFolder.isNotBlank()) "📁 ${model.sourceFolder}" else "📁 Imported",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFA855F7),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = Color(compatibility.color).copy(alpha = 0.15f)
@@ -190,6 +212,87 @@ fun ModelItemCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                     )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                ) {
+                    Text(
+                        text = "Room DB: Indexed",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            // Local file path & Checksum metadata pill for downloaded models
+            if (model.isDownloaded) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Path: ${model.localFilePath.ifBlank { "app/files/models/${model.id}.${model.format.name.lowercase()}" }}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (onVerifyChecksum != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        if (!isVerifyingChecksum) {
+                                            isVerifyingChecksum = true
+                                            checksumStatus = "Computing SHA-256..."
+                                            onVerifyChecksum.invoke { isValid, hash ->
+                                                isVerifyingChecksum = false
+                                                checksumStatus = if (isValid) {
+                                                    "SHA-256 Verified (${hash.take(8)}...)"
+                                                } else {
+                                                    "Hash Mismatch"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(26.dp)
+                                ) {
+                                    Text(
+                                        text = if (isVerifyingChecksum) "Checking..." else "Verify SHA-256",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        if (checksumStatus != null) {
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = checksumStatus!!,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (checksumStatus?.contains("Verified") == true) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
             }
 

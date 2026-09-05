@@ -31,6 +31,11 @@ import com.example.engine.ModelDownloadManager
 import com.example.engine.ShareDuration
 import com.example.engine.StreamTokenChunk
 import com.example.engine.TemporaryShareManager
+import com.example.data.model.AiPersona
+import com.example.data.model.BuiltInPersonas
+import com.example.data.model.KnowledgeDocument
+import com.example.data.model.SampleKnowledgeDocuments
+import com.example.engine.VoiceSpeechManager
 import com.example.plugin.PluginRegistry
 import com.example.service.BackgroundInferenceService
 import com.example.ui.theme.AccentPalette
@@ -54,6 +59,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val shareManager: TemporaryShareManager
     private val pluginRegistry: PluginRegistry
     private val benchmarkEngine = com.example.engine.HardwareBenchmarkEngine()
+    private val voiceSpeechManager: VoiceSpeechManager
+
+    // Voice Text-to-Speech Engine
+    val isSpeaking: StateFlow<Boolean> get() = voiceSpeechManager.isSpeaking
+    val currentlySpeakingId: StateFlow<String?> get() = voiceSpeechManager.currentlySpeakingId
+    val speechRate: StateFlow<Float> get() = voiceSpeechManager.speechRate
+    private val _autoVoiceReadout = MutableStateFlow(false)
+    val autoVoiceReadout: StateFlow<Boolean> = _autoVoiceReadout.asStateFlow()
+
+    // AI Persona Management
+    private val _activePersona = MutableStateFlow<AiPersona>(BuiltInPersonas.GENERAL)
+    val activePersona: StateFlow<AiPersona> = _activePersona.asStateFlow()
+    val availablePersonas: List<AiPersona> = BuiltInPersonas.ALL
+
+    // Local Document Ingestion & Grounding (Local RAG)
+    private val _activeKnowledgeDoc = MutableStateFlow<KnowledgeDocument?>(null)
+    val activeKnowledgeDoc: StateFlow<KnowledgeDocument?> = _activeKnowledgeDoc.asStateFlow()
+    val sampleKnowledgeDocs: List<KnowledgeDocument> = SampleKnowledgeDocuments.ALL_SAMPLES
 
     // Benchmark Diagnostic State
     private val _benchmarkState = MutableStateFlow(com.example.engine.BenchmarkRunState())
@@ -129,6 +152,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         cryptoManager = CryptoManager()
         shareManager = TemporaryShareManager()
         pluginRegistry = PluginRegistry()
+        voiceSpeechManager = VoiceSpeechManager(application)
 
         refreshHardware()
         recalculateMemoryBreakdown()
@@ -180,9 +204,166 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         downloadManager.deleteModel(modelId)
     }
 
+    val importProgress: StateFlow<com.example.data.model.ModelImportProgress> = downloadManager.importProgressState
+
+    fun importModelsFromFolder(folderTreeUri: android.net.Uri) {
+        downloadManager.importModelsFromFolder(folderTreeUri)
+    }
+
+    fun importModelFiles(fileUris: List<android.net.Uri>) {
+        downloadManager.importModelFiles(fileUris)
+    }
+
+    fun importDemoModelFolder() {
+        downloadManager.importDemoModelFolder()
+    }
+
+    fun cancelImport() {
+        downloadManager.cancelImport()
+    }
+
+    fun dismissImportProgress() {
+        downloadManager.dismissImportProgress()
+    }
+
     fun setActiveModel(modelId: String) {
         downloadManager.setActiveModel(modelId)
         recalculateMemoryBreakdown(modelId)
+    }
+
+    private val memorySafetyManager = com.example.engine.MemorySafetyManager(application)
+
+    fun evaluateModelSafety(model: ModelSpec): com.example.engine.MemoryConstraintReport {
+        return memorySafetyManager.evaluateModelSafety(model)
+    }
+
+    fun addCustomModel(
+        name: String,
+        downloadUrl: String,
+        format: ModelFormat,
+        parameterCount: String = "1.0B",
+        quantization: String = "Q4_K_M",
+        fileSizeMb: Long = 500L,
+        category: ModelCategory = ModelCategory.CHAT_REASONING
+    ): ModelSpec {
+        return downloadManager.addCustomModel(
+            name = name,
+            downloadUrl = downloadUrl,
+            format = format,
+            parameterCount = parameterCount,
+            quantization = quantization,
+            fileSizeMb = fileSizeMb,
+            category = category
+        )
+    }
+
+    fun verifyModelChecksum(modelId: String, onResult: (Boolean, String) -> Unit) {
+        downloadManager.verifyModelChecksum(modelId, onResult)
+    }
+
+    fun selectPersona(persona: AiPersona) {
+        _activePersona.value = persona
+        _generationParameters.value = _generationParameters.value.copy(
+            systemPrompt = persona.systemPrompt,
+            temperature = persona.defaultTemperature,
+            topP = persona.defaultTopP
+        )
+    }
+
+    fun attachKnowledgeDoc(doc: KnowledgeDocument) {
+        _activeKnowledgeDoc.value = doc
+    }
+
+    fun detachKnowledgeDoc() {
+        _activeKnowledgeDoc.value = null
+    }
+
+    fun ingestCustomKnowledge(title: String, content: String) {
+        val words = content.split(" ", "\n").filter { it.isNotBlank() }
+        val doc = KnowledgeDocument(
+            id = "custom_doc_${System.currentTimeMillis()}",
+            title = if (title.isBlank()) "Ingested_Notes.txt" else title.trim(),
+            summary = "User-ingested private local context (${words.size} words).",
+            content = content.trim(),
+            sizeBytes = content.toByteArray().size.toLong(),
+            tokenCountEstimate = (words.size * 1.3f).toInt(),
+            isPreloaded = false
+        )
+        _activeKnowledgeDoc.value = doc
+    }
+
+    fun speakMessage(text: String, id: String) {
+        voiceSpeechManager.speak(text, id)
+    }
+
+    fun stopSpeaking() {
+        voiceSpeechManager.stop()
+    }
+
+    fun setSpeechRate(rate: Float) {
+        voiceSpeechManager.setSpeechRate(rate)
+    }
+
+    fun toggleAutoVoiceReadout() {
+        _autoVoiceReadout.value = !_autoVoiceReadout.value
+    }
+
+    fun deleteChatMessage(id: String) {
+        viewModelScope.launch {
+            repository.deleteChatMessage(id)
+        }
+    }
+
+    fun regenerateResponse(lastAssistantMessage: InferenceMessage, promptText: String) {
+        viewModelScope.launch {
+            repository.deleteChatMessage(lastAssistantMessage.id)
+            _isGenerating.value = true
+            _streamingChunk.value = null
+
+            val activeModel = downloadManager.getActiveModel()
+            val currentSettings = _accelerationSettings.value
+            val currentParams = _generationParameters.value
+            val persona = _activePersona.value
+            val attachedDoc = _activeKnowledgeDoc.value
+
+            activeInferenceJob = launch {
+                try {
+                    inferenceEngine.generateStreamingResponse(
+                        prompt = promptText,
+                        model = activeModel,
+                        settings = currentSettings,
+                        params = currentParams,
+                        persona = persona,
+                        attachedDoc = attachedDoc
+                    ).collect { chunk ->
+                        _streamingChunk.value = chunk
+                        if (chunk.isComplete) {
+                            val assistantMessage = InferenceMessage(
+                                id = UUID.randomUUID().toString(),
+                                sender = MessageSender.ASSISTANT,
+                                text = chunk.accumulatedText,
+                                timestamp = System.currentTimeMillis(),
+                                tokensGenerated = chunk.tokenCount,
+                                tokensPerSecond = chunk.tokensPerSecond,
+                                timeToFirstTokenMs = chunk.timeToFirstTokenMs,
+                                executionBackend = chunk.backendUsed,
+                                modelId = activeModel.name
+                            )
+                            repository.insertMessage(assistantMessage)
+                            _streamingChunk.value = null
+                            _isGenerating.value = false
+
+                            if (_autoVoiceReadout.value) {
+                                voiceSpeechManager.speak(chunk.accumulatedText, assistantMessage.id)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    _isGenerating.value = false
+                    _streamingChunk.value = null
+                }
+            }
+        }
     }
 
     fun sendPrompt(userText: String) {
@@ -203,6 +384,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val activeModel = downloadManager.getActiveModel()
             val currentSettings = _accelerationSettings.value
             val currentParams = _generationParameters.value
+            val persona = _activePersona.value
+            val attachedDoc = _activeKnowledgeDoc.value
 
             activeInferenceJob = launch {
                 try {
@@ -210,7 +393,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         prompt = userText,
                         model = activeModel,
                         settings = currentSettings,
-                        params = currentParams
+                        params = currentParams,
+                        persona = persona,
+                        attachedDoc = attachedDoc
                     ).collect { chunk ->
                         _streamingChunk.value = chunk
                         if (chunk.isComplete) {
@@ -228,6 +413,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             repository.insertMessage(assistantMessage)
                             _streamingChunk.value = null
                             _isGenerating.value = false
+
+                            if (_autoVoiceReadout.value) {
+                                voiceSpeechManager.speak(chunk.accumulatedText, assistantMessage.id)
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -554,5 +743,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        voiceSpeechManager.shutdown()
     }
 }

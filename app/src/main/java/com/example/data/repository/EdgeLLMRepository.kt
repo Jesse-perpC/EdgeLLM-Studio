@@ -4,6 +4,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BackgroundJobEntity
 import com.example.data.local.entity.ChatMessageEntity
 import com.example.data.local.entity.EncryptedExportEntity
+import com.example.data.local.entity.LocalModelEntity
 import com.example.data.model.BackgroundJob
 import com.example.data.model.CloudStorageTarget
 import com.example.data.model.EncryptedExportRecord
@@ -11,10 +12,17 @@ import com.example.data.model.InferenceMessage
 import com.example.data.model.JobStatus
 import com.example.data.model.JobType
 import com.example.data.model.MessageSender
+import com.example.data.model.ModelCategory
+import com.example.data.model.ModelFormat
+import com.example.data.model.ModelSpec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class EdgeLLMRepository(private val database: AppDatabase) {
+
+    val localModels: Flow<List<ModelSpec>> = database.localModelDao().getAllModels().map { entities ->
+        entities.map { entityToModelSpec(it) }
+    }
 
     val chatMessages: Flow<List<InferenceMessage>> = database.chatDao().getAllMessages().map { entities ->
         entities.map { entity ->
@@ -89,6 +97,10 @@ class EdgeLLMRepository(private val database: AppDatabase) {
         )
     }
 
+    suspend fun deleteChatMessage(id: String) {
+        database.chatDao().deleteMessage(id)
+    }
+
     suspend fun clearChat() {
         database.chatDao().clearHistory()
     }
@@ -160,5 +172,105 @@ class EdgeLLMRepository(private val database: AppDatabase) {
 
     suspend fun deleteExport(id: String) {
         database.exportDao().deleteExport(id)
+    }
+
+    // --- Local Model Metadata Persistence (Room) ---
+
+    suspend fun insertModel(model: ModelSpec) {
+        database.localModelDao().insertModel(modelSpecToEntity(model))
+    }
+
+    suspend fun insertAllModels(models: List<ModelSpec>) {
+        database.localModelDao().insertAll(models.map { modelSpecToEntity(it) })
+    }
+
+    suspend fun updateModel(model: ModelSpec) {
+        database.localModelDao().updateModel(modelSpecToEntity(model))
+    }
+
+    suspend fun updateModelDownloadStatus(id: String, isDownloaded: Boolean, progress: Int, path: String, fileSize: Long) {
+        database.localModelDao().updateDownloadStatus(id, isDownloaded, progress, path, fileSize)
+    }
+
+    suspend fun setActiveModel(activeId: String) {
+        database.localModelDao().setActiveModel(activeId)
+    }
+
+    suspend fun deleteModel(id: String) {
+        database.localModelDao().deleteModel(id)
+    }
+
+    suspend fun getModelCount(): Int {
+        return database.localModelDao().getCount()
+    }
+
+    suspend fun getModelById(id: String): ModelSpec? {
+        val entity = database.localModelDao().getModelById(id) ?: return null
+        return entityToModelSpec(entity)
+    }
+
+    companion object {
+        fun modelSpecToEntity(spec: ModelSpec): LocalModelEntity {
+            return LocalModelEntity(
+                id = spec.id,
+                name = spec.name,
+                path = spec.localFilePath,
+                fileSize = spec.fileSizeBytes,
+                format = spec.format.name,
+                parameterCount = spec.parameterCount,
+                quantization = spec.quantization,
+                requiredRamBytes = spec.requiredRamBytes,
+                contextLength = spec.contextLength,
+                description = spec.description,
+                category = spec.category.name,
+                downloadUrl = spec.downloadUrl,
+                sha256Checksum = spec.sha256Checksum,
+                isDownloaded = spec.isDownloaded,
+                downloadProgress = spec.downloadProgressPercent,
+                isActive = spec.isActive,
+                isImported = spec.isImported,
+                sourceFolder = spec.sourceFolder,
+                lastModified = System.currentTimeMillis()
+            )
+        }
+
+        fun entityToModelSpec(entity: LocalModelEntity): ModelSpec {
+            val format = try {
+                ModelFormat.valueOf(entity.format)
+            } catch (_: Exception) {
+                ModelFormat.GGUF
+            }
+            val category = try {
+                ModelCategory.valueOf(entity.category)
+            } catch (_: Exception) {
+                ModelCategory.CHAT_REASONING
+            }
+
+            return ModelSpec(
+                id = entity.id,
+                name = entity.name,
+                parameterCount = entity.parameterCount,
+                format = format,
+                quantization = entity.quantization,
+                fileSizeBytes = entity.fileSize,
+                requiredRamBytes = entity.requiredRamBytes,
+                contextLength = entity.contextLength,
+                description = entity.description,
+                category = category,
+                downloadUrl = entity.downloadUrl,
+                sha256Checksum = entity.sha256Checksum,
+                isDownloaded = entity.isDownloaded,
+                downloadProgressPercent = entity.downloadProgress,
+                isDownloading = false,
+                isPaused = false,
+                downloadSpeedFormatted = if (entity.isDownloaded) "Ready" else "",
+                downloadedBytes = if (entity.isDownloaded) entity.fileSize else (entity.fileSize * (entity.downloadProgress / 100.0)).toLong(),
+                downloadStatusText = if (entity.isDownloaded) "Installed locally" else "Available for download",
+                isActive = entity.isActive,
+                isImported = entity.isImported,
+                localFilePath = entity.path,
+                sourceFolder = entity.sourceFolder
+            )
+        }
     }
 }

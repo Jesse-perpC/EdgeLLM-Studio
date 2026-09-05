@@ -40,7 +40,10 @@ data class ModelSpec(
     val downloadSpeedFormatted: String = "",
     val downloadedBytes: Long = 0L,
     val downloadStatusText: String = "",
-    val isActive: Boolean = false
+    val isActive: Boolean = false,
+    val isImported: Boolean = false,
+    val localFilePath: String = "",
+    val sourceFolder: String = ""
 ) {
     val downloadedBytesFormatted: String
         get() {

@@ -50,6 +50,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.components.HardwareBenchmarkSheet
 import com.example.ui.components.HardwareDashboardComponent
 import com.example.ui.components.ModelDownloadProgressBanner
+import com.example.ui.components.ModelImportStatusBar
 
 @Composable
 fun DashboardScreen(
@@ -61,6 +62,7 @@ fun DashboardScreen(
     val telemetryState by viewModel.telemetryState.collectAsState()
     val hardware by viewModel.hardwareInfo.collectAsState()
     val models by viewModel.models.collectAsState()
+    val importProgress by viewModel.importProgress.collectAsState()
     var showBenchmarkSheet by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -103,6 +105,16 @@ fun DashboardScreen(
                     )
                 }
             }
+        }
+
+        // Live Model Import Status Bar
+        item {
+            ModelImportStatusBar(
+                progress = importProgress,
+                onCancel = { viewModel.cancelImport() },
+                onDismiss = { viewModel.dismissImportProgress() },
+                onLoadModel = { viewModel.setActiveModel(it) }
+            )
         }
 
         // Active Downloads Banner if any

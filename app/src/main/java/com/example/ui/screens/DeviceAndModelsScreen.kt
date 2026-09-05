@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +24,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -52,10 +56,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ModelFormat
 import com.example.ui.MainViewModel
+import com.example.ui.components.DownloadCustomModelDialog
 import com.example.ui.components.HardwareBenchmarkSheet
 import com.example.ui.components.HardwareDashboardComponent
 import com.example.ui.components.HardwareHeaderCard
 import com.example.ui.components.ModelDownloadProgressBanner
+import com.example.ui.components.ModelImportSheet
+import com.example.ui.components.ModelImportStatusBar
 import com.example.ui.components.ModelItemCard
 
 @Composable
@@ -66,17 +73,38 @@ fun DeviceAndModelsScreen(
     val hardware by viewModel.hardwareInfo.collectAsState()
     val models by viewModel.models.collectAsState()
     val benchmarkState by viewModel.benchmarkState.collectAsState()
+    val importProgress by viewModel.importProgress.collectAsState()
 
     var selectedFormatFilter by remember { mutableStateOf<ModelFormat?>(null) }
     var activeParamFilter by remember { mutableStateOf<String?>(null) }
+    var showOnlyImported by remember { mutableStateOf(false) }
     var showBenchmarkSheet by remember { mutableStateOf(false) }
+    var showImportSheet by remember { mutableStateOf(false) }
+    var showDownloadCustomModelDialog by remember { mutableStateOf(false) }
     var showLiveDashboard by remember { mutableStateOf(false) }
 
-    val filteredModels = remember(models, selectedFormatFilter, activeParamFilter) {
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importModelsFromFolder(uri)
+        }
+    }
+
+    val filesLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.importModelFiles(uris)
+        }
+    }
+
+    val filteredModels = remember(models, selectedFormatFilter, activeParamFilter, showOnlyImported) {
         models.filter { model ->
             val matchesFormat = selectedFormatFilter == null || model.format == selectedFormatFilter
             val matchesParam = activeParamFilter == null || model.parameterCount.contains(activeParamFilter!!, ignoreCase = true)
-            matchesFormat && matchesParam
+            val matchesImported = !showOnlyImported || model.isImported
+            matchesFormat && matchesParam && matchesImported
         }
     }
 
@@ -92,6 +120,16 @@ fun DeviceAndModelsScreen(
             HardwareHeaderCard(
                 hardware = hardware,
                 onRefresh = { viewModel.refreshHardware() }
+            )
+        }
+
+        // Live Model Import Status Bar (Visible during folder scanning/importing or upon completion/error)
+        item {
+            ModelImportStatusBar(
+                progress = importProgress,
+                onCancel = { viewModel.cancelImport() },
+                onDismiss = { viewModel.dismissImportProgress() },
+                onLoadModel = { viewModel.setActiveModel(it) }
             )
         }
 
@@ -308,19 +346,54 @@ fun DeviceAndModelsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "On-Device Model Catalog",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "${models.count { it.isDownloaded }} of ${models.size} Ready",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "On-Device Model Catalog",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "${models.count { it.isDownloaded }} of ${models.size} Ready",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { showDownloadCustomModelDialog = true },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("catalog_download_url_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add URL", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { showImportSheet = true },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("catalog_import_folder_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Import", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "Models run 100% offline directly in device RAM using hardware acceleration delegates.",
                 style = MaterialTheme.typography.bodySmall,
@@ -328,15 +401,18 @@ fun DeviceAndModelsScreen(
             )
         }
 
-        // Framework filter chips
+        // Framework & Source filter chips
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
-                    selected = selectedFormatFilter == null,
-                    onClick = { selectedFormatFilter = null },
+                    selected = selectedFormatFilter == null && !showOnlyImported,
+                    onClick = {
+                        selectedFormatFilter = null
+                        showOnlyImported = false
+                    },
                     label = { Text("All Frameworks") },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -344,26 +420,90 @@ fun DeviceAndModelsScreen(
                     )
                 )
                 FilterChip(
-                    selected = selectedFormatFilter == ModelFormat.GGUF,
+                    selected = showOnlyImported,
                     onClick = {
+                        showOnlyImported = !showOnlyImported
+                        if (showOnlyImported) selectedFormatFilter = null
+                    },
+                    label = { Text("📁 Imported") }
+                )
+                FilterChip(
+                    selected = selectedFormatFilter == ModelFormat.GGUF && !showOnlyImported,
+                    onClick = {
+                        showOnlyImported = false
                         selectedFormatFilter = if (selectedFormatFilter == ModelFormat.GGUF) null else ModelFormat.GGUF
                     },
                     label = { Text("GGUF") }
                 )
                 FilterChip(
-                    selected = selectedFormatFilter == ModelFormat.TFLITE,
+                    selected = selectedFormatFilter == ModelFormat.TFLITE && !showOnlyImported,
                     onClick = {
+                        showOnlyImported = false
                         selectedFormatFilter = if (selectedFormatFilter == ModelFormat.TFLITE) null else ModelFormat.TFLITE
                     },
                     label = { Text("TFLite") }
                 )
                 FilterChip(
-                    selected = selectedFormatFilter == ModelFormat.ONNX,
+                    selected = selectedFormatFilter == ModelFormat.ONNX && !showOnlyImported,
                     onClick = {
+                        showOnlyImported = false
                         selectedFormatFilter = if (selectedFormatFilter == ModelFormat.ONNX) null else ModelFormat.ONNX
                     },
                     label = { Text("ONNX") }
                 )
+            }
+        }
+
+        // Empty state when filtered
+        if (filteredModels.isEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = if (showOnlyImported) "No local models imported yet" else "No matching models found",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (showOnlyImported) {
+                                "Tap 'Import Models' above to select a folder or file containing .gguf, .tflite, or .onnx models."
+                            } else {
+                                "Try resetting the filters or import your own custom models."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        if (showOnlyImported) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { showImportSheet = true },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Select Folder to Import")
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -378,7 +518,8 @@ fun DeviceAndModelsScreen(
                 onResumeDownload = { viewModel.downloadModel(model.id) },
                 onCancelDownload = { viewModel.cancelDownload(model.id) },
                 onDelete = { viewModel.deleteModel(model.id) },
-                onSetActive = { viewModel.setActiveModel(model.id) }
+                onSetActive = { viewModel.setActiveModel(model.id) },
+                onVerifyChecksum = { onResult -> viewModel.verifyModelChecksum(model.id, onResult) }
             )
         }
 
@@ -395,6 +536,36 @@ fun DeviceAndModelsScreen(
             onSelectRecommendedTier = { tierParam ->
                 activeParamFilter = tierParam
             }
+        )
+    }
+
+    // Model Import Bottom Sheet Dialog
+    if (showImportSheet) {
+        ModelImportSheet(
+            onSelectFolder = {
+                folderLauncher.launch(null)
+            },
+            onSelectFiles = {
+                filesLauncher.launch(arrayOf("*/*"))
+            },
+            onImportDemoPack = {
+                viewModel.importDemoModelFolder()
+            },
+            onDownloadCustomUrl = {
+                showDownloadCustomModelDialog = true
+            },
+            onDismiss = { showImportSheet = false }
+        )
+    }
+
+    // Custom Model Download Dialog
+    if (showDownloadCustomModelDialog) {
+        DownloadCustomModelDialog(
+            onDismiss = { showDownloadCustomModelDialog = false },
+            onDownloadCustomModel = { name, url, format, paramCount, quant, sizeMb, category ->
+                viewModel.addCustomModel(name, url, format, paramCount, quant, sizeMb, category)
+            },
+            memorySafetyManager = com.example.engine.MemorySafetyManager(androidx.compose.ui.platform.LocalContext.current)
         )
     }
 }

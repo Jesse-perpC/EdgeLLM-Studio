@@ -70,7 +70,7 @@ fun ModelDownloadProgressBanner(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "\${model.downloadProgressPercent}% • \${model.downloadedBytesFormatted} / \${model.fileSizeFormatted}",
+                                text = "${model.downloadProgressPercent}% • ${model.downloadedBytesFormatted} / ${model.fileSizeFormatted}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -81,7 +81,7 @@ fun ModelDownloadProgressBanner(
                         ) {
                             IconButton(
                                 onClick = { if (model.isPaused) onResume(model.id) else onPause(model.id) },
-                                modifier = Modifier.testTag("download_pause_resume_btn_\${model.id}")
+                                modifier = Modifier.testTag("download_pause_resume_btn_${model.id}")
                             ) {
                                 Icon(
                                     imageVector = if (model.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
@@ -91,7 +91,7 @@ fun ModelDownloadProgressBanner(
                             }
                             IconButton(
                                 onClick = { onCancel(model.id) },
-                                modifier = Modifier.testTag("download_cancel_btn_\${model.id}")
+                                modifier = Modifier.testTag("download_cancel_btn_${model.id}")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,

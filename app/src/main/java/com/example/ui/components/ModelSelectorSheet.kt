@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.model.ModelSpec
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,6 +30,8 @@ fun ModelSelectorSheet(
     onPauseDownload: (String) -> Unit,
     onCancelDownload: (String) -> Unit,
     onDismiss: () -> Unit,
+    onDeleteModel: (String) -> Unit = {},
+    onImportClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -43,12 +47,29 @@ fun ModelSelectorSheet(
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = "Select Model",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Select Model",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (onImportClick != null) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onImportClick,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text("+ Import Folder", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -57,12 +78,12 @@ fun ModelSelectorSheet(
                 items(models, key = { it.id }) { model ->
                     ModelItemCard(
                         model = model,
-                        compatibility = com.example.data.model.CompatibilityRating.EXCELLENT,
+                        compatibility = com.example.data.model.CompatibilityRating.OPTIMAL,
                         onDownload = { onDownloadModel(model.id) },
                         onPauseDownload = { onPauseDownload(model.id) },
                         onResumeDownload = { onDownloadModel(model.id) },
                         onCancelDownload = { onCancelDownload(model.id) },
-                        onDelete = { /* Optional: implement delete */ },
+                        onDelete = { onDeleteModel(model.id) },
                         onSetActive = { onSelectModel(model.id) }
                     )
                 }
