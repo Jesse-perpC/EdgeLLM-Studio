@@ -16,6 +16,8 @@ import com.example.data.model.InferenceMessage
 import com.example.data.model.JobStatus
 import com.example.data.model.JobType
 import com.example.data.model.MessageSender
+import com.example.data.model.ModelCategory
+import com.example.data.model.ModelFormat
 import com.example.data.model.ModelSpec
 import com.example.data.model.PluginSpec
 import com.example.data.model.PluginResult
@@ -747,6 +749,81 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        apiServer.stop()
         voiceSpeechManager.shutdown()
+    }
+
+    // ==========================================
+    // Ollama & OpenAI Compatible Inference Server
+    // ==========================================
+    private val _apiServerConfig = MutableStateFlow(com.example.api.ApiServerConfig())
+    val apiServerConfig: StateFlow<com.example.api.ApiServerConfig> = _apiServerConfig.asStateFlow()
+
+    private val apiServer = com.example.api.OllamaInferenceServer(
+        context = application,
+        inferenceEngine = inferenceEngine,
+        modelProvider = { models.value },
+        activeModelProvider = { models.value.firstOrNull { it.isActive } ?: models.value.firstOrNull { it.isDownloaded } },
+        accelerationSettingsProvider = { _accelerationSettings.value }
+    )
+
+    val apiServerStats: StateFlow<com.example.api.ApiServerStats> = apiServer.serverStats
+    val apiServerLogs: StateFlow<List<com.example.api.ApiRequestLog>> = apiServer.requestLogs
+
+    fun startApiServer(port: Int? = null, bindToLan: Boolean? = null) {
+        val p = port ?: _apiServerConfig.value.port
+        val lan = bindToLan ?: _apiServerConfig.value.bindToLan
+        val newCfg = _apiServerConfig.value.copy(port = p, bindToLan = lan)
+        _apiServerConfig.value = newCfg
+        apiServer.updateConfig(newCfg)
+        val started = apiServer.start(p, lan)
+        if (started) {
+            com.example.service.InferenceServerService.startService(getApplication(), p, lan)
+        }
+    }
+
+    fun stopApiServer() {
+        apiServer.stop()
+        com.example.service.InferenceServerService.stopService(getApplication())
+    }
+
+    fun toggleApiServer() {
+        if (apiServerStats.value.isRunning) {
+            stopApiServer()
+        } else {
+            startApiServer()
+        }
+    }
+
+    fun updateApiConfig(newConfig: com.example.api.ApiServerConfig) {
+        _apiServerConfig.value = newConfig
+        apiServer.updateConfig(newConfig)
+    }
+
+    fun testApiServerEndpoint(onResult: (Boolean, String, Long) -> Unit) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
+            try {
+                val stats = apiServerStats.value
+                val port = stats.port
+                val url = java.net.URL("http://127.0.0.1:$port/api/version")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                conn.requestMethod = "GET"
+                val responseCode = conn.responseCode
+                val duration = System.currentTimeMillis() - startTime
+                if (responseCode == 200) {
+                    val resp = conn.inputStream.bufferedReader().readText()
+                    onResult(true, "HTTP 200 OK: $resp", duration)
+                } else {
+                    onResult(false, "HTTP $responseCode", duration)
+                }
+                conn.disconnect()
+            } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - startTime
+                onResult(false, "Connection error: ${e.message}", duration)
+            }
+        }
     }
 }

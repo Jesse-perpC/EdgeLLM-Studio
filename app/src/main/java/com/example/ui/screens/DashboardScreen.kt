@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -47,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.MainViewModel
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Hub
 import com.example.ui.components.HardwareBenchmarkSheet
 import com.example.ui.components.HardwareDashboardComponent
 import com.example.ui.components.ModelDownloadProgressBanner
@@ -57,6 +60,7 @@ fun DashboardScreen(
     viewModel: MainViewModel,
     onNavigateToChat: () -> Unit,
     onNavigateToModels: () -> Unit,
+    onNavigateToApi: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val telemetryState by viewModel.telemetryState.collectAsState()
@@ -190,6 +194,84 @@ fun DashboardScreen(
                         Text("${(telemetryState.memoryBreakdown.kvCacheBytes / (1024 * 1024))} MB KV Cache", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFA855F7))
                         Text("${telemetryState.maxContextTokens} tok (Max)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                }
+            }
+        }
+
+        // Ollama API Inference Server Card
+        item {
+            val apiStats by viewModel.apiServerStats.collectAsState()
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (apiStats.isRunning) Color(0xFF0F172A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (apiStats.isRunning) Color(0xFF10B981).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToApi() }
+                    .testTag("dashboard_api_server_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (apiStats.isRunning) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Hub,
+                                    contentDescription = null,
+                                    tint = if (apiStats.isRunning) Color(0xFF10B981) else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Ollama & OpenAI API Server",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (apiStats.isRunning) Color(0xFF10B981).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        text = if (apiStats.isRunning) "ONLINE" else "OFFLINE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (apiStats.isRunning) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = if (apiStats.isRunning) apiStats.lanUrl else "Offline • Tap to configure external connections",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (apiStats.isRunning) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = if (apiStats.isRunning) androidx.compose.ui.text.font.FontFamily.Monospace else null
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = apiStats.isRunning,
+                        onCheckedChange = { viewModel.toggleApiServer() }
+                    )
                 }
             }
         }

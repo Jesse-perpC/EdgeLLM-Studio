@@ -11,6 +11,7 @@ data class MemoryConstraintReport(
     val isSafeToRun: Boolean,
     val isStorageSufficient: Boolean,
     val warningMessage: String?,
+    val recommendation: String = "",
     val availableRamBytes: Long,
     val totalRamBytes: Long,
     val requiredRamBytes: Long,
@@ -27,8 +28,9 @@ class MemorySafetyManager(private val context: Context) {
         val memInfo = ActivityManager.MemoryInfo()
         actManager.getMemoryInfo(memInfo)
 
-        val totalRam = memInfo.totalMem
-        val availRam = memInfo.availMem
+        val runtime = Runtime.getRuntime()
+        val totalRam = if (memInfo.totalMem > 0) memInfo.totalMem else (runtime.maxMemory() * 4L).coerceAtLeast(2048L * 1024L * 1024L)
+        val availRam = if (memInfo.availMem > 0) memInfo.availMem else (runtime.freeMemory() + (runtime.maxMemory() - runtime.totalMemory())).coerceAtLeast(1024L * 1024L * 1024L)
         val isLowMem = memInfo.lowMemory
 
         // Storage space check
@@ -42,7 +44,6 @@ class MemorySafetyManager(private val context: Context) {
         val totalStorage = statFs?.totalBytes ?: (32L * 1024L * 1024L * 1024L)
 
         // JVM Heap limits
-        val runtime = Runtime.getRuntime()
         val maxHeap = runtime.maxMemory()
         val usedHeap = runtime.totalMemory() - runtime.freeMemory()
 
@@ -65,10 +66,18 @@ class MemorySafetyManager(private val context: Context) {
             isSafe = true // Safe because we use mmap and streaming layers
         }
 
+        val recommendation = when {
+            !isStorageSufficient -> "Free internal device storage before downloading this model."
+            isLowMem -> "Close background applications to free RAM before inference."
+            requiredRam > availRam -> "Model runs with virtual memory paging, but a smaller quantization is recommended for optimal speed."
+            else -> "Model fits comfortably within device memory budget."
+        }
+
         return MemoryConstraintReport(
             isSafeToRun = isSafe,
             isStorageSufficient = isStorageSufficient,
             warningMessage = warning,
+            recommendation = recommendation,
             availableRamBytes = availRam,
             totalRamBytes = totalRam,
             requiredRamBytes = requiredRam,

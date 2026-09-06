@@ -106,7 +106,7 @@ class LocalInferenceEngine {
         )
     }
 
-    private fun tokenizeResponse(text: String): List<String> {
+    fun tokenizeResponse(text: String): List<String> {
         val tokens = mutableListOf<String>()
         val words = text.split(" ")
         for (i in words.indices) {
@@ -123,12 +123,12 @@ class LocalInferenceEngine {
         return tokens
     }
 
-    private fun generateOfflineIntelligence(
+    fun generateOfflineIntelligence(
         prompt: String,
         model: ModelSpec,
         params: GenerationParameters,
-        persona: AiPersona?,
-        attachedDoc: KnowledgeDocument?
+        persona: AiPersona? = null,
+        attachedDoc: KnowledgeDocument? = null
     ): String {
         val lower = prompt.trim().lowercase()
 

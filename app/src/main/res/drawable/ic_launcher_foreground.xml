@@ -3,6 +3,7 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/ic_launcher_fg"
+        android:drawable="@drawable/app_icon_colorful_1788682482462"
         android:gravity="center" />
 </layer-list>
+

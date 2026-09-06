@@ -72,7 +72,7 @@ fun DownloadCustomModelDialog(
     val sizeBytes = fileSizeMb * 1024L * 1024L
     val requiredRamBytes = (sizeBytes * 1.35).toLong()
 
-    val tempModelSpec = remember(modelName, selectedFormat, parameterCount, quantization, sizeBytes, requiredRamBytes) {
+    val tempModelSpec = remember(modelName, downloadUrl, selectedFormat, parameterCount, quantization, sizeBytes, requiredRamBytes) {
         ModelSpec(
             id = "preview-temp",
             name = modelName.ifBlank { "Custom Model" },
@@ -82,8 +82,10 @@ fun DownloadCustomModelDialog(
             fileSizeBytes = sizeBytes,
             requiredRamBytes = requiredRamBytes,
             contextLength = 4096,
-            description = "Preview",
-            category = ModelCategory.CHAT_REASONING
+            description = "Custom model from URL",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = downloadUrl.ifBlank { "https://example.com/model" },
+            sha256Checksum = "custom-user-model"
         )
     }
 

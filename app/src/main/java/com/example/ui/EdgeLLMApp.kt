@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.screens.ApiServerScreen
 import com.example.ui.screens.BackgroundTasksScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.DeviceAndModelsScreen
@@ -54,11 +55,13 @@ import com.example.ui.screens.InferenceScreen
 import com.example.ui.screens.PluginPipelineScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
+import androidx.compose.material.icons.filled.Hub
 
 enum class AppDestination(val label: String, val icon: ImageVector) {
     DASHBOARD("Dashboard", Icons.Default.Dashboard),
     MODELS("Models", Icons.Default.Memory),
     CHAT("Inference", Icons.Default.Chat),
+    API("API", Icons.Default.Hub),
     QUEUE("Queue", Icons.Default.Schedule),
     PLUGINS("Plugins", Icons.Default.Extension),
     VAULT("Vault", Icons.Default.Lock)
@@ -72,6 +75,7 @@ fun EdgeLLMApp(
 ) {
     val themeMode by viewModel.themeMode.collectAsState()
     val accentPalette by viewModel.accentPalette.collectAsState()
+    val apiStats by viewModel.apiServerStats.collectAsState()
 
     var currentDestination by remember { mutableStateOf(AppDestination.DASHBOARD) }
     var isInSettings by remember { mutableStateOf(false) }
@@ -133,6 +137,27 @@ fun EdgeLLMApp(
                     },
                     actions = {
                         if (!isInSettings) {
+                            IconButton(
+                                onClick = { currentDestination = AppDestination.API },
+                                modifier = Modifier.testTag("open_api_server_top_btn")
+                            ) {
+                                Box(contentAlignment = Alignment.TopEnd) {
+                                    Icon(
+                                        imageVector = Icons.Default.Hub,
+                                        contentDescription = "API Inference Server",
+                                        tint = if (apiStats.isRunning) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (apiStats.isRunning) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF10B981))
+                                        )
+                                    }
+                                }
+                            }
+
                             IconButton(
                                 onClick = { isInSettings = true },
                                 modifier = Modifier.testTag("open_settings_top_btn")
@@ -203,7 +228,8 @@ fun EdgeLLMApp(
                             AppDestination.DASHBOARD -> DashboardScreen(
                                 viewModel = viewModel,
                                 onNavigateToChat = { currentDestination = AppDestination.CHAT },
-                                onNavigateToModels = { currentDestination = AppDestination.MODELS }
+                                onNavigateToModels = { currentDestination = AppDestination.MODELS },
+                                onNavigateToApi = { currentDestination = AppDestination.API }
                             )
                             AppDestination.MODELS -> DeviceAndModelsScreen(
                                 viewModel = viewModel
@@ -214,6 +240,9 @@ fun EdgeLLMApp(
                                     prefilledExportText = text
                                     currentDestination = AppDestination.VAULT
                                 }
+                            )
+                            AppDestination.API -> ApiServerScreen(
+                                viewModel = viewModel
                             )
                             AppDestination.QUEUE -> BackgroundTasksScreen(
                                 viewModel = viewModel,
