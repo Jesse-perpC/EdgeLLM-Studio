@@ -15,8 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -25,6 +28,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -65,11 +69,13 @@ fun ModelItemCard(
     onDelete: () -> Unit,
     onSetActive: () -> Unit,
     onVerifyChecksum: ((onResult: (Boolean, String) -> Unit) -> Unit)? = null,
+    onOpenChat: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isActive = model.isActive && model.isDownloaded
     var checksumStatus by remember { mutableStateOf<String?>(null) }
     var isVerifyingChecksum by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier
@@ -269,13 +275,13 @@ fun ModelItemCard(
                                             }
                                         }
                                     },
-                                    shape = RoundedCornerShape(6.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.height(26.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.heightIn(min = 36.dp)
                                 ) {
                                     Text(
                                         text = if (isVerifyingChecksum) "Checking..." else "Verify SHA-256",
-                                        fontSize = 10.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -362,6 +368,37 @@ fun ModelItemCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             // Action Buttons
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("Delete Model Weights?") },
+                    text = {
+                        Text(
+                            "Are you sure you want to delete ${model.name} (${model.fileSizeFormatted}) from local storage? You can re-download or re-import it anytime."
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showDeleteDialog = false
+                                onDelete()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            ),
+                            modifier = Modifier.testTag("confirm_delete_${model.id}")
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(onClick = { showDeleteDialog = false }) {
+                            Text("Keep")
+                        }
+                    }
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -369,6 +406,7 @@ fun ModelItemCard(
             ) {
                 if (model.isDownloading || model.isPaused) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -376,7 +414,9 @@ fun ModelItemCard(
                             onClick = if (model.isPaused) onResumeDownload else onPauseDownload,
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            modifier = Modifier.testTag("pause_resume_btn_${model.id}")
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("pause_resume_btn_${model.id}")
                         ) {
                             Icon(
                                 imageVector = if (model.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
@@ -391,7 +431,9 @@ fun ModelItemCard(
                             onClick = onCancelDownload,
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            modifier = Modifier.testTag("cancel_download_${model.id}")
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("cancel_download_${model.id}")
                         ) {
                             Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -420,32 +462,77 @@ fun ModelItemCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (isActive) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(
-                                    text = "Ready & Active Engine",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Active Engine",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+
+                                Button(
+                                    onClick = onOpenChat,
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.testTag("chat_active_model_${model.id}")
+                                ) {
+                                    Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Open Chat", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         } else {
-                            Button(
-                                onClick = onSetActive,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.testTag("activate_model_${model.id}")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Set Active")
+                                Button(
+                                    onClick = {
+                                        onSetActive()
+                                        onOpenChat()
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.testTag("activate_model_${model.id}")
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Load & Chat", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = onSetActive,
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier.testTag("set_default_model_${model.id}")
+                                ) {
+                                    Text("Set Active", fontSize = 12.sp)
+                                }
                             }
                         }
 
                         IconButton(
-                            onClick = onDelete,
+                            onClick = { showDeleteDialog = true },
                             modifier = Modifier.testTag("delete_model_${model.id}")
                         ) {
                             Icon(

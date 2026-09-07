@@ -232,7 +232,8 @@ fun EdgeLLMApp(
                                 onNavigateToApi = { currentDestination = AppDestination.API }
                             )
                             AppDestination.MODELS -> DeviceAndModelsScreen(
-                                viewModel = viewModel
+                                viewModel = viewModel,
+                                onNavigateToChat = { currentDestination = AppDestination.CHAT }
                             )
                             AppDestination.CHAT -> InferenceScreen(
                                 viewModel = viewModel,

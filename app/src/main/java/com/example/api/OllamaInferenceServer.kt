@@ -81,7 +81,10 @@ class OllamaInferenceServer(
                 InetAddress.getByName("127.0.0.1")
             }
 
-            serverSocket = ServerSocket(port, 50, bindAddress)
+            val socket = ServerSocket()
+            socket.reuseAddress = true
+            socket.bind(java.net.InetSocketAddress(bindAddress, port), 50)
+            serverSocket = socket
             isRunning.set(true)
             startTimeMillis = System.currentTimeMillis()
 
@@ -100,7 +103,7 @@ class OllamaInferenceServer(
             startUptimeTicker()
             Log.i(TAG, "Ollama Inference Server started on $lanIp:$port (LAN: $bindToLan)")
             return true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Failed to start Ollama server on port $port: ${e.message}", e)
             isRunning.set(false)
             _serverStats.update { it.copy(isRunning = false) }

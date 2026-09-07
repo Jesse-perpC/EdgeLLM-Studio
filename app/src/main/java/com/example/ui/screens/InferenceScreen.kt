@@ -29,9 +29,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -39,6 +42,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Psychology
@@ -66,6 +70,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -121,7 +126,10 @@ fun InferenceScreen(
 
     // Community-requested features: Personas, Local RAG, Voice TTS
     val activePersona by viewModel.activePersona.collectAsState()
+    val availablePersonas by viewModel.availablePersonas.collectAsState()
     val activeKnowledgeDoc by viewModel.activeKnowledgeDoc.collectAsState()
+    val activeAttachedImageUri by viewModel.activeAttachedImageUri.collectAsState()
+    val activeAttachedImageLabel by viewModel.activeAttachedImageLabel.collectAsState()
     val isSpeaking by viewModel.isSpeaking.collectAsState()
     val currentlySpeakingId by viewModel.currentlySpeakingId.collectAsState()
     val autoVoiceReadout by viewModel.autoVoiceReadout.collectAsState()
@@ -141,6 +149,16 @@ fun InferenceScreen(
     var showPromptToolsSheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showVoiceRateDialog by remember { mutableStateOf(false) }
+    var showSampleVisualsDialog by remember { mutableStateOf(false) }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val filename = uri.lastPathSegment?.substringAfterLast('/') ?: "image_${System.currentTimeMillis()}.jpg"
+            viewModel.attachImage(uri.toString(), filename)
+        }
+    }
 
     val folderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -296,7 +314,7 @@ fun InferenceScreen(
                 }
 
                 // Persona & Document Grounding Quick Switcher Bar
-                Row(
+                LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 4.dp),
@@ -304,97 +322,147 @@ fun InferenceScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Persona Chip
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier
-                            .clickable { showPersonaSheet = true }
-                            .testTag("persona_chip_btn")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier
+                                .clickable { showPersonaSheet = true }
+                                .testTag("persona_chip_btn")
                         ) {
-                            Text(activePersona.emoji, fontSize = 13.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = activePersona.name,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            if (activePersona.supportsReasoningTrace) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(activePersona.emoji, fontSize = 13.sp)
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.tertiary)
+                                Text(
+                                    text = activePersona.name,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (activePersona.supportsReasoningTrace) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.tertiary)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Multimodal Vision Chip
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (activeAttachedImageLabel != null) {
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (activeAttachedImageLabel != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clickable {
+                                    if (activeAttachedImageLabel != null) {
+                                        viewModel.detachImage()
+                                    } else {
+                                        showSampleVisualsDialog = true
+                                    }
+                                }
+                                .testTag("vision_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Image,
+                                    contentDescription = null,
+                                    tint = if (activeAttachedImageLabel != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = activeAttachedImageLabel?.let { "Vision: ${it.take(12)}... ✕" } ?: "+ Vision / Photo",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (activeAttachedImageLabel != null) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (activeAttachedImageLabel != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
                     }
 
                     // Local Document Ingestion (RAG) Grounding Chip
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (activeKnowledgeDoc != null) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        },
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (activeKnowledgeDoc != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        modifier = Modifier
-                            .clickable { showKnowledgeSheet = true }
-                            .testTag("rag_grounding_chip_btn")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (activeKnowledgeDoc != null) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (activeKnowledgeDoc != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clickable { showKnowledgeSheet = true }
+                                .testTag("rag_grounding_chip_btn")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Description,
-                                contentDescription = null,
-                                tint = if (activeKnowledgeDoc != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = activeKnowledgeDoc?.let { "Grounded: ${it.title.take(14)}..." } ?: "+ Attach Doc (RAG)",
-                                fontSize = 11.sp,
-                                fontWeight = if (activeKnowledgeDoc != null) FontWeight.Bold else FontWeight.Normal,
-                                color = if (activeKnowledgeDoc != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Description,
+                                    contentDescription = null,
+                                    tint = if (activeKnowledgeDoc != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = activeKnowledgeDoc?.let { "Grounded: ${it.title.take(14)}..." } ?: "+ Attach Doc (RAG)",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (activeKnowledgeDoc != null) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (activeKnowledgeDoc != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
 
                     // Prompt Library Quick Button
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.clickable { showPromptToolsSheet = true }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.clickable { showPromptToolsSheet = true }
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Tools",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Tools",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
                 }
@@ -612,6 +680,59 @@ fun InferenceScreen(
             }
         }
 
+        // Attached Multimodal Visual Pill
+        AnimatedVisibility(visible = activeAttachedImageLabel != null) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = activeAttachedImageLabel ?: "Visual Attached",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "Multimodal Vision • MobileViT Offline Patch Encoder",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 9.5.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { viewModel.detachImage() },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Remove attached image",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         // Bottom Prompt Input Bar
         Surface(
             tonalElevation = 4.dp,
@@ -623,6 +744,19 @@ fun InferenceScreen(
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Attach visual image / photo button
+                IconButton(
+                    onClick = { showSampleVisualsDialog = true },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = "Attach Photo / Vision",
+                        tint = if (activeAttachedImageLabel != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 // Attach context / RAG icon button
                 IconButton(
                     onClick = { showKnowledgeSheet = true },
@@ -664,7 +798,11 @@ fun InferenceScreen(
                     onValueChange = { inputText = it },
                     placeholder = {
                         Text(
-                            text = if (activeKnowledgeDoc != null) "Ask about grounded doc..." else "Ask local model offline...",
+                            text = when {
+                                activeAttachedImageLabel != null -> "Ask about attached image..."
+                                activeKnowledgeDoc != null -> "Ask about grounded doc..."
+                                else -> "Ask local model offline..."
+                            },
                             fontSize = 13.sp
                         )
                     },
@@ -678,33 +816,52 @@ fun InferenceScreen(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                IconButton(
-                    onClick = {
-                        if (inputText.isNotBlank() && !isGenerating) {
-                            val promptToSend = inputText
-                            inputText = ""
-                            viewModel.sendPrompt(promptToSend)
-                        }
-                    },
-                    enabled = inputText.isNotBlank() && !isGenerating,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (inputText.isNotBlank() && !isGenerating) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            }
+                if (isGenerating) {
+                    // Active Stop Generation Button
+                    IconButton(
+                        onClick = { viewModel.stopGeneration() },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error)
+                            .testTag("stop_generation_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = "Stop Generation",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
-                        .testTag("send_prompt_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Send Prompt",
-                        tint = if (inputText.isNotBlank() && !isGenerating) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    }
+                } else {
+                    IconButton(
+                        onClick = {
+                            if (inputText.isNotBlank()) {
+                                val promptToSend = inputText
+                                inputText = ""
+                                viewModel.sendPrompt(promptToSend)
+                            }
+                        },
+                        enabled = inputText.isNotBlank(),
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (inputText.isNotBlank()) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                }
+                            )
+                            .testTag("send_prompt_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send Prompt",
+                            tint = if (inputText.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
@@ -713,12 +870,14 @@ fun InferenceScreen(
     // AI Persona Selection Sheet
     if (showPersonaSheet) {
         PersonaSelectorSheet(
-            personas = viewModel.availablePersonas,
+            personas = availablePersonas,
             activePersona = activePersona,
             onSelectPersona = { viewModel.selectPersona(it) },
             onSelectSamplePrompt = { samplePrompt ->
                 inputText = samplePrompt
             },
+            onCreateCustomPersona = { viewModel.addCustomPersona(it) },
+            onDeleteCustomPersona = { viewModel.deleteCustomPersona(it) },
             onDismiss = { showPersonaSheet = false }
         )
     }
@@ -744,6 +903,9 @@ fun InferenceScreen(
             onSelectTemplate = { template ->
                 inputText = template.prefix
             },
+            onSelectTool = { toolUsage ->
+                inputText = toolUsage
+            },
             onDismiss = { showPromptToolsSheet = false }
         )
     }
@@ -764,6 +926,8 @@ fun InferenceScreen(
     if (showParamsDialog) {
         var tempValue by remember { mutableFloatStateOf(params.temperature) }
         var topPValue by remember { mutableFloatStateOf(params.topP) }
+        var toolCallingEnabled by remember { mutableStateOf(params.enableToolCalling) }
+        var jsonSchemaEnforced by remember { mutableStateOf(params.enforceJsonSchema) }
 
         AlertDialog(
             onDismissRequest = { showParamsDialog = false },
@@ -789,9 +953,39 @@ fun InferenceScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     HorizontalDivider()
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Agentic Tool Calling (Talents)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text("Auto-executes math, hardware telemetry, crypto offline", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = toolCallingEnabled, onCheckedChange = { toolCallingEnabled = it })
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Enforce JSON Schema", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text("Restricts output tokens to structured JSON grammar", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = jsonSchemaEnforced, onCheckedChange = { jsonSchemaEnforced = it })
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Text("Text-to-Speech Speed: ${"%.2f".format(speechRate)}x", style = MaterialTheme.typography.bodyMedium)
                     Slider(
@@ -805,7 +999,12 @@ fun InferenceScreen(
                 Button(
                     onClick = {
                         viewModel.updateGenerationParameters(
-                            params.copy(temperature = tempValue, topP = topPValue)
+                            params.copy(
+                                temperature = tempValue,
+                                topP = topPValue,
+                                enableToolCalling = toolCallingEnabled,
+                                enforceJsonSchema = jsonSchemaEnforced
+                            )
                         )
                         showParamsDialog = false
                     }
@@ -864,6 +1063,98 @@ fun InferenceScreen(
             onDismiss = { showImportSheet = false }
         )
     }
+
+    // Multimodal Vision Selection Dialog
+    if (showSampleVisualsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSampleVisualsDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Multimodal Vision Input", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Attach visual media to analyze using offline edge vision (MobileViT patch encoder, OCR, layout extraction).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Action 1: System photo picker
+                    Button(
+                        onClick = {
+                            showSampleVisualsDialog = false
+                            try {
+                                photoPickerLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Cannot launch system photo picker", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Select from Gallery / Storage")
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        "Or choose an edge benchmark sample:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val sampleVisuals = listOf(
+                        Triple("arch_topology_arm64.png", "🏗️ Edge System Topology Diagram", "Analyze this system architecture diagram and explain data flow."),
+                        Triple("invoice_llama_tensor.png", "🧾 Tech Hardware Purchase Invoice", "Extract invoice items, totals, and verify offline costs."),
+                        Triple("tensor_neon_kernel.png", "💻 Vectorized NEON Kernel Code", "Inspect this code screenshot and identify any vector bottlenecks."),
+                        Triple("edge_ai_security_spec.png", "📝 Whiteboard Security Spec", "Transcribe handwritten whiteboard notes and list action points.")
+                    )
+
+                    sampleVisuals.forEach { (filename, label, sampleQuery) ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable {
+                                    viewModel.attachImage("content://local_sample/$filename", filename)
+                                    if (inputText.isBlank()) {
+                                        inputText = sampleQuery
+                                    }
+                                    showSampleVisualsDialog = false
+                                }
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                Text(filename, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSampleVisualsDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -914,6 +1205,39 @@ fun ChatMessageBubble(
             modifier = Modifier.fillMaxWidth(if (isUser) 0.85f else 0.96f)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
+
+                // Attached Multimodal Visual Badge
+                if (message.imageLabel != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f) else MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = null,
+                                tint = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = message.imageLabel ?: "Visual Attached",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.5.sp
+                            )
+                        }
+                    }
+                }
 
                 // Interactive Chain-of-Thought collapsible box
                 if (!isUser && !thoughtProcess.isNullOrBlank()) {

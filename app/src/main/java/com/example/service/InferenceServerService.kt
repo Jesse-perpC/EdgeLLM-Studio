@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
@@ -16,28 +17,18 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.example.MainActivity
-import com.example.api.ApiServerConfig
 import com.example.api.ApiServerStats
+import com.example.api.InferenceServerManager
 import com.example.api.OllamaInferenceServer
-import com.example.data.local.AppDatabase
-import com.example.data.model.ComputeBackend
-import com.example.data.model.HardwareAccelerationSettings
-import com.example.data.model.ModelSpec
-import com.example.data.model.PowerProfile
-import com.example.data.repository.EdgeLLMRepository
-import com.example.engine.LocalInferenceEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class InferenceServerService : Service() {
 
@@ -46,6 +37,9 @@ class InferenceServerService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var batteryReceiver: BroadcastReceiver? = null
     private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
+    private var monitorJob: Job? = null
+
+    private lateinit var server: OllamaInferenceServer
 
     companion object {
         private const val TAG = "InferenceServerService"
@@ -63,32 +57,38 @@ class InferenceServerService : Service() {
         var isServiceActive = false
             private set
 
-        private val _serviceServer = MutableStateFlow<OllamaInferenceServer?>(null)
-        val serviceServer: StateFlow<OllamaInferenceServer?> = _serviceServer.asStateFlow()
-
         fun startService(context: Context, port: Int = 11434, bindToLan: Boolean = true) {
-            val intent = Intent(context, InferenceServerService::class.java).apply {
-                action = ACTION_START_SERVER
-                putExtra(EXTRA_PORT, port)
-                putExtra(EXTRA_BIND_LAN, bindToLan)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                val intent = Intent(context, InferenceServerService::class.java).apply {
+                    action = ACTION_START_SERVER
+                    putExtra(EXTRA_PORT, port)
+                    putExtra(EXTRA_BIND_LAN, bindToLan)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "Could not start foreground service: ${e.message}")
             }
         }
 
         fun stopService(context: Context) {
-            val intent = Intent(context, InferenceServerService::class.java).apply {
-                action = ACTION_STOP_SERVER
+            try {
+                val intent = Intent(context, InferenceServerService::class.java).apply {
+                    action = ACTION_STOP_SERVER
+                }
+                context.startService(intent)
+            } catch (e: Throwable) {
+                Log.w(TAG, "Could not stop foreground service: ${e.message}")
             }
-            context.startService(intent)
         }
     }
 
     override fun onCreate() {
         super.onCreate()
+        server = InferenceServerManager.getInstance(applicationContext)
         createNotificationChannel()
         acquireLocks()
         setupThermalAndBatteryWatchdog()
@@ -97,86 +97,75 @@ class InferenceServerService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_START_SERVER
+
+        // Always satisfy Android foreground service requirement immediately
+        try {
+            val initialStats = server.serverStats.value
+            val notification = buildForegroundNotification(initialStats)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed calling startForeground: ${e.message}")
+        }
+
         when (action) {
+            ACTION_STOP_SERVER -> {
+                serviceScope.launch {
+                    server.stop()
+                    try {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    } catch (_: Throwable) {}
+                    stopSelf()
+                }
+            }
+            ACTION_TOGGLE_SERVER -> {
+                serviceScope.launch {
+                    if (server.serverStats.value.isRunning) {
+                        server.stop()
+                        try {
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                        } catch (_: Throwable) {}
+                        stopSelf()
+                    } else {
+                        server.start(11434, true)
+                        monitorServerStats()
+                    }
+                }
+            }
             ACTION_START_SERVER -> {
                 val port = intent?.getIntExtra(EXTRA_PORT, 11434) ?: 11434
                 val bindToLan = intent?.getBooleanExtra(EXTRA_BIND_LAN, true) ?: true
-                startInferenceServer(port, bindToLan)
-            }
-            ACTION_STOP_SERVER -> {
-                stopInferenceServer()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
-            ACTION_TOGGLE_SERVER -> {
-                val current = _serviceServer.value
-                if (current != null && current.serverStats.value.isRunning) {
-                    stopInferenceServer()
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                } else {
-                    startInferenceServer(11434, true)
+                serviceScope.launch {
+                    if (!server.serverStats.value.isRunning) {
+                        server.start(port, bindToLan)
+                    }
+                    monitorServerStats()
                 }
             }
         }
         return START_NOT_STICKY
     }
 
-    private fun startInferenceServer(port: Int, bindToLan: Boolean) {
-        val db = AppDatabase.getInstance(applicationContext)
-        val repository = EdgeLLMRepository(db)
-        val inferenceEngine = LocalInferenceEngine()
-
-        var server = _serviceServer.value
-        if (server == null) {
-            server = OllamaInferenceServer(
-                context = applicationContext,
-                inferenceEngine = inferenceEngine,
-                modelProvider = {
-                    runBlocking(Dispatchers.IO) {
-                        repository.localModels.firstOrNull() ?: emptyList()
-                    }
-                },
-                activeModelProvider = {
-                    runBlocking(Dispatchers.IO) {
-                        repository.localModels.firstOrNull()?.firstOrNull { it.isActive }
-                            ?: repository.localModels.firstOrNull()?.firstOrNull { it.isDownloaded }
-                    }
-                },
-                accelerationSettingsProvider = {
-                    HardwareAccelerationSettings(
-                        computeBackend = ComputeBackend.NPU_NNAPI,
-                        powerProfile = PowerProfile.BALANCED,
-                        threadCount = 4
-                    )
-                }
-            )
-            _serviceServer.value = server
-        }
-
-        val success = server.start(port, bindToLan)
-        if (success) {
-            val notification = buildForegroundNotification(server.serverStats.value)
-            startForeground(NOTIFICATION_ID, notification)
-            monitorServerStats(server)
-        } else {
-            Log.e(TAG, "Could not start server on port $port")
-            stopSelf()
-        }
-    }
-
-    private fun stopInferenceServer() {
-        _serviceServer.value?.stop()
-        isServiceActive = false
-    }
-
-    private fun monitorServerStats(server: OllamaInferenceServer) {
-        serviceScope.launch {
+    private fun monitorServerStats() {
+        monitorJob?.cancel()
+        monitorJob = serviceScope.launch {
             server.serverStats.collect { stats ->
                 if (stats.isRunning) {
-                    val notification = buildForegroundNotification(stats)
-                    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                    manager.notify(NOTIFICATION_ID, notification)
+                    try {
+                        val notification = buildForegroundNotification(stats)
+                        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                        manager?.notify(NOTIFICATION_ID, notification)
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "Failed updating notification: ${e.message}")
+                    }
                 }
             }
         }
@@ -184,16 +173,18 @@ class InferenceServerService : Service() {
 
     private fun acquireLocks() {
         try {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "EdgeLLM:InferenceServerWakeLock").apply {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "EdgeLLM:InferenceServerWakeLock")?.apply {
+                setReferenceCounted(false)
                 acquire(24 * 60 * 60 * 1000L) // 24h max timeout
             }
 
             val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            wifiLock = wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "EdgeLLM:InferenceServerWifiLock")?.apply {
+            wifiLock = wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL, "EdgeLLM:InferenceServerWifiLock")?.apply {
+                setReferenceCounted(false)
                 acquire()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Failed acquiring wakelock/wifilock: ${e.message}")
         }
     }
@@ -202,7 +193,7 @@ class InferenceServerService : Service() {
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
             if (wifiLock?.isHeld == true) wifiLock?.release()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Failed releasing locks: ${e.message}")
         }
     }
@@ -221,18 +212,22 @@ class InferenceServerService : Service() {
                     if (level >= 0 && scale > 0) {
                         val pct = (level * 100) / scale
                         val isLow = pct <= 15 && !isCharging
-                        _serviceServer.value?.serverStats?.let { statsFlow ->
-                            // Update internal stats
+                        if (isLow && server.serverStats.value.isRunning) {
+                            Log.w(TAG, "Battery level low ($pct%). Preserving device power.")
                         }
                     }
                 }
             }
         }
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        try {
+            registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not register battery receiver: ${e.message}")
+        }
 
         // Thermal status listener on Android 10+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             thermalListener = PowerManager.OnThermalStatusChangedListener { status ->
                 val isSevere = status >= PowerManager.THERMAL_STATUS_SEVERE
                 if (isSevere) {
@@ -240,8 +235,10 @@ class InferenceServerService : Service() {
                 }
             }
             try {
-                powerManager.addThermalStatusListener(thermalListener!!)
-            } catch (e: Exception) {
+                if (powerManager != null && thermalListener != null) {
+                    powerManager.addThermalStatusListener(thermalListener!!)
+                }
+            } catch (e: Throwable) {
                 Log.w(TAG, "Could not add thermal listener: ${e.message}")
             }
         }
@@ -265,7 +262,11 @@ class InferenceServerService : Service() {
         )
 
         val endpointText = if (stats.lanIp != "127.0.0.1") "http://${stats.lanIp}:${stats.port}" else "http://localhost:${stats.port}"
-        val content = "Listening on $endpointText • Served ${stats.totalRequestsServed} reqs (${stats.totalTokensGenerated} tokens)"
+        val content = if (stats.isRunning) {
+            "Listening on $endpointText • Served ${stats.totalRequestsServed} reqs (${stats.totalTokensGenerated} tokens)"
+        } else {
+            "Server initialized on port ${stats.port}"
+        }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("EdgeLLM Ollama API Server Running")
@@ -280,35 +281,39 @@ class InferenceServerService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "EdgeLLM API Inference Server",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Background notifications while serving local LLM inference API to other apps"
-                setShowBadge(false)
+            try {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    "EdgeLLM API Inference Server",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Background notifications while serving local LLM inference API to other apps"
+                    setShowBadge(false)
+                }
+                val manager = getSystemService(NotificationManager::class.java)
+                manager?.createNotificationChannel(channel)
+            } catch (e: Throwable) {
+                Log.w(TAG, "Could not create notification channel: ${e.message}")
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        stopInferenceServer()
         releaseLocks()
 
         batteryReceiver?.let {
-            try { unregisterReceiver(it) } catch (_: Exception) {}
+            try { unregisterReceiver(it) } catch (_: Throwable) {}
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && thermalListener != null) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             try {
-                powerManager.removeThermalStatusListener(thermalListener!!)
-            } catch (_: Exception) {}
+                powerManager?.removeThermalStatusListener(thermalListener!!)
+            } catch (_: Throwable) {}
         }
 
+        monitorJob?.cancel()
         serviceScope.cancel()
         isServiceActive = false
     }

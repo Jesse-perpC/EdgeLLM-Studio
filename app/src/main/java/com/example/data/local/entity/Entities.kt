@@ -13,7 +13,9 @@ data class ChatMessageEntity(
     val tokensPerSecond: Float,
     val timeToFirstTokenMs: Long,
     val executionBackend: String,
-    val modelId: String
+    val modelId: String,
+    val imageUri: String? = null,
+    val imageLabel: String? = null
 )
 
 @Entity(tableName = "background_jobs")

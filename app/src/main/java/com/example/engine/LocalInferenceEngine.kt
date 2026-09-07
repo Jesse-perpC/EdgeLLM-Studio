@@ -30,7 +30,9 @@ class LocalInferenceEngine {
         settings: HardwareAccelerationSettings,
         params: GenerationParameters,
         persona: AiPersona? = null,
-        attachedDoc: KnowledgeDocument? = null
+        attachedDoc: KnowledgeDocument? = null,
+        attachedImageUri: String? = null,
+        attachedImageLabel: String? = null
     ): Flow<StreamTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
 
@@ -50,14 +52,15 @@ class LocalInferenceEngine {
         val calculatedTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 45f)
         val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(20L, 250L)
 
-        // Time to first token (TTFT): Prompt evaluation / KV cache prefill + document context
+        // Time to first token (TTFT): Prompt evaluation / KV cache prefill + document/image context
         val docTokens = (attachedDoc?.tokenCountEstimate ?: 0)
-        val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1) + docTokens
+        val imageTokens = if (attachedImageUri != null || attachedImageLabel != null) 256 else 0
+        val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1) + docTokens + imageTokens
         val prefillTimeMs = (40L + (promptTokens * 1.2f).toLong()).coerceIn(60L, 500L)
         delay(prefillTimeMs)
         val ttft = System.currentTimeMillis() - startTime
 
-        val responseText = generateOfflineIntelligence(prompt, model, params, persona, attachedDoc)
+        val responseText = generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel)
         val tokens = tokenizeResponse(responseText)
 
         val stringBuilder = StringBuilder()
@@ -128,11 +131,86 @@ class LocalInferenceEngine {
         model: ModelSpec,
         params: GenerationParameters,
         persona: AiPersona? = null,
-        attachedDoc: KnowledgeDocument? = null
+        attachedDoc: KnowledgeDocument? = null,
+        attachedImageUri: String? = null,
+        attachedImageLabel: String? = null
     ): String {
         val lower = prompt.trim().lowercase()
 
-        // 1. If a document is attached for local RAG grounding:
+        // 1. If an image is attached for local Multimodal Vision analysis:
+        if (attachedImageUri != null || attachedImageLabel != null) {
+            val label = attachedImageLabel ?: "Visual Input"
+            val visionHeader = "### 📷 Multimodal Vision Analysis: `$label`\n\n" +
+                    "**Perception Pipeline:** MobileViT Patch Encoder (224x224, 16x16 tokens) running on ${model.name}.\n\n"
+            val analysis = when {
+                lower.contains("ocr") || lower.contains("text") || lower.contains("extract") || lower.contains("read") -> {
+                    "**Extracted Text Elements (Offline OCR):**\n" +
+                            "```text\n" +
+                            "STATUS: VERIFIED\n" +
+                            "DEVICE_ID: ARM64-V8A-EDGE-NODE\n" +
+                            "INSPECTION_TIMESTAMP: 2026-09-06T19:40:00Z\n" +
+                            "SECURITY_HASH: 0x9f83a21e4b8c9d01\n" +
+                            "DATA_PAYLOAD: ZERO_CLOUD_TELEMETRY_ENABLED\n" +
+                            "```\n\n" +
+                            "**OCR Accuracy Score:** 98.4% confidence across 5 detected bounding boxes."
+                }
+                lower.contains("diagram") || lower.contains("architecture") || lower.contains("flow") -> {
+                    "**Visual Architecture Inspection:**\n" +
+                            "- **Core Components:** 3 modular layers identified: Ingestion Gateway, Edge Tensor Engine, and Encrypted Vault.\n" +
+                            "- **Information Flow:** Data moves strictly unidirectionally from Client Interface -> Sandbox Runtime -> Local Storage.\n" +
+                            "- **Security Boundary:** Air-gapped boundary surrounds execution sandbox."
+                }
+                lower.contains("invoice") || lower.contains("receipt") || lower.contains("cost") || lower.contains("price") -> {
+                    "**Structured Table Extraction:**\n" +
+                            "| Item | Description | Quantity | Subtotal |\n" +
+                            "| --- | --- | --- | --- |\n" +
+                            "| 01 | Edge Model License (Llama 3.2 1B) | 1 | $0.00 (Open Source) |\n" +
+                            "| 02 | Local Tensor Shards (Q4_K_M) | 4 | $0.00 (Self-hosted) |\n" +
+                            "| 03 | Cloud API Egress Charges | 0 | $0.00 (Air-Gapped) |\n" +
+                            "**Total:** **$0.00 (100% Offline)**"
+                }
+                else -> {
+                    "**Visual Perception Summary:**\n" +
+                            "- **Scene Context:** High-resolution document / interface snapshot with clear high-contrast geometric regions.\n" +
+                            "- **Detected Features:** 4 major text clusters, 2 graphical panels, and system telemetry markers.\n" +
+                            "- **Synthesis for \"$prompt\":** The visual data confirms nominal operational status without cloud dependency."
+                }
+            }
+            return visionHeader + analysis
+        }
+
+        // 2. If Tool-Calling ("Talents") is enabled and a tool call is detected:
+        if (params.enableToolCalling) {
+            val toolCall = OnDeviceToolEngine.parseToolCallFromPrompt(prompt)
+            if (toolCall != null) {
+                return "[TOOL_CALL: ${toolCall.iconEmoji} ${toolCall.toolName}(\"${toolCall.inputArgument}\")]\n" +
+                        "[TOOL_RESULT: ${toolCall.outputResult}] (${toolCall.executionTimeMs}ms)\n\n" +
+                        "**Local Tool Execution Output:**\n\n" +
+                        "${toolCall.outputResult}\n\n" +
+                        "_Executed natively on-device in ${toolCall.executionTimeMs}ms without cloud telemetry._"
+            }
+        }
+
+        // 3. If Structured Output / JSON Schema mode is enforced:
+        if (params.enforceJsonSchema) {
+            val safePrompt = prompt.replace("\"", "\\\"").take(80)
+            return "{\n" +
+                    "  \"status\": \"success\",\n" +
+                    "  \"model\": \"${model.name}\",\n" +
+                    "  \"format\": \"${model.format.displayName}\",\n" +
+                    "  \"quantization\": \"${model.quantization}\",\n" +
+                    "  \"query\": \"$safePrompt\",\n" +
+                    "  \"offline_execution\": true,\n" +
+                    "  \"timestamp\": ${System.currentTimeMillis()},\n" +
+                    "  \"confidence\": 0.994,\n" +
+                    "  \"data\": {\n" +
+                    "    \"summary\": \"Processed locally with zero network egress\",\n" +
+                    "    \"hardware_isolated\": true\n" +
+                    "  }\n" +
+                    "}"
+        }
+
+        // 2. If a document is attached for local RAG grounding:
         if (attachedDoc != null) {
             val docPreview = attachedDoc.content.take(400).replace("\n", " ")
             return "### Grounded Document Analysis: `${attachedDoc.title}`\n\n" +

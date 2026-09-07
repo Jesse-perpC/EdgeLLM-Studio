@@ -42,6 +42,7 @@ import com.example.plugin.PluginRegistry
 import com.example.service.BackgroundInferenceService
 import com.example.ui.theme.AccentPalette
 import com.example.ui.theme.AppThemeMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -73,12 +74,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // AI Persona Management
     private val _activePersona = MutableStateFlow<AiPersona>(BuiltInPersonas.GENERAL)
     val activePersona: StateFlow<AiPersona> = _activePersona.asStateFlow()
-    val availablePersonas: List<AiPersona> = BuiltInPersonas.ALL
+    private val _customPersonas = MutableStateFlow<List<AiPersona>>(emptyList())
+    val customPersonas: StateFlow<List<AiPersona>> = _customPersonas.asStateFlow()
+    private val _availablePersonas = MutableStateFlow<List<AiPersona>>(BuiltInPersonas.ALL)
+    val availablePersonas: StateFlow<List<AiPersona>> = _availablePersonas.asStateFlow()
 
     // Local Document Ingestion & Grounding (Local RAG)
     private val _activeKnowledgeDoc = MutableStateFlow<KnowledgeDocument?>(null)
     val activeKnowledgeDoc: StateFlow<KnowledgeDocument?> = _activeKnowledgeDoc.asStateFlow()
     val sampleKnowledgeDocs: List<KnowledgeDocument> = SampleKnowledgeDocuments.ALL_SAMPLES
+
+    // Multimodal Vision Image State
+    private val _activeAttachedImageUri = MutableStateFlow<String?>(null)
+    val activeAttachedImageUri: StateFlow<String?> = _activeAttachedImageUri.asStateFlow()
+
+    private val _activeAttachedImageLabel = MutableStateFlow<String?>(null)
+    val activeAttachedImageLabel: StateFlow<String?> = _activeAttachedImageLabel.asStateFlow()
 
     // Benchmark Diagnostic State
     private val _benchmarkState = MutableStateFlow(com.example.engine.BenchmarkRunState())
@@ -280,6 +291,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _activeKnowledgeDoc.value = null
     }
 
+    fun attachImage(uri: String, label: String) {
+        _activeAttachedImageUri.value = uri
+        _activeAttachedImageLabel.value = label
+    }
+
+    fun detachImage() {
+        _activeAttachedImageUri.value = null
+        _activeAttachedImageLabel.value = null
+    }
+
+    fun adjustGenerationParameters(
+        temperature: Float? = null,
+        topP: Float? = null,
+        topK: Int? = null,
+        maxTokens: Int? = null,
+        systemPrompt: String? = null
+    ) {
+        val current = _generationParameters.value
+        _generationParameters.value = current.copy(
+            temperature = temperature ?: current.temperature,
+            topP = topP ?: current.topP,
+            topK = topK ?: current.topK,
+            maxNewTokens = maxTokens ?: current.maxNewTokens,
+            systemPrompt = systemPrompt ?: current.systemPrompt
+        )
+    }
+
     fun ingestCustomKnowledge(title: String, content: String) {
         val words = content.split(" ", "\n").filter { it.isNotBlank() }
         val doc = KnowledgeDocument(
@@ -368,15 +406,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendPrompt(userText: String) {
+    fun sendPrompt(
+        userText: String,
+        imageUri: String? = null,
+        imageLabel: String? = null
+    ) {
         if (userText.isBlank() || _isGenerating.value) return
+
+        val finalImageUri = imageUri ?: _activeAttachedImageUri.value
+        val finalImageLabel = imageLabel ?: _activeAttachedImageLabel.value
 
         val userMessage = InferenceMessage(
             id = UUID.randomUUID().toString(),
             sender = MessageSender.USER,
             text = userText,
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
+            imageUri = finalImageUri,
+            imageLabel = finalImageLabel
         )
+
+        // Clear active attached image once sent
+        detachImage()
 
         viewModelScope.launch {
             repository.insertMessage(userMessage)
@@ -397,7 +447,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         settings = currentSettings,
                         params = currentParams,
                         persona = persona,
-                        attachedDoc = attachedDoc
+                        attachedDoc = attachedDoc,
+                        attachedImageUri = finalImageUri,
+                        attachedImageLabel = finalImageLabel
                     ).collect { chunk ->
                         _streamingChunk.value = chunk
                         if (chunk.isComplete) {
@@ -749,7 +801,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        apiServer.stop()
+        if (!com.example.service.InferenceServerService.isServiceActive) {
+            apiServer.stop()
+        }
         voiceSpeechManager.shutdown()
     }
 
@@ -759,7 +813,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _apiServerConfig = MutableStateFlow(com.example.api.ApiServerConfig())
     val apiServerConfig: StateFlow<com.example.api.ApiServerConfig> = _apiServerConfig.asStateFlow()
 
-    private val apiServer = com.example.api.OllamaInferenceServer(
+    private val apiServer = com.example.api.InferenceServerManager.getInstance(
         context = application,
         inferenceEngine = inferenceEngine,
         modelProvider = { models.value },
@@ -776,15 +830,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val newCfg = _apiServerConfig.value.copy(port = p, bindToLan = lan)
         _apiServerConfig.value = newCfg
         apiServer.updateConfig(newCfg)
-        val started = apiServer.start(p, lan)
-        if (started) {
-            com.example.service.InferenceServerService.startService(getApplication(), p, lan)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val started = apiServer.start(p, lan)
+                if (started) {
+                    com.example.service.InferenceServerService.startService(getApplication(), p, lan)
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("MainViewModel", "Failed starting API server: ${e.message}", e)
+            }
         }
     }
 
     fun stopApiServer() {
-        apiServer.stop()
-        com.example.service.InferenceServerService.stopService(getApplication())
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                apiServer.stop()
+                com.example.service.InferenceServerService.stopService(getApplication())
+            } catch (e: Throwable) {
+                android.util.Log.e("MainViewModel", "Failed stopping API server: ${e.message}", e)
+            }
+        }
     }
 
     fun toggleApiServer() {
@@ -823,6 +890,70 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 val duration = System.currentTimeMillis() - startTime
                 onResult(false, "Connection error: ${e.message}", duration)
+            }
+        }
+    }
+
+    fun addCustomPersona(persona: AiPersona) {
+        val updated = _customPersonas.value + persona
+        _customPersonas.value = updated
+        _availablePersonas.value = BuiltInPersonas.ALL + updated
+        selectPersona(persona)
+    }
+
+    fun deleteCustomPersona(personaId: String) {
+        val updated = _customPersonas.value.filter { it.id != personaId }
+        _customPersonas.value = updated
+        _availablePersonas.value = BuiltInPersonas.ALL + updated
+        if (_activePersona.value.id == personaId) {
+            selectPersona(BuiltInPersonas.GENERAL)
+        }
+    }
+
+    fun executeApiSandboxRequest(
+        endpoint: String,
+        method: String,
+        body: String?,
+        onResult: (statusCode: Int, responseBody: String, latencyMs: Long) -> Unit
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
+            try {
+                val stats = apiServerStats.value
+                val port = stats.port
+                val path = if (endpoint.startsWith("/")) endpoint else "/$endpoint"
+                val url = java.net.URL("http://127.0.0.1:$port$path")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 4000
+                conn.readTimeout = 8000
+                conn.requestMethod = method
+                if (!body.isNullOrBlank() && (method == "POST" || method == "PUT")) {
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.outputStream.use { os ->
+                        os.write(body.toByteArray(Charsets.UTF_8))
+                    }
+                }
+                val code = conn.responseCode
+                val latency = System.currentTimeMillis() - startTime
+                val respText = try {
+                    if (code in 200..299) {
+                        conn.inputStream.bufferedReader().readText()
+                    } else {
+                        conn.errorStream?.bufferedReader()?.readText() ?: "HTTP $code"
+                    }
+                } catch (e: Exception) {
+                    "Error reading body: ${e.message}"
+                }
+                conn.disconnect()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(code, respText, latency)
+                }
+            } catch (e: Exception) {
+                val latency = System.currentTimeMillis() - startTime
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(0, "Error: ${e.message ?: "Connection refused. Make sure API Server is started."}", latency)
+                }
             }
         }
     }

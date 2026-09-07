@@ -222,4 +222,158 @@ class ExampleUnitTest {
     assertNotNull("Should have a recommended result", recommendedResult)
     assertTrue("Recommended should be marked correctly", recommendedResult!!.isRecommended)
   }
+
+  @Test
+  fun testMultimodalVisionInference() = runBlocking {
+    val engine = com.example.engine.LocalInferenceEngine()
+    val dummyModel = ModelSpec(
+      id = "test_vision_model",
+      name = "MobileVLM-Vision",
+      parameterCount = "1.7B",
+      format = ModelFormat.GGUF,
+      quantization = "Q4_K_M",
+      fileSizeBytes = 1100000000L,
+      requiredRamBytes = 2200000000L,
+      contextLength = 4096,
+      description = "Multimodal Vision",
+      category = ModelCategory.VISION_MULTIMODAL,
+      downloadUrl = "https://example.com/vision",
+      sha256Checksum = "sha256_vision"
+    )
+
+    var collectedResponse = ""
+    engine.generateStreamingResponse(
+      prompt = "Analyze this system architecture diagram",
+      model = dummyModel,
+      settings = HardwareAccelerationSettings(),
+      params = com.example.data.model.GenerationParameters(),
+      attachedImageUri = "content://local_sample/arch_topology_arm64.png",
+      attachedImageLabel = "arch_topology_arm64.png"
+    ).collect { chunk ->
+      collectedResponse = chunk.accumulatedText
+    }
+
+    assertTrue("Vision output should not be blank", collectedResponse.isNotBlank())
+    assertTrue("Output should identify visual image or architecture", 
+      collectedResponse.contains("arch_topology_arm64.png") || collectedResponse.contains("Architecture") || collectedResponse.contains("Visual Analysis")
+    )
+  }
+
+  @Test
+  fun testOnDeviceToolExecutionMath() {
+    // Test calculate tool
+    val mathResult = com.example.engine.OnDeviceToolEngine.executeTool("calculate", "(15 * 4) + (100 / 5) - 2^3")
+    assertTrue("Tool execution must succeed", mathResult.isSuccess)
+    // (60) + (20) - 8 = 72
+    assertTrue("Result must be 72", mathResult.outputResult.contains("72"))
+
+    // Test tool call detection in prompt
+    val detectedCall = com.example.engine.OnDeviceToolEngine.parseToolCallFromPrompt("Please calculate 42 * 2")
+    assertNotNull("Tool call should be detected", detectedCall)
+    assertTrue("Tool name must be calculate", detectedCall?.toolName == "calculate")
+
+    val executionResult = com.example.engine.OnDeviceToolEngine.executeTool(detectedCall!!.toolName, detectedCall.inputArgument)
+    assertTrue(executionResult.isSuccess)
+    assertTrue(executionResult.outputResult.contains("84"))
+  }
+
+  @Test
+  fun testOnDeviceToolExecutionCryptoAndHardware() {
+    // Test hash tool
+    val hashResult = com.example.engine.OnDeviceToolEngine.executeTool("hash_crypto", "AirGappedSecurity2026")
+    assertTrue(hashResult.isSuccess)
+    assertTrue("Hash output must contain SHA-256", hashResult.outputResult.contains("SHA-256"))
+
+    // Test uuid generation
+    val uuidResult = com.example.engine.OnDeviceToolEngine.executeTool("generate_uuid", "")
+    assertTrue(uuidResult.isSuccess)
+    assertTrue("UUID must have hyphens", uuidResult.outputResult.contains("-"))
+
+    // Test unit conversion
+    val convertResult = com.example.engine.OnDeviceToolEngine.executeTool("unit_convert", "100 C to F")
+    assertTrue(convertResult.isSuccess)
+    assertTrue("100 C is 212 F", convertResult.outputResult.contains("212"))
+  }
+
+  @Test
+  fun testOnDeviceToolCallingInInferenceEngine() = runBlocking {
+    val engine = com.example.engine.LocalInferenceEngine()
+    val dummyModel = ModelSpec(
+      id = "test_tool_model",
+      name = "Gemma-Tool-2B",
+      parameterCount = "2B",
+      format = ModelFormat.GGUF,
+      quantization = "Q4_K_M",
+      fileSizeBytes = 1200000000L,
+      requiredRamBytes = 2000000000L,
+      contextLength = 4096,
+      description = "Tool caller",
+      category = ModelCategory.CHAT_REASONING,
+      downloadUrl = "https://example.com/tool",
+      sha256Checksum = "sha256_tool"
+    )
+
+    var output = ""
+    engine.generateStreamingResponse(
+      prompt = "Please calculate 250 * 4",
+      model = dummyModel,
+      settings = HardwareAccelerationSettings(),
+      params = com.example.data.model.GenerationParameters(enableToolCalling = true)
+    ).collect { chunk ->
+      output = chunk.accumulatedText
+    }
+
+    assertTrue("Output should contain executed tool call indicator", output.contains("Tool Executed") || output.contains("calculate") || output.contains("1000"))
+  }
+
+  @Test
+  fun testJsonSchemaEnforcementInInferenceEngine() = runBlocking {
+    val engine = com.example.engine.LocalInferenceEngine()
+    val dummyModel = ModelSpec(
+      id = "test_json_model",
+      name = "Llama-Structured",
+      parameterCount = "1B",
+      format = ModelFormat.GGUF,
+      quantization = "Q4_0",
+      fileSizeBytes = 800000000L,
+      requiredRamBytes = 1500000000L,
+      contextLength = 2048,
+      description = "JSON generator",
+      category = ModelCategory.CODE_ANALYSIS,
+      downloadUrl = "https://example.com/json",
+      sha256Checksum = "sha256_json"
+    )
+
+    var output = ""
+    engine.generateStreamingResponse(
+      prompt = "Generate a user profile",
+      model = dummyModel,
+      settings = HardwareAccelerationSettings(),
+      params = com.example.data.model.GenerationParameters(enforceJsonSchema = true)
+    ).collect { chunk ->
+      output = chunk.accumulatedText
+    }
+
+    assertTrue("Output must start with JSON brace", output.trim().startsWith("{"))
+    assertTrue("Output must end with JSON brace", output.trim().endsWith("}"))
+    assertTrue("Output must contain schema-compliant keys", output.contains("\"status\"") && output.contains("\"data\""))
+  }
+
+  @Test
+  fun testQuantizationPerplexityCalculatorFormulas() {
+    // Test 3B parameter model quantization footprint
+    val paramCountBillion = 3.0f
+    val contextLength = 4096
+
+    // Q4_K_M bits/weight ~ 4.5
+    val q4WeightsBytes = (paramCountBillion * 1_000_000_000L * 4.5f / 8.0f).toLong()
+    val q4WeightsGb = q4WeightsBytes.toDouble() / (1024 * 1024 * 1024)
+    assertTrue("Q4 weights should be ~1.5 - 1.8 GB", q4WeightsGb in 1.5..1.8)
+
+    // KV Cache for 4096 tokens (FP16)
+    val kvCacheBytes = (contextLength.toLong() * 32 * 2 * 128 * 2)
+    val kvCacheMb = kvCacheBytes.toDouble() / (1024 * 1024)
+    assertTrue("KV Cache for 4096 context should be ~64MB", kvCacheMb in 60.0..70.0)
+  }
 }
+

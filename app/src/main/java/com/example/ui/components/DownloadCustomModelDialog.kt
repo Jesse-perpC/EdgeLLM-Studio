@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -153,13 +154,89 @@ fun DownloadCustomModelDialog(
                 )
 
                 Text(
+                    text = "Quick Presets (1-Tap Fill):",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = modelName == "Llama-3.2-1B-Instruct",
+                        onClick = {
+                            modelName = "Llama-3.2-1B-Instruct"
+                            downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+                            selectedFormat = ModelFormat.GGUF
+                            parameterCount = "1.2B"
+                            quantization = "Q4_K_M"
+                            fileSizeMbText = "780"
+                        },
+                        label = { Text("Llama-3.2 1B (GGUF)", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = modelName == "Qwen2.5-0.5B-Instruct",
+                        onClick = {
+                            modelName = "Qwen2.5-0.5B-Instruct"
+                            downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+                            selectedFormat = ModelFormat.GGUF
+                            parameterCount = "0.5B"
+                            quantization = "Q4_K_M"
+                            fileSizeMbText = "395"
+                        },
+                        label = { Text("Qwen2.5 0.5B (GGUF)", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = modelName == "DeepSeek-R1-Distill-1.5B",
+                        onClick = {
+                            modelName = "DeepSeek-R1-Distill-1.5B"
+                            downloadUrl = "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf"
+                            selectedFormat = ModelFormat.GGUF
+                            parameterCount = "1.5B"
+                            quantization = "Q4_K_M"
+                            fileSizeMbText = "1120"
+                        },
+                        label = { Text("DeepSeek R1 1.5B (GGUF)", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = modelName == "Gemma-2-2B-LiteRT",
+                        onClick = {
+                            modelName = "Gemma-2-2B-LiteRT"
+                            downloadUrl = "https://storage.googleapis.com/kaggle-models/google/gemma/tflite/gemma-2b-it-cpu-int8.bin"
+                            selectedFormat = ModelFormat.TFLITE
+                            parameterCount = "2.0B"
+                            quantization = "INT8"
+                            fileSizeMbText = "1450"
+                        },
+                        label = { Text("Gemma 2B (LiteRT)", fontSize = 11.sp) }
+                    )
+                    FilterChip(
+                        selected = modelName == "All-MiniLM-L6-v2-ONNX",
+                        onClick = {
+                            modelName = "All-MiniLM-L6-v2-ONNX"
+                            downloadUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx"
+                            selectedFormat = ModelFormat.ONNX
+                            parameterCount = "22M"
+                            quantization = "FP16"
+                            fileSizeMbText = "45"
+                        },
+                        label = { Text("MiniLM-L6 (ONNX)", fontSize = 11.sp) }
+                    )
+                }
+
+                Text(
                     text = "Model Format:",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ModelFormat.entries.forEach { format ->
