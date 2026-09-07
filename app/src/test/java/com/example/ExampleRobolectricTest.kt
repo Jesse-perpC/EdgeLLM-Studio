@@ -288,4 +288,35 @@ class ExampleRobolectricTest {
       org.junit.Assert.assertFalse("Server should be stopped", server.serverStats.value.isRunning)
     }
   }
+
+  @Test
+  fun `offline knowledge engine generates accurate response for java objects and technical queries`() {
+    val dummyModel = com.example.data.model.ModelSpec(
+      id = "test-model",
+      name = "Llama 3.2 1B",
+      parameterCount = "1.2B",
+      format = com.example.data.model.ModelFormat.GGUF,
+      quantization = "Q4_K_M",
+      fileSizeBytes = 500_000_000L,
+      requiredRamBytes = 800_000_000L,
+      contextLength = 4096,
+      description = "Test model",
+      category = com.example.data.model.ModelCategory.CHAT_REASONING,
+      downloadUrl = "https://example.com/test.gguf",
+      sha256Checksum = "dummy-sha",
+      isDownloaded = true
+    )
+
+    val engine = com.example.engine.LocalInferenceEngine()
+    val response = engine.generateOfflineIntelligence(
+      prompt = "what are objects in java?",
+      model = dummyModel,
+      params = com.example.data.model.GenerationParameters()
+    )
+
+    org.junit.Assert.assertTrue("Response should explain instance of a class", response.contains("instance of a class", ignoreCase = true))
+    org.junit.Assert.assertTrue("Response should explain state and behavior", response.contains("state", ignoreCase = true) && response.contains("behavior", ignoreCase = true))
+    org.junit.Assert.assertTrue("Response should mention heap memory", response.contains("Heap", ignoreCase = true))
+    org.junit.Assert.assertTrue("Response should include Java code snippet", response.contains("public class") || response.contains("new "))
+  }
 }

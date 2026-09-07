@@ -71,6 +71,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _autoVoiceReadout = MutableStateFlow(false)
     val autoVoiceReadout: StateFlow<Boolean> = _autoVoiceReadout.asStateFlow()
 
+    // Air-Gapped vs Cloud Assist Mode
+    private val _isAirGappedMode = MutableStateFlow(false)
+    val isAirGappedMode: StateFlow<Boolean> = _isAirGappedMode.asStateFlow()
+
+    fun toggleAirGappedMode() {
+        _isAirGappedMode.value = !_isAirGappedMode.value
+    }
+
+    fun setAirGappedMode(enabled: Boolean) {
+        _isAirGappedMode.value = enabled
+    }
+
     // AI Persona Management
     private val _activePersona = MutableStateFlow<AiPersona>(BuiltInPersonas.GENERAL)
     val activePersona: StateFlow<AiPersona> = _activePersona.asStateFlow()
@@ -374,7 +386,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         settings = currentSettings,
                         params = currentParams,
                         persona = persona,
-                        attachedDoc = attachedDoc
+                        attachedDoc = attachedDoc,
+                        isAirGapped = _isAirGappedMode.value
                     ).collect { chunk ->
                         _streamingChunk.value = chunk
                         if (chunk.isComplete) {
@@ -449,7 +462,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         persona = persona,
                         attachedDoc = attachedDoc,
                         attachedImageUri = finalImageUri,
-                        attachedImageLabel = finalImageLabel
+                        attachedImageLabel = finalImageLabel,
+                        isAirGapped = _isAirGappedMode.value
                     ).collect { chunk ->
                         _streamingChunk.value = chunk
                         if (chunk.isComplete) {

@@ -135,6 +135,7 @@ fun InferenceScreen(
     val autoVoiceReadout by viewModel.autoVoiceReadout.collectAsState()
     val speechRate by viewModel.speechRate.collectAsState()
     val telemetryState by viewModel.telemetryState.collectAsState()
+    val isAirGapped by viewModel.isAirGappedMode.collectAsState()
 
     val activeModel = remember(models) {
         models.firstOrNull { it.isActive && it.isDownloaded } ?: models.firstOrNull { it.isDownloaded }
@@ -801,7 +802,8 @@ fun InferenceScreen(
                             text = when {
                                 activeAttachedImageLabel != null -> "Ask about attached image..."
                                 activeKnowledgeDoc != null -> "Ask about grounded doc..."
-                                else -> "Ask local model offline..."
+                                isAirGapped -> "Ask local model offline..."
+                                else -> "Ask model (Gemini Cloud Assist)..."
                             },
                             fontSize = 13.sp
                         )

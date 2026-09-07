@@ -24,6 +24,8 @@ data class StreamTokenChunk(
 
 class LocalInferenceEngine {
 
+    val geminiClient = GeminiInferenceClient()
+
     fun generateStreamingResponse(
         prompt: String,
         model: ModelSpec,
@@ -32,7 +34,8 @@ class LocalInferenceEngine {
         persona: AiPersona? = null,
         attachedDoc: KnowledgeDocument? = null,
         attachedImageUri: String? = null,
-        attachedImageLabel: String? = null
+        attachedImageLabel: String? = null,
+        isAirGapped: Boolean = false
     ): Flow<StreamTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
 
@@ -60,7 +63,28 @@ class LocalInferenceEngine {
         delay(prefillTimeMs)
         val ttft = System.currentTimeMillis() - startTime
 
-        val responseText = generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel)
+        // Determine if response should come from Cloud Assist (Gemini 3.5 Flash) or On-Device Offline Engine
+        val (responseText, backendUsed) = if (!isAirGapped && geminiClient.isApiKeyConfigured() && attachedImageUri == null && attachedDoc == null && !params.enableToolCalling && !params.enforceJsonSchema) {
+            val geminiRes = geminiClient.generateContent(
+                prompt = prompt,
+                persona = persona,
+                systemInstructionOverride = params.systemPrompt
+            )
+            if (geminiRes.isSuccess) {
+                Pair(geminiRes.getOrThrow(), "Cloud Assist • Gemini 3.5 Flash")
+            } else {
+                Pair(
+                    generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel),
+                    "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})"
+                )
+            }
+        } else {
+            Pair(
+                generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel),
+                "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})"
+            )
+        }
+
         val tokens = tokenizeResponse(responseText)
 
         val stringBuilder = StringBuilder()
@@ -85,7 +109,7 @@ class LocalInferenceEngine {
                     tokensPerSecond = ((currentTps * 10).toInt() / 10f),
                     timeToFirstTokenMs = ttft,
                     isComplete = false,
-                    backendUsed = "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})"
+                    backendUsed = backendUsed
                 )
             )
 
@@ -104,7 +128,7 @@ class LocalInferenceEngine {
                 tokensPerSecond = ((tokenCount / totalElapsedSec) * 10).toInt() / 10f,
                 timeToFirstTokenMs = ttft,
                 isComplete = true,
-                backendUsed = "${settings.computeBackend.shortName} (${settings.threadCount}T)"
+                backendUsed = backendUsed
             )
         )
     }
@@ -236,70 +260,13 @@ class LocalInferenceEngine {
                     "</think>\n\n"
         } else ""
 
-        // 3. Response generation based on persona and topic:
+        // 3. Response generation based on offline intelligence and rich domain knowledge:
         val body = when {
-            persona?.id == "persona_coder" || lower.contains("code") || lower.contains("python") || lower.contains("kotlin") || lower.contains("function") -> {
-                "Here is an efficient, vectorized implementation optimized for low-latency local execution:\n\n" +
-                        "```kotlin\n" +
-                        "// High-performance vectorized tensor dot product (ARM NEON optimized)\n" +
-                        "fun computeAttentionScore(q: FloatArray, k: FloatArray, scale: Float): Float {\n" +
-                        "    var sum = 0f\n" +
-                        "    val length = minOf(q.size, k.size)\n" +
-                        "    for (i in 0 until length) {\n" +
-                        "        sum += q[i] * k[i]\n" +
-                        "    }\n" +
-                        "    return sum * scale\n" +
-                        "}\n" +
-                        "```\n\n" +
-                        "**Optimization Details:**\n" +
-                        "- Minimal garbage collector pressure with primitive arrays.\n" +
-                        "- Fits L1/L2 CPU cache lines without memory thrashing."
+            lower.contains("hello") || lower.contains("hi") || lower == "hey" -> {
+                "Hello! I am ${persona?.name ?: model.name}, powered by local ${model.format.displayName} quantization (${model.quantization}) and hybrid edge intelligence. How can I assist you with programming, architecture, analysis, or technical questions today?"
             }
-
-            persona?.id == "persona_security" || lower.contains("privacy") || lower.contains("security") || lower.contains("redact") -> {
-                "### Privacy & Local Security Audit\n\n" +
-                        "- **Zero Telemetry:** All tensor operations are bound to local RAM address space.\n" +
-                        "- **E2EE Protection:** Exported payloads use AES-256-GCM authenticated encryption with PBKDF2 derived keys.\n" +
-                        "- **Air-Gapped Operation:** No internet connection is requested or permitted during inference cycles.\n" +
-                        "- **Memory Scrubbing:** KV cache buffers are zeroized upon session termination to prevent cold-boot memory dumps."
-            }
-
-            persona?.id == "persona_writer" -> {
-                "In the quiet silicon heart of the device, thousands of quantized weights pulsed in unison—not through distant towers or fiber strands across oceans, but right here, millimeters beneath glass. An entire neural landscape awakened in total silence, sovereign and private."
-            }
-
-            persona?.id == "persona_tutor" -> {
-                "Great question! Let's explore **\"$prompt\"** using a simple, real-world analogy:\n\n" +
-                        "Imagine a master librarian who has memorized every connection between ideas. Instead of traveling to an external university to look up facts, the librarian lives right on your desk. They can answer instantly, and nobody else ever hears what you whispered.\n\n" +
-                        "Does this make sense so far? Would you like me to dive into how the math works step-by-step?"
-            }
-
-            lower.contains("summar") -> {
-                "### Local On-Device Summary\n\n" +
-                        "**Core Insight:** The provided text outlines local execution constraints and zero-network operational integrity.\n\n" +
-                        "**Key Takeaways:**\n" +
-                        "1. **Zero External Egress:** Computations execute strictly on local CPU/GPU/NPU silicon without external telemetry.\n" +
-                        "2. **Quantized Footprint:** Model runtime operates within allocated memory thresholds under ${model.quantization} precision.\n" +
-                        "3. **Thermal Guard:** Real-time throttling prevents excessive battery drain or SoC temperature spikes.\n\n" +
-                        "_Processed on-device via ${model.name} (${model.format.displayName}) in ${(model.fileSizeBytes / (1024 * 1024))} MB memory._"
-            }
-
-            lower.contains("log") || lower.contains("error") || lower.contains("crash") -> {
-                "### Log Anomaly Diagnostics\n\n" +
-                        "- **Detected Anomalies:** 0 critical panics detected; 2 warning alerts for high garbage-collection pauses.\n" +
-                        "- **Root Cause:** Tensor allocation spikes during context expansion (>2048 tokens).\n" +
-                        "- **Recommendation:** Enable Q8_0 or Q4_0 KV Cache Quantization in Hardware Acceleration settings to cut memory pressure by 45%."
-            }
-
-            lower.contains("hello") || lower.contains("hi") || lower.length < 15 -> {
-                "Hello! I am ${persona?.name ?: model.name}, running completely offline on your device using ${model.format.displayName} quantization (${model.quantization}). No data leaves this device. How can I assist you with local computation, code, analysis, or private document questions today?"
-            }
-
             else -> {
-                "Based on on-device analysis with ${persona?.name ?: model.name}:\n\n" +
-                        "1. **Analysis:** For \"$prompt\", optimal processing requires balancing precision and memory footprint.\n" +
-                        "2. **Local Hardware Status:** Execution conducted locally using ${model.format.displayName} backend without any cloud dependencies.\n" +
-                        "3. **Conclusion:** Computing directly on modern mobile SoCs allows confidential data, private records, and proprietary tasks to remain 100% private to this hardware."
+                OfflineKnowledgeEngine.answerQuery(prompt, model, persona)
             }
         }
 

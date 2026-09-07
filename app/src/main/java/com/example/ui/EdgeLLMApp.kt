@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -76,6 +77,7 @@ fun EdgeLLMApp(
     val themeMode by viewModel.themeMode.collectAsState()
     val accentPalette by viewModel.accentPalette.collectAsState()
     val apiStats by viewModel.apiServerStats.collectAsState()
+    val isAirGapped by viewModel.isAirGappedMode.collectAsState()
 
     var currentDestination by remember { mutableStateOf(AppDestination.DASHBOARD) }
     var isInSettings by remember { mutableStateOf(false) }
@@ -98,9 +100,14 @@ fun EdgeLLMApp(
                             )
                             if (!isInSettings) {
                                 Spacer(modifier = Modifier.width(8.dp))
+                                val badgeColor = if (isAirGapped) Color(0xFF10B981) else Color(0xFF38BDF8)
+                                val badgeText = if (isAirGapped) "Air-Gapped" else "Cloud Assist"
                                 Surface(
                                     shape = CircleShape,
-                                    color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                    color = badgeColor.copy(alpha = 0.15f),
+                                    modifier = Modifier
+                                        .clickable { viewModel.toggleAirGappedMode() }
+                                        .testTag("toggle_air_gapped_mode_btn")
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -110,15 +117,15 @@ fun EdgeLLMApp(
                                             modifier = Modifier
                                                 .size(6.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFF10B981))
+                                                .background(badgeColor)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Air-Gapped",
+                                            text = badgeText,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF10B981)
+                                            color = badgeColor
                                         )
                                     }
                                 }
