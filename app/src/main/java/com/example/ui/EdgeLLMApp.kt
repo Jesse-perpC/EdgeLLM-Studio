@@ -1,16 +1,20 @@
 package com.example.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Chat
@@ -20,7 +24,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,6 +35,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -47,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.BillingAndAllocationsSheet
 import com.example.ui.screens.ApiServerScreen
 import com.example.ui.screens.BackgroundTasksScreen
 import com.example.ui.screens.DashboardScreen
@@ -78,9 +85,11 @@ fun EdgeLLMApp(
     val accentPalette by viewModel.accentPalette.collectAsState()
     val apiStats by viewModel.apiServerStats.collectAsState()
     val isAirGapped by viewModel.isAirGappedMode.collectAsState()
+    val userProfile by viewModel.userSubscriptionProfile.collectAsState()
 
     var currentDestination by remember { mutableStateOf(AppDestination.DASHBOARD) }
     var isInSettings by remember { mutableStateOf(false) }
+    var showBillingSheet by remember { mutableStateOf(false) }
     var prefilledExportText by remember { mutableStateOf("") }
 
     MyApplicationTheme(
@@ -90,44 +99,40 @@ fun EdgeLLMApp(
         Scaffold(
             modifier = modifier.fillMaxSize(),
             topBar = {
-                CenterAlignedTopAppBar(
+                TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column {
                             Text(
                                 text = if (isInSettings) "Acceleration & Theme" else "EdgeLLM Studio",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             if (!isInSettings) {
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.height(2.dp))
                                 val badgeColor = if (isAirGapped) Color(0xFF10B981) else Color(0xFF38BDF8)
-                                val badgeText = if (isAirGapped) "Air-Gapped" else "Cloud Assist"
-                                Surface(
-                                    shape = CircleShape,
-                                    color = badgeColor.copy(alpha = 0.15f),
+                                val badgeText = if (isAirGapped) "Air-Gapped Private" else "Cloud Assisted"
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
                                         .clickable { viewModel.toggleAirGappedMode() }
                                         .testTag("toggle_air_gapped_mode_btn")
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(badgeColor)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = badgeText,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = badgeColor
-                                        )
-                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(badgeColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = badgeText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }
@@ -165,6 +170,40 @@ fun EdgeLLMApp(
                                 }
                             }
 
+                            // Pro Creator / Billing Pill Button (Properly sized & comfortable, non-squeezed)
+                            val planColor = if (userProfile.isPro) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.primary
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = planColor.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, planColor.copy(alpha = 0.3f)),
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { showBillingSheet = true }
+                                    .testTag("open_billing_action_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (userProfile.isPro) Icons.Default.AutoAwesome else Icons.Default.CreditCard,
+                                        contentDescription = "Billing & Plan",
+                                        tint = planColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (userProfile.isPro) "PRO" else "${userProfile.usedAllocations / 1000}k/${userProfile.maxAllocations / 1000}k",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = planColor
+                                    )
+                                }
+                            }
+
                             IconButton(
                                 onClick = { isInSettings = true },
                                 modifier = Modifier.testTag("open_settings_top_btn")
@@ -177,7 +216,7 @@ fun EdgeLLMApp(
                             }
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
@@ -273,6 +312,12 @@ fun EdgeLLMApp(
                         }
                     }
                 }
+            }
+            if (showBillingSheet) {
+                BillingAndAllocationsSheet(
+                    viewModel = viewModel,
+                    onDismiss = { showBillingSheet = false }
+                )
             }
         }
     }

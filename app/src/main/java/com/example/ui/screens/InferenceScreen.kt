@@ -134,7 +134,6 @@ fun InferenceScreen(
     val currentlySpeakingId by viewModel.currentlySpeakingId.collectAsState()
     val autoVoiceReadout by viewModel.autoVoiceReadout.collectAsState()
     val speechRate by viewModel.speechRate.collectAsState()
-    val telemetryState by viewModel.telemetryState.collectAsState()
     val isAirGapped by viewModel.isAirGappedMode.collectAsState()
 
     val activeModel = remember(models) {

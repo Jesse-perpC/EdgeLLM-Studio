@@ -34,9 +34,14 @@ import com.example.engine.ShareDuration
 import com.example.engine.StreamTokenChunk
 import com.example.engine.TemporaryShareManager
 import com.example.data.model.AiPersona
+import com.example.data.model.AllocationCheckResult
 import com.example.data.model.BuiltInPersonas
 import com.example.data.model.KnowledgeDocument
 import com.example.data.model.SampleKnowledgeDocuments
+import com.example.data.model.SubscriptionTier
+import com.example.data.model.SupabaseConnectionConfig
+import com.example.data.model.UserSubscriptionProfile
+import com.example.data.repository.BillingRepository
 import com.example.engine.VoiceSpeechManager
 import com.example.plugin.PluginRegistry
 import com.example.service.BackgroundInferenceService
@@ -44,6 +49,9 @@ import com.example.ui.theme.AccentPalette
 import com.example.ui.theme.AppThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -63,6 +71,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val pluginRegistry: PluginRegistry
     private val benchmarkEngine = com.example.engine.HardwareBenchmarkEngine()
     private val voiceSpeechManager: VoiceSpeechManager
+    private val billingRepository: BillingRepository
+
+    // Subscription & Allocations Management (Supabase / Local-First)
+    val userSubscriptionProfile: StateFlow<UserSubscriptionProfile> get() = billingRepository.userProfile
+    val supabaseConfig: StateFlow<SupabaseConnectionConfig> get() = billingRepository.supabaseConfig
+
+    fun upgradeSubscriptionTier(tier: SubscriptionTier) {
+        billingRepository.upgradeTier(tier)
+    }
+
+    fun resetBillingAllocations() {
+        billingRepository.resetAllocations()
+    }
+
+    fun updateSupabaseCredentials(url: String, anonKey: String) {
+        billingRepository.updateSupabaseCredentials(url, anonKey)
+    }
+
+    suspend fun testSupabaseConnection(): Result<String> {
+        return billingRepository.testAndSyncSupabase()
+    }
+
+    fun getSupabaseSqlSchema(): String {
+        return billingRepository.getSupabaseSqlSchema()
+    }
 
     // Voice Text-to-Speech Engine
     val isSpeaking: StateFlow<Boolean> get() = voiceSpeechManager.isSpeaking
@@ -178,6 +211,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         shareManager = TemporaryShareManager()
         pluginRegistry = PluginRegistry()
         voiceSpeechManager = VoiceSpeechManager(application)
+        billingRepository = BillingRepository(application)
 
         refreshHardware()
         recalculateMemoryBreakdown()
@@ -367,6 +401,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun regenerateResponse(lastAssistantMessage: InferenceMessage, promptText: String) {
+        val check = billingRepository.canExecuteInference(estimatedTokens = 15)
+        if (check is AllocationCheckResult.QuotaExceeded) {
+            val quotaMsg = InferenceMessage(
+                id = UUID.randomUUID().toString(),
+                sender = MessageSender.ASSISTANT,
+                text = "⚠️ **Monthly Allocation Limit Reached (${check.used} / ${check.max} tokens)**\n\nYour Free Starter allocation pool is exhausted for this billing period. Upgrade to the **Pro Creator Plan** to unlock 200,000 monthly tokens, Gemini Cloud Assist, RAG document grounding, and full hardware acceleration.",
+                timestamp = System.currentTimeMillis(),
+                executionBackend = "Billing Guard • Supabase Quota Enforced"
+            )
+            viewModelScope.launch { repository.insertMessage(quotaMsg) }
+            return
+        }
+
         viewModelScope.launch {
             repository.deleteChatMessage(lastAssistantMessage.id)
             _isGenerating.value = true
@@ -403,6 +450,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 modelId = activeModel.name
                             )
                             repository.insertMessage(assistantMessage)
+                            billingRepository.recordAllocationUsage(chunk.tokenCount)
                             _streamingChunk.value = null
                             _isGenerating.value = false
 
@@ -425,6 +473,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         imageLabel: String? = null
     ) {
         if (userText.isBlank() || _isGenerating.value) return
+
+        val check = billingRepository.canExecuteInference(estimatedTokens = 15)
+        if (check is AllocationCheckResult.QuotaExceeded) {
+            val quotaMsg = InferenceMessage(
+                id = UUID.randomUUID().toString(),
+                sender = MessageSender.ASSISTANT,
+                text = "⚠️ **Monthly Allocation Limit Reached (${check.used} / ${check.max} tokens)**\n\nYour Free Starter allocation pool is exhausted for this billing period. Upgrade to the **Pro Creator Plan** to unlock 200,000 monthly tokens, Gemini Cloud Assist, RAG document grounding, and full hardware acceleration.\n\nTap the **Plan & Billing** badge in the top bar to manage your plan or sync with Supabase.",
+                timestamp = System.currentTimeMillis(),
+                executionBackend = "Billing Guard • Supabase Quota Enforced"
+            )
+            viewModelScope.launch { repository.insertMessage(quotaMsg) }
+            return
+        }
 
         val finalImageUri = imageUri ?: _activeAttachedImageUri.value
         val finalImageLabel = imageLabel ?: _activeAttachedImageLabel.value
@@ -479,6 +540,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 modelId = activeModel.name
                             )
                             repository.insertMessage(assistantMessage)
+                            billingRepository.recordAllocationUsage(chunk.tokenCount)
                             _streamingChunk.value = null
                             _isGenerating.value = false
 
@@ -738,9 +800,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startTelemetryLoop() {
-        viewModelScope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(_telemetryState.value.pollingIntervalMs)
+        viewModelScope.launch(Dispatchers.Default) {
+            delay(2000L)
+            while (isActive) {
+                delay(_telemetryState.value.pollingIntervalMs.coerceAtLeast(2000L))
                 if (!_telemetryState.value.isLivePolling) continue
 
                 val isGen = _isGenerating.value
