@@ -99,3 +99,20 @@ sealed class AllocationCheckResult {
     data class Allowed(val remaining: Int) : AllocationCheckResult()
     data class QuotaExceeded(val used: Int, val max: Int) : AllocationCheckResult()
 }
+
+enum class StripeAccountMode {
+    TEST_MODE,
+    LIVE_MODE,
+    UNCONFIGURED
+}
+
+data class StripeBillingConfig(
+    val publishableKey: String = "pk_test_LTsnLXAZKhKJqVczf2JjYTLk00g98H1Nl1",
+    val paymentLinkUrl: String = "",
+    val mode: StripeAccountMode = StripeAccountMode.TEST_MODE,
+    val currency: String = "USD",
+    val proMonthlyPriceId: String = "price_pro_creator_monthly",
+    val statusMessage: String = "Stripe Test Mode active (pk_test_...1Nl1). Ready for client checkout."
+) {
+    val isConfigured: Boolean get() = publishableKey.isNotBlank() && publishableKey.startsWith("pk_")
+}

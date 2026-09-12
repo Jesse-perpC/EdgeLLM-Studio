@@ -73,9 +73,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val voiceSpeechManager: VoiceSpeechManager
     private val billingRepository: BillingRepository
 
-    // Subscription & Allocations Management (Supabase / Local-First)
+    // Subscription & Allocations Management (Supabase / Local-First & Stripe)
     val userSubscriptionProfile: StateFlow<UserSubscriptionProfile> get() = billingRepository.userProfile
     val supabaseConfig: StateFlow<SupabaseConnectionConfig> get() = billingRepository.supabaseConfig
+    val stripeConfig: StateFlow<com.example.data.model.StripeBillingConfig> get() = billingRepository.stripeConfig
 
     fun upgradeSubscriptionTier(tier: SubscriptionTier) {
         billingRepository.upgradeTier(tier)
@@ -95,6 +96,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getSupabaseSqlSchema(): String {
         return billingRepository.getSupabaseSqlSchema()
+    }
+
+    fun updateStripeConfig(publishableKey: String, paymentLinkUrl: String) {
+        billingRepository.updateStripeConfig(publishableKey, paymentLinkUrl)
+    }
+
+    fun getStripeWebhookCode(): String {
+        return billingRepository.getStripeSupabaseWebhookCode()
     }
 
     // Voice Text-to-Speech Engine

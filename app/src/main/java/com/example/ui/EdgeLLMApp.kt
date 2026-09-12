@@ -173,32 +173,31 @@ fun EdgeLLMApp(
                             // Pro Creator / Billing Pill Button (Properly sized & comfortable, non-squeezed)
                             val planColor = if (userProfile.isPro) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.primary
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = planColor.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, planColor.copy(alpha = 0.3f)),
+                                border = BorderStroke(1.dp, planColor.copy(alpha = 0.35f)),
                                 modifier = Modifier
-                                    .padding(horizontal = 4.dp)
-                                    .height(36.dp)
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .padding(end = 4.dp)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(20.dp))
                                     .clickable { showBillingSheet = true }
                                     .testTag("open_billing_action_btn")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = if (userProfile.isPro) Icons.Default.AutoAwesome else Icons.Default.CreditCard,
                                         contentDescription = "Billing & Plan",
                                         tint = planColor,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(7.dp))
                                     Text(
                                         text = if (userProfile.isPro) "PRO" else "${userProfile.usedAllocations / 1000}k/${userProfile.maxAllocations / 1000}k",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = planColor
                                     )
                                 }

@@ -42,6 +42,9 @@ class BillingRepository(context: Context) {
     private val _supabaseConfig = MutableStateFlow(loadInitialSupabaseConfig())
     val supabaseConfig: StateFlow<SupabaseConnectionConfig> = _supabaseConfig.asStateFlow()
 
+    private val _stripeConfig = MutableStateFlow(loadInitialStripeConfig())
+    val stripeConfig: StateFlow<com.example.data.model.StripeBillingConfig> = _stripeConfig.asStateFlow()
+
     companion object {
         private const val TAG = "BillingRepository"
         private const val PREF_USER_ID = "pref_user_id"
@@ -52,9 +55,41 @@ class BillingRepository(context: Context) {
         private const val PREF_PERIOD_END = "pref_period_end"
         private const val PREF_SUPABASE_URL = "pref_supabase_url"
         private const val PREF_SUPABASE_KEY = "pref_supabase_key"
+        private const val PREF_STRIPE_PUB_KEY = "pref_stripe_pub_key"
+        private const val PREF_STRIPE_PAYMENT_LINK = "pref_stripe_payment_link"
 
         const val DEFAULT_SUPABASE_URL = "https://dkjwtvxzezcawizhibcz.supabase.co"
         const val DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrand0dnh6ZXpjYXdpemhpYmN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NDg4MTksImV4cCI6MjEwNDUyNDgxOX0.lCdP7v_ldcAKlpQxGxmTsgknN7T7rYfBTVnkV1QmpDE"
+        const val DEFAULT_STRIPE_PUBLISHABLE_KEY = "pk_test_LTsnLXAZKhKJqVczf2JjYTLk00g98H1Nl1"
+    }
+
+    private fun loadInitialStripeConfig(): com.example.data.model.StripeBillingConfig {
+        val buildStripeKey = try {
+            BuildConfig::class.java.getField("STRIPE_PUBLISHABLE_KEY").get(null) as? String
+        } catch (e: Exception) { null }?.takeIf { it.startsWith("pk_") }
+
+        val buildPaymentLink = try {
+            BuildConfig::class.java.getField("STRIPE_PAYMENT_LINK_PRO").get(null) as? String
+        } catch (e: Exception) { null }?.takeIf { it.startsWith("http") } ?: ""
+
+        val savedPubKey = prefs.getString(PREF_STRIPE_PUB_KEY, null)?.takeIf { it.startsWith("pk_") }
+            ?: buildStripeKey
+            ?: DEFAULT_STRIPE_PUBLISHABLE_KEY
+
+        val savedLink = prefs.getString(PREF_STRIPE_PAYMENT_LINK, null)?.takeIf { it.startsWith("http") }
+            ?: buildPaymentLink
+
+        val isLive = savedPubKey.startsWith("pk_live_")
+        val isTest = savedPubKey.startsWith("pk_test_")
+
+        return com.example.data.model.StripeBillingConfig(
+            publishableKey = savedPubKey,
+            paymentLinkUrl = savedLink,
+            mode = if (isLive) com.example.data.model.StripeAccountMode.LIVE_MODE else if (isTest) com.example.data.model.StripeAccountMode.TEST_MODE else com.example.data.model.StripeAccountMode.UNCONFIGURED,
+            statusMessage = if (isTest) "Stripe Test Mode active ($savedPubKey). Ready for client checkout."
+                            else if (isLive) "Stripe Live Production active."
+                            else "Stripe Publishable Key pending."
+        )
     }
 
     private fun loadInitialProfile(): UserSubscriptionProfile {
@@ -367,4 +402,84 @@ CREATE POLICY "Users can update own allocations"
     WITH CHECK (true);
         """.trimIndent()
     }
+
+    fun updateStripeConfig(publishableKey: String, paymentLinkUrl: String) {
+        val cleanKey = publishableKey.trim()
+        val cleanLink = paymentLinkUrl.trim()
+
+        prefs.edit()
+            .putString(PREF_STRIPE_PUB_KEY, cleanKey)
+            .putString(PREF_STRIPE_PAYMENT_LINK, cleanLink)
+            .apply()
+
+        val isLive = cleanKey.startsWith("pk_live_")
+        val isTest = cleanKey.startsWith("pk_test_")
+
+        _stripeConfig.value = com.example.data.model.StripeBillingConfig(
+            publishableKey = cleanKey,
+            paymentLinkUrl = cleanLink,
+            mode = if (isLive) com.example.data.model.StripeAccountMode.LIVE_MODE else if (isTest) com.example.data.model.StripeAccountMode.TEST_MODE else com.example.data.model.StripeAccountMode.UNCONFIGURED,
+            statusMessage = if (cleanKey.isNotBlank()) "Stripe keys updated successfully." else "Stripe key cleared."
+        )
+    }
+
+    fun getStripeSupabaseWebhookCode(): String {
+        return """
+// =========================================================================
+// SUPABASE EDGE FUNCTION: stripe-webhook/index.ts
+// Handles Stripe checkout.session.completed & upgrades user in Supabase
+// =========================================================================
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import Stripe from "https://esm.sh/stripe@12.0.0?target=deno"
+
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
+  apiVersion: "2022-11-15",
+  httpClient: Stripe.createFetchHttpClient(),
+})
+
+const endpointSecret = Deno.env.get("STRIPE_WEBHOOK_SIGNING_SECRET") ?? ""
+
+serve(async (req) => {
+  const signature = req.headers.get("stripe-signature")
+
+  try {
+    const body = await req.text()
+    let event = stripe.webhooks.constructEvent(body, signature ?? "", endpointSecret)
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session
+      const customerEmail = session.customer_email || session.customer_details?.email
+      const clientReferenceId = session.client_reference_id // EdgeLLM userId
+
+      const supabaseClient = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      )
+
+      // Upgrade user profile to Pro Creator & reset allocations
+      const { data, error } = await supabaseClient
+        .from("user_profiles")
+        .update({
+          plan_id: "pro_creator",
+          used_allocations: 0,
+          current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        })
+        .match(clientReferenceId ? { id: clientReferenceId } : { email: customerEmail })
+
+      console.log("Successfully upgraded user via Stripe webhook:", customerEmail, data, error)
+    }
+
+    return new Response(JSON.stringify({ received: true }), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    })
+  } catch (err) {
+    return new Response(`Webhook Error: ${"$"}{err.message}`, { status: 400 })
+  }
+})
+        """.trimIndent()
+    }
 }
+
