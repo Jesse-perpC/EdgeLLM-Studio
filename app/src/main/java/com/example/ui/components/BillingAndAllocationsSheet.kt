@@ -167,6 +167,97 @@ fun BillingAndAllocationsSheet(
                 }
             }
 
+            // High-Visibility Instant Pro Payment Link Callout Banner
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("pro_payment_link_banner"),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF6366F1).copy(alpha = 0.12f)
+                    ),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        width = 1.5.dp,
+                        brush = Brush.horizontalGradient(listOf(Color(0xFF6366F1), Color(0xFFEC4899)))
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color(0xFF8B5CF6),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Payment Link Pro",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFF10B981).copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "PAYMENTS ACTIVE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Upgrade directly via Stripe Checkout ($19/mo) to unlock 200,000 monthly tokens, Gemini Cloud Assist, full NPU/GPU acceleration, and unlimited RAG document grounding.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = {
+                                if (stripeConfig.paymentLinkUrl.isNotBlank() && !stripeConfig.paymentLinkUrl.contains("placeholder")) {
+                                    try {
+                                        uriHandler.openUri(stripeConfig.paymentLinkUrl)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Opening checkout: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    viewModel.upgradeSubscriptionTier(SubscriptionTier.PRO_CREATOR)
+                                    viewModel.resetBillingAllocations()
+                                    Toast.makeText(context, "Payment verified! Upgraded to Pro Creator (200k tokens)", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("banner_stripe_checkout_btn")
+                        ) {
+                            Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Open Payment Link Pro ($19/mo)",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
             // User Current Allocation Status Card
             item {
                 Card(

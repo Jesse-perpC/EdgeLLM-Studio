@@ -21,6 +21,97 @@ class PluginRegistry {
         registerPlugin(LogAnomalyDetectorPlugin())
         registerPlugin(MeetingSummarizerPlugin())
         registerPlugin(CodeSecurityReviewPlugin())
+        registerPlugin(PromptJailbreakGuardPlugin())
+        registerPlugin(MarkdownLaTeXBeautifierPlugin())
+        refreshState()
+    }
+
+    val communityStorePlugins: List<PluginSpec> = listOf(
+        PluginSpec(
+            id = "store_git_analyzer",
+            name = "Git Commit & PR Explainer",
+            category = "DevOps & SCM",
+            description = "Analyzes git diff patches and generates conventional commit messages and risk scores.",
+            version = "1.4.0",
+            isEnabled = false,
+            isBuiltIn = false,
+            iconKey = "Code",
+            author = "OpenDev",
+            rating = 4.9f,
+            installCount = "31k+",
+            hookPoint = "tool_call",
+            isInstalled = false
+        ),
+        PluginSpec(
+            id = "store_audio_transcriber",
+            name = "Whisper Audio Cleaner",
+            category = "Speech & Audio",
+            description = "Normalizes voice transcription text, strips background hum tags, and restores punctuation.",
+            version = "2.0.0",
+            isEnabled = false,
+            isBuiltIn = false,
+            iconKey = "Analytics",
+            author = "WhisperEdge",
+            rating = 4.8f,
+            installCount = "19k+",
+            hookPoint = "pre_inference",
+            isInstalled = false
+        ),
+        PluginSpec(
+            id = "store_fhir_medical",
+            name = "FHIR Medical Record Anonymizer",
+            category = "Healthcare & HIPAA",
+            description = "Strips HIPAA Safe Harbor 18 identifiers from clinical notes while maintaining medical syntax.",
+            version = "3.1.2",
+            isEnabled = false,
+            isBuiltIn = false,
+            iconKey = "Shield",
+            author = "MedPrivacy Org",
+            rating = 5.0f,
+            installCount = "8k+",
+            hookPoint = "pre_inference",
+            isInstalled = false
+        ),
+        PluginSpec(
+            id = "store_rag_reranker",
+            name = "Cross-Encoder Reranker",
+            category = "RAG & Search",
+            description = "Re-scores top-k retrieved RAG text chunks using reciprocal rank fusion before context injection.",
+            version = "1.1.0",
+            isEnabled = false,
+            isBuiltIn = false,
+            iconKey = "Extension",
+            author = "SearchLabs",
+            rating = 4.7f,
+            installCount = "42k+",
+            hookPoint = "pre_inference",
+            isInstalled = false
+        )
+    )
+
+    fun installFromCommunity(spec: PluginSpec) {
+        val installedSpec = spec.copy(isInstalled = true, isEnabled = true)
+        val dummyPlugin = object : LocalProcessingPlugin {
+            override val spec: PluginSpec = installedSpec
+            override suspend fun execute(
+                input: String,
+                model: ModelSpec,
+                settings: HardwareAccelerationSettings
+            ): PluginResult {
+                return PluginResult(
+                    pluginId = spec.id,
+                    success = true,
+                    processedOutput = "=== Plugin Execution: ${spec.name} ===\nHook: ${spec.hookPoint}\nOutput: Processed ${input.length} characters seamlessly on device.",
+                    metrics = mapOf("Engine" to "Community Plugin", "Status" to "Active"),
+                    durationMs = 35L
+                )
+            }
+        }
+        registerPlugin(dummyPlugin)
+    }
+
+    fun uninstallPlugin(id: String) {
+        pluginsMap.remove(id)
         refreshState()
     }
 

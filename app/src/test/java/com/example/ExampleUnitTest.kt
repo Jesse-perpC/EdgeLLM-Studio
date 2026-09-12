@@ -375,5 +375,45 @@ class ExampleUnitTest {
     val kvCacheMb = kvCacheBytes.toDouble() / (1024 * 1024)
     assertTrue("KV Cache for 4096 context should be ~64MB", kvCacheMb in 60.0..70.0)
   }
+
+  @Test
+  fun testVectorEmbeddingEngineGenerationAndNormalization() {
+    val text = "Edge AI on Android with Jetpack Compose"
+    val embedding = com.example.data.memory.VectorEmbeddingEngine.generateEmbedding(text)
+
+    org.junit.Assert.assertEquals(128, embedding.size)
+
+    // Verify L2 unit norm
+    var sumSq = 0.0f
+    for (v in embedding) {
+      sumSq += v * v
+    }
+    val norm = kotlin.math.sqrt(sumSq)
+    assertTrue("Vector must be unit normalized (~1.0), got $norm", kotlin.math.abs(norm - 1.0f) < 0.01f)
+  }
+
+  @Test
+  fun testVectorEmbeddingCosineSimilarity() {
+    val v1 = com.example.data.memory.VectorEmbeddingEngine.generateEmbedding("I love programming in Kotlin on Android devices")
+    val v2 = com.example.data.memory.VectorEmbeddingEngine.generateEmbedding("Kotlin Android application development preferences")
+    val v3 = com.example.data.memory.VectorEmbeddingEngine.generateEmbedding("Culinary recipes for baking French sourdough bread")
+
+    val simRelated = com.example.data.memory.VectorEmbeddingEngine.computeCosineSimilarity(v1, v2)
+    val simUnrelated = com.example.data.memory.VectorEmbeddingEngine.computeCosineSimilarity(v1, v3)
+
+    assertTrue("Semantically related phrases must have higher similarity than unrelated topics: related=$simRelated, unrelated=$simUnrelated", simRelated > simUnrelated)
+  }
+
+  @Test
+  fun testVectorSerializationRoundTrip() {
+    val original = com.example.data.memory.VectorEmbeddingEngine.generateEmbedding("Deterministic offline vector memory test")
+    val serialized = com.example.data.memory.VectorEmbeddingEngine.vectorToString(original)
+    val deserialized = com.example.data.memory.VectorEmbeddingEngine.stringToVector(serialized)
+
+    org.junit.Assert.assertEquals(original.size, deserialized.size)
+    for (i in original.indices) {
+      assertTrue(kotlin.math.abs(original[i] - deserialized[i]) < 0.001f)
+    }
+  }
 }
 

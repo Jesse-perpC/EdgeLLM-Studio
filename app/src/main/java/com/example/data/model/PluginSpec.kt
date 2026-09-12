@@ -10,7 +10,13 @@ data class PluginSpec(
     val isBuiltIn: Boolean = true,
     val iconKey: String,
     val executionCount: Int = 0,
-    val configParameters: Map<String, String> = emptyMap()
+    val configParameters: Map<String, String> = emptyMap(),
+    val author: String = "EdgeLLM Team",
+    val rating: Float = 4.9f,
+    val installCount: String = "10k+",
+    val hookPoint: String = "pre_inference", // "pre_inference", "post_inference", "tool_call", "custom_filter"
+    val isInstalled: Boolean = true,
+    val permissionsRequired: List<String> = emptyList()
 )
 
 data class PluginResult(

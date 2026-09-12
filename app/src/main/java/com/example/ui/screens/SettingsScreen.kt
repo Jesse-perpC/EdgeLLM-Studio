@@ -50,16 +50,29 @@ import com.example.data.model.PowerProfile
 import com.example.ui.MainViewModel
 import com.example.ui.theme.AccentPalette
 import com.example.ui.theme.AppThemeMode
+import com.example.assistant.SystemAssistantCard
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val settings by viewModel.accelerationSettings.collectAsState()
     val hardware by viewModel.hardwareInfo.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val accentPalette by viewModel.accentPalette.collectAsState()
+    val isDefaultAssistant by viewModel.isDefaultAssistant.collectAsState()
+
+    val assistantRoleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        viewModel.refreshAssistantStatus()
+    }
 
     LazyColumn(
         modifier = modifier
@@ -68,6 +81,35 @@ fun SettingsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // System Assistant Setup Section
+        item {
+            SystemAssistantCard(
+                isDefaultAssistant = isDefaultAssistant,
+                onRequestSetDefault = {
+                    val intent = viewModel.getAssistantRoleRequestIntent()
+                    if (intent != null) {
+                        try {
+                            assistantRoleLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            viewModel.openSystemAssistantSettings(context)
+                        }
+                    } else {
+                        viewModel.openSystemAssistantSettings(context)
+                    }
+                },
+                onOpenSystemSettings = {
+                    viewModel.openSystemAssistantSettings(context)
+                },
+                onTestAssistantOverlay = {
+                    val intent = Intent(context, com.example.assistant.AssistantOverlayActivity::class.java).apply {
+                        putExtra("query", "Summarize device status and check battery level.")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }
+            )
+        }
+
         // Theme & Appearance Section
         item {
             Card(

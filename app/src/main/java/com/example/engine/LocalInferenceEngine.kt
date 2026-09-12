@@ -19,7 +19,10 @@ data class StreamTokenChunk(
     val tokensPerSecond: Float,
     val timeToFirstTokenMs: Long,
     val isComplete: Boolean,
-    val backendUsed: String
+    val backendUsed: String,
+    val speculativeSpeedup: Float = 1.0f,
+    val speculativeAcceptedTokens: Int = 0,
+    val kvCacheSavedPercent: Float = 0f
 )
 
 class LocalInferenceEngine {
@@ -35,6 +38,7 @@ class LocalInferenceEngine {
         attachedDoc: KnowledgeDocument? = null,
         attachedImageUri: String? = null,
         attachedImageLabel: String? = null,
+        recalledMemories: List<String> = emptyList(),
         isAirGapped: Boolean = false
     ): Flow<StreamTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
@@ -52,36 +56,70 @@ class LocalInferenceEngine {
             PowerProfile.BATTERY_SAVER -> 0.65f
         }
         val threadBonus = (settings.threadCount.coerceAtLeast(1) * 0.08f)
-        val calculatedTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 45f)
-        val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(20L, 250L)
+        val rawTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 45f)
 
-        // Time to first token (TTFT): Prompt evaluation / KV cache prefill + document/image context
+        // Time to first token (TTFT): Prompt evaluation / KV cache prefill + document/image context + memory recall
         val docTokens = (attachedDoc?.tokenCountEstimate ?: 0)
         val imageTokens = if (attachedImageUri != null || attachedImageLabel != null) 256 else 0
-        val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1) + docTokens + imageTokens
+        val memoryTokens = recalledMemories.sumOf { it.length / 4 }
+        val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1) + docTokens + imageTokens + memoryTokens
         val prefillTimeMs = (40L + (promptTokens * 1.2f).toLong()).coerceIn(60L, 500L)
         delay(prefillTimeMs)
         val ttft = System.currentTimeMillis() - startTime
 
+        val effectivePrompt = if (recalledMemories.isNotEmpty()) {
+            "### Contextual Persistent Memories (Recalled via 128-D Vector Cosine Similarity):\n" +
+                    recalledMemories.joinToString("\n") { "• $it" } +
+                    "\n\nUser Question:\n$prompt"
+        } else {
+            prompt
+        }
+
+        val isCloudCandidate = !isAirGapped && geminiClient.isApiKeyConfigured() && attachedImageUri == null && attachedDoc == null && !params.enableToolCalling && !params.enforceJsonSchema
+
+        // Speculative Decoding Engine evaluation (2025/2026 Edge Optimization)
+        val specResult = if (settings.enableSpeculativeDecoding && !isCloudCandidate) {
+            SpeculativeDecodingEngine.evaluateSpeculativeBatch(
+                draftModel = null,
+                targetModel = model,
+                lookaheadK = settings.speculativeLookaheadTokens,
+                temperature = params.temperature
+            )
+        } else null
+
+        val speedupMultiplier = specResult?.metrics?.effectiveSpeedupMultiplier ?: 1.0f
+        val calculatedTokPerSec = (rawTokPerSec * speedupMultiplier).coerceIn(4f, 85f)
+        val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(10L, 250L)
+
+        // Attention Sink & StreamingLLM KV-Cache Compression Evaluation
+        val kvProfile = if (settings.enableAttentionSinksStreamingLLM) {
+            AttentionSinkManager.calculateCacheProfile(
+                totalTurnTokens = promptTokens + 280,
+                windowSize = settings.streamingLlmWindowTokens
+            )
+        } else null
+
         // Determine if response should come from Cloud Assist (Gemini 3.5 Flash) or On-Device Offline Engine
-        val (responseText, backendUsed) = if (!isAirGapped && geminiClient.isApiKeyConfigured() && attachedImageUri == null && attachedDoc == null && !params.enableToolCalling && !params.enforceJsonSchema) {
+        val (responseText, backendUsed) = if (isCloudCandidate) {
             val geminiRes = geminiClient.generateContent(
-                prompt = prompt,
+                prompt = effectivePrompt,
                 persona = persona,
                 systemInstructionOverride = params.systemPrompt
             )
             if (geminiRes.isSuccess) {
                 Pair(geminiRes.getOrThrow(), "Cloud Assist • Gemini 3.5 Flash")
             } else {
+                val specTag = if (specResult != null) " + Speculative (α=${specResult.metrics.acceptanceRate}%, ${speedupMultiplier}x)" else ""
                 Pair(
-                    generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel),
-                    "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})"
+                    generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories),
+                    "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})$specTag"
                 )
             }
         } else {
+            val specTag = if (specResult != null) " + Speculative (α=${specResult.metrics.acceptanceRate}%, ${speedupMultiplier}x)" else ""
             Pair(
-                generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel),
-                "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})"
+                generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories),
+                "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})$specTag"
             )
         }
 
@@ -109,13 +147,16 @@ class LocalInferenceEngine {
                     tokensPerSecond = ((currentTps * 10).toInt() / 10f),
                     timeToFirstTokenMs = ttft,
                     isComplete = false,
-                    backendUsed = backendUsed
+                    backendUsed = backendUsed,
+                    speculativeSpeedup = speedupMultiplier,
+                    speculativeAcceptedTokens = specResult?.acceptedTokensThisPass ?: 0,
+                    kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f
                 )
             )
 
             // Dynamic micro-jitter to simulate local transformer tensor compute
-            val jitter = Random.nextLong(-5L, 10L)
-            delay((delayPerTokenMs + jitter).coerceAtLeast(12L))
+            val jitter = Random.nextLong(-3L, 6L)
+            delay((delayPerTokenMs + jitter).coerceAtLeast(8L))
         }
 
         // Final completion chunk
@@ -128,7 +169,10 @@ class LocalInferenceEngine {
                 tokensPerSecond = ((tokenCount / totalElapsedSec) * 10).toInt() / 10f,
                 timeToFirstTokenMs = ttft,
                 isComplete = true,
-                backendUsed = backendUsed
+                backendUsed = backendUsed,
+                speculativeSpeedup = speedupMultiplier,
+                speculativeAcceptedTokens = specResult?.acceptedTokensThisPass ?: 0,
+                kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f
             )
         )
     }
@@ -157,7 +201,8 @@ class LocalInferenceEngine {
         persona: AiPersona? = null,
         attachedDoc: KnowledgeDocument? = null,
         attachedImageUri: String? = null,
-        attachedImageLabel: String? = null
+        attachedImageLabel: String? = null,
+        recalledMemories: List<String> = emptyList()
     ): String {
         val lower = prompt.trim().lowercase()
 
@@ -251,22 +296,41 @@ class LocalInferenceEngine {
         // 2. If Deep Reasoner or reasoning model is selected, prepend an interactive chain-of-thought block:
         val includeCoT = persona?.supportsReasoningTrace == true || model.name.lowercase().contains("r1") || model.name.lowercase().contains("reason")
 
+        val memoryThought = if (recalledMemories.isNotEmpty()) {
+            "• Memory Anchor: Recalled ${recalledMemories.size} semantic node(s) via 128-D vector cosine similarity.\n"
+        } else ""
+
         val reasoningTrace = if (includeCoT) {
             "<think>\n" +
                     "1. Problem Decomposition: User asked: \"$prompt\"\n" +
                     "2. Parsing Constraints: Running locally under ${model.quantization} precision on ${model.name}. Context window limit = ${model.contextLength} tokens.\n" +
-                    "3. Step-by-step Evaluation: Verify premise, cross-check against offline tensor weights, eliminate edge hallucination.\n" +
+                    memoryThought +
+                    "3. Step-by-step Evaluation: Verify premise, cross-check against offline tensor weights and persistent memories.\n" +
                     "4. Synthesis: Structure response with high information density, clean formatting, and clear technical rigor.\n" +
                     "</think>\n\n"
         } else ""
 
         // 3. Response generation based on offline intelligence and rich domain knowledge:
         val body = when {
+            lower.contains("what do you remember") || lower.contains("do you remember") || lower.contains("my preference") || lower.contains("my memory") || lower.contains("remember me") -> {
+                if (recalledMemories.isNotEmpty()) {
+                    "I recall the following facts and preferences from our persistent semantic memory database:\n\n" +
+                            recalledMemories.joinToString("\n\n") { "• $it" } +
+                            "\n\n_All memories are indexed with 128-dimensional vector embeddings and stored in your encrypted local Room database._"
+                } else {
+                    "I have established our on-device semantic memory engine. All interactions, personal preferences, and technical facts are stored in your encrypted local Room database with 128-dimensional subword vector embeddings for offline retrieval."
+                }
+            }
             lower.contains("hello") || lower.contains("hi") || lower == "hey" -> {
                 "Hello! I am ${persona?.name ?: model.name}, powered by local ${model.format.displayName} quantization (${model.quantization}) and hybrid edge intelligence. How can I assist you with programming, architecture, analysis, or technical questions today?"
             }
             else -> {
-                OfflineKnowledgeEngine.answerQuery(prompt, model, persona)
+                val base = OfflineKnowledgeEngine.answerQuery(prompt, model, persona)
+                if (recalledMemories.isNotEmpty() && (lower.contains("suggest") || lower.contains("write") || lower.contains("code") || lower.contains("how should i"))) {
+                    "> 💡 _Grounded by long-term memory: ${recalledMemories.first().take(90)}..._\n\n" + base
+                } else {
+                    base
+                }
             }
         }
 

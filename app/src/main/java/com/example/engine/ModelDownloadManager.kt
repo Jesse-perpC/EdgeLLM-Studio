@@ -73,6 +73,38 @@ class ModelDownloadManager(
             isActive = false
         ),
         ModelSpec(
+            id = "deepseek-r1-distill-1.5b-gguf",
+            name = "DeepSeek-R1 Distill 1.5B",
+            parameterCount = "1.5 Billion",
+            format = ModelFormat.GGUF,
+            quantization = "Q4_K_M",
+            fileSizeBytes = 1120L * 1024L * 1024L,
+            requiredRamBytes = 1680L * 1024L * 1024L,
+            contextLength = 8192,
+            description = "State-of-the-art open reasoning model distilled from DeepSeek-R1. Features autonomous Chain-of-Thought <think> reflection natively on mobile devices.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            sha256Checksum = "7b2e9124ad5f4039aa36081efbc97e1328bb678c187d9050d53c30628e833441",
+            isDownloaded = true,
+            isActive = false
+        ),
+        ModelSpec(
+            id = "llama-3.2-1b-gguf",
+            name = "Llama 3.2 1B Instruct",
+            parameterCount = "1.23 Billion",
+            format = ModelFormat.GGUF,
+            quantization = "Q4_K_M",
+            fileSizeBytes = 820L * 1024L * 1024L,
+            requiredRamBytes = 1190L * 1024L * 1024L,
+            contextLength = 8192,
+            description = "Meta's state-of-the-art ultra-compact instruction tuned LLM. Optimized for on-device assistant tasks, tool calling, and long-context understanding.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+            sha256Checksum = "4c520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb51",
+            isDownloaded = false,
+            isActive = false
+        ),
+        ModelSpec(
             id = "mobilebert-tflite",
             name = "MobileBERT Classification",
             parameterCount = "25 Million",

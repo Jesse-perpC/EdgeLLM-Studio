@@ -54,6 +54,11 @@ import com.example.ui.components.HardwareBenchmarkSheet
 import com.example.ui.components.HardwareDashboardComponent
 import com.example.ui.components.ModelDownloadProgressBanner
 import com.example.ui.components.ModelImportStatusBar
+import com.example.assistant.SystemAssistantCard
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun DashboardScreen(
@@ -63,11 +68,19 @@ fun DashboardScreen(
     onNavigateToApi: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val telemetryState by viewModel.telemetryState.collectAsState()
     val hardware by viewModel.hardwareInfo.collectAsState()
     val models by viewModel.models.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
+    val isDefaultAssistant by viewModel.isDefaultAssistant.collectAsState()
     var showBenchmarkSheet by remember { mutableStateOf(false) }
+
+    val assistantRoleLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        viewModel.refreshAssistantStatus()
+    }
 
     LazyColumn(
         modifier = modifier
@@ -109,6 +122,35 @@ fun DashboardScreen(
                     )
                 }
             }
+        }
+
+        // Android System-Level Voice Assistant Integration Card
+        item {
+            SystemAssistantCard(
+                isDefaultAssistant = isDefaultAssistant,
+                onRequestSetDefault = {
+                    val intent = viewModel.getAssistantRoleRequestIntent()
+                    if (intent != null) {
+                        try {
+                            assistantRoleLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            viewModel.openSystemAssistantSettings(context)
+                        }
+                    } else {
+                        viewModel.openSystemAssistantSettings(context)
+                    }
+                },
+                onOpenSystemSettings = {
+                    viewModel.openSystemAssistantSettings(context)
+                },
+                onTestAssistantOverlay = {
+                    val intent = Intent(context, com.example.assistant.AssistantOverlayActivity::class.java).apply {
+                        putExtra("query", "Summarize device status, check battery level, and tell me how my silicon engine is running.")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }
+            )
         }
 
         // Live Model Import Status Bar

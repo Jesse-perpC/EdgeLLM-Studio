@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Assistant
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
@@ -106,6 +107,7 @@ import com.example.ui.components.ModelImportStatusBar
 import com.example.ui.components.ModelSelectorSheet
 import com.example.ui.components.PersonaSelectorSheet
 import com.example.ui.components.PromptToolsSheet
+import com.example.ui.components.SemanticMemorySheet
 
 @Composable
 fun InferenceScreen(
@@ -123,6 +125,13 @@ fun InferenceScreen(
     val params by viewModel.generationParameters.collectAsState()
     val accelerationSettings by viewModel.accelerationSettings.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
+
+    // Cognitive Semantic Memory & Vector Search (Room DB)
+    val semanticMemories by viewModel.semanticMemories.collectAsState()
+    val conversationSessions by viewModel.conversationSessions.collectAsState()
+    val activeSessionId by viewModel.activeSessionId.collectAsState()
+    val memorySearchResults by viewModel.semanticSearchResults.collectAsState()
+    val isSearchingMemories by viewModel.isSearchingMemories.collectAsState()
 
     // Community-requested features: Personas, Local RAG, Voice TTS
     val activePersona by viewModel.activePersona.collectAsState()
@@ -150,6 +159,7 @@ fun InferenceScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var showVoiceRateDialog by remember { mutableStateOf(false) }
     var showSampleVisualsDialog by remember { mutableStateOf(false) }
+    var showMemorySheet by remember { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -255,6 +265,26 @@ fun InferenceScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Quick Assistant Overlay Trigger
+                        IconButton(
+                            onClick = {
+                                val intent = Intent(context, com.example.assistant.AssistantOverlayActivity::class.java).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier
+                                .size(34.dp)
+                                .testTag("trigger_assistant_overlay_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Assistant,
+                                contentDescription = "Launch Assistant Overlay",
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+
                         // Quick Voice Auto-Readout toggle
                         IconButton(
                             onClick = { viewModel.toggleAutoVoiceReadout() },
@@ -438,6 +468,40 @@ fun InferenceScreen(
                         }
                     }
 
+                    // Cognitive Semantic Memory & Vector Search Chip
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)
+                            ),
+                            modifier = Modifier
+                                .clickable { showMemorySheet = true }
+                                .testTag("semantic_memory_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Psychology,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Memory (${semanticMemories.size}) • 128-D",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
+
                     // Prompt Library Quick Button
                     item {
                         Surface(
@@ -506,6 +570,21 @@ fun InferenceScreen(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        if ((streamingChunk?.speculativeSpeedup ?: 1.0f) > 1.05f) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFF10B981).copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "⚡ ${streamingChunk?.speculativeSpeedup}x Speculative",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "TTFT: ${streamingChunk?.timeToFirstTokenMs ?: 0}ms • Tokens: ${streamingChunk?.tokenCount ?: 0}",
@@ -911,6 +990,30 @@ fun InferenceScreen(
         )
     }
 
+    // Cognitive Semantic Memory & Vector Search Sheet
+    if (showMemorySheet) {
+        SemanticMemorySheet(
+            memories = semanticMemories,
+            sessions = conversationSessions,
+            activeSessionId = activeSessionId,
+            searchResults = memorySearchResults,
+            isSearching = isSearchingMemories,
+            onSearch = { viewModel.searchSemanticMemories(it) },
+            onClearSearch = { viewModel.clearSemanticSearchResults() },
+            onAddMemory = { subject, content, type, importance ->
+                viewModel.addManualSemanticMemory(subject, content, type, importance)
+            },
+            onDeleteMemory = { viewModel.deleteSemanticMemory(it) },
+            onClearAllMemories = { viewModel.clearAllSemanticMemories() },
+            onSwitchSession = { viewModel.switchSession(it) },
+            onCreateNewSession = { viewModel.createNewSession(it) },
+            onDismiss = {
+                showMemorySheet = false
+                viewModel.clearSemanticSearchResults()
+            }
+        )
+    }
+
     // Export Conversation Dialog
     if (showExportDialog) {
         ExportChatDialog(
@@ -1235,6 +1338,39 @@ fun ChatMessageBubble(
                                 color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.5.sp
+                            )
+                        }
+                    }
+                }
+
+                // Recalled Semantic Memories Context Badge
+                if (message.recalledMemories.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f) else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Psychology,
+                                contentDescription = null,
+                                tint = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Recalled Context: ${message.recalledMemories.size} memories",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiaryContainer,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }

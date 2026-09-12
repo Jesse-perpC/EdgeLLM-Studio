@@ -15,7 +15,41 @@ data class ChatMessageEntity(
     val executionBackend: String,
     val modelId: String,
     val imageUri: String? = null,
-    val imageLabel: String? = null
+    val imageLabel: String? = null,
+    val sessionId: String = "default_session",
+    val thoughtTrace: String? = null,
+    val conversationalContext: String? = null,
+    val embeddingVectorJson: String? = null,
+    val importanceScore: Float = 0.5f,
+    val semanticTags: String? = null
+)
+
+@Entity(tableName = "conversation_sessions")
+data class ConversationSessionEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val contextSummary: String = "",
+    val activePersonaId: String = "persona_general",
+    val messageCount: Int = 0,
+    val totalTokens: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastActiveAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "semantic_memories")
+data class SemanticMemoryEntity(
+    @PrimaryKey val id: String,
+    val sessionId: String = "default_session",
+    val sourceMessageId: String? = null,
+    val memoryType: String = "FACT",
+    val subject: String,
+    val content: String,
+    val embeddingVector: String,
+    val embeddingDimension: Int = 128,
+    val importanceScore: Float = 0.5f,
+    val recallCount: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastRecalledAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "background_jobs")

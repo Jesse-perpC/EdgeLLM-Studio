@@ -11,7 +11,14 @@ data class InferenceMessage(
     val executionBackend: String = "",
     val modelId: String = "",
     val imageUri: String? = null,
-    val imageLabel: String? = null
+    val imageLabel: String? = null,
+    val sessionId: String = "default_session",
+    val thoughtChain: String? = null,
+    val conversationalContext: String? = null,
+    val embeddingVector: List<Float> = emptyList(),
+    val importanceScore: Float = 0.5f,
+    val semanticTags: String? = null,
+    val recalledMemories: List<String> = emptyList()
 )
 
 enum class MessageSender {

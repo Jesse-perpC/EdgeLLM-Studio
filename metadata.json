@@ -1,6 +1,6 @@
 {
   "name": "EdgeLLM Studio",
-  "description": "On-device private LLM and ML runtime with Ollama & OpenAI API inference server endpoints, hardware acceleration, background processing, and encrypted export.",
+  "description": "On-device private LLM and ML runtime with full Android System Voice Assistant integration, autonomous chain-of-thought human-like conversational engine, Stripe Pro payments, WordPress-style plugin ecosystem, Model Context Protocol (MCP) servers, hardware acceleration, and encrypted export.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -36,8 +36,12 @@ import com.example.engine.TemporaryShareManager
 import com.example.data.model.AiPersona
 import com.example.data.model.AllocationCheckResult
 import com.example.data.model.BuiltInPersonas
+import com.example.data.model.ConversationSession
 import com.example.data.model.KnowledgeDocument
+import com.example.data.model.MemoryType
 import com.example.data.model.SampleKnowledgeDocuments
+import com.example.data.model.SemanticMemoryRecord
+import com.example.data.model.SemanticSearchResult
 import com.example.data.model.SubscriptionTier
 import com.example.data.model.SupabaseConnectionConfig
 import com.example.data.model.UserSubscriptionProfile
@@ -69,9 +73,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val cryptoManager: CryptoManager
     private val shareManager: TemporaryShareManager
     private val pluginRegistry: PluginRegistry
+    private val mcpClientManager: com.example.plugin.McpClientManager
     private val benchmarkEngine = com.example.engine.HardwareBenchmarkEngine()
     private val voiceSpeechManager: VoiceSpeechManager
     private val billingRepository: BillingRepository
+    private val assistantRoleManager = com.example.assistant.AssistantRoleManager(application)
+    private val assistantCognitiveEngine: com.example.assistant.AssistantCognitiveEngine
+
+    val isDefaultAssistant: StateFlow<Boolean> get() = assistantRoleManager.isDefaultAssistant
+
+    fun refreshAssistantStatus() {
+        assistantRoleManager.checkAssistantStatus()
+    }
+
+    fun getAssistantRoleRequestIntent(): Intent? {
+        return assistantRoleManager.createAssistantRoleRequestIntent()
+    }
+
+    fun openSystemAssistantSettings(context: android.content.Context) {
+        assistantRoleManager.openSystemAssistantSettings(context)
+    }
 
     // Subscription & Allocations Management (Supabase / Local-First & Stripe)
     val userSubscriptionProfile: StateFlow<UserSubscriptionProfile> get() = billingRepository.userProfile
@@ -219,22 +240,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         cryptoManager = CryptoManager()
         shareManager = TemporaryShareManager()
         pluginRegistry = PluginRegistry()
+        mcpClientManager = com.example.plugin.McpClientManager(application)
         voiceSpeechManager = VoiceSpeechManager(application)
         billingRepository = BillingRepository(application)
+        assistantCognitiveEngine = com.example.assistant.AssistantCognitiveEngine(application, inferenceEngine)
 
         refreshHardware()
         recalculateMemoryBreakdown()
         startTelemetryLoop()
+
+        viewModelScope.launch {
+            repository.seedInitialMemoriesIfEmpty()
+        }
     }
 
     val models: StateFlow<List<ModelSpec>> = downloadManager.modelsState
     val plugins: StateFlow<List<PluginSpec>> = pluginRegistry.pluginsState
+    val communityPlugins: List<PluginSpec> get() = pluginRegistry.communityStorePlugins
+    val mcpServers: StateFlow<List<com.example.data.model.McpServerSpec>> = mcpClientManager.servers
+    val lastMcpExecution: StateFlow<com.example.data.model.McpToolCallResult?> = mcpClientManager.lastToolExecution
 
     val chatMessages: StateFlow<List<InferenceMessage>> = repository.chatMessages.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    val semanticMemories: StateFlow<List<SemanticMemoryRecord>> = repository.semanticMemories.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val conversationSessions: StateFlow<List<ConversationSession>> = repository.conversationSessions.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    private val _activeSessionId = MutableStateFlow("default_session")
+    val activeSessionId: StateFlow<String> = _activeSessionId.asStateFlow()
+
+    private val _semanticSearchResults = MutableStateFlow<List<SemanticSearchResult>>(emptyList())
+    val semanticSearchResults: StateFlow<List<SemanticSearchResult>> = _semanticSearchResults.asStateFlow()
+
+    private val _isSearchingMemories = MutableStateFlow(false)
+    val isSearchingMemories: StateFlow<Boolean> = _isSearchingMemories.asStateFlow()
+
+    private val _lastRecalledContext = MutableStateFlow<List<String>>(emptyList())
+    val lastRecalledContext: StateFlow<List<String>> = _lastRecalledContext.asStateFlow()
 
     val backgroundJobs: StateFlow<List<BackgroundJob>> = repository.backgroundJobs.stateIn(
         scope = viewModelScope,
@@ -498,20 +552,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val finalImageUri = imageUri ?: _activeAttachedImageUri.value
         val finalImageLabel = imageLabel ?: _activeAttachedImageLabel.value
-
-        val userMessage = InferenceMessage(
-            id = UUID.randomUUID().toString(),
-            sender = MessageSender.USER,
-            text = userText,
-            timestamp = System.currentTimeMillis(),
-            imageUri = finalImageUri,
-            imageLabel = finalImageLabel
-        )
+        val currentSessionId = _activeSessionId.value
 
         // Clear active attached image once sent
         detachImage()
 
         viewModelScope.launch {
+            val recalledList = repository.getRecalledContextForPrompt(userText)
+            _lastRecalledContext.value = recalledList
+
+            val userMessage = InferenceMessage(
+                id = UUID.randomUUID().toString(),
+                sender = MessageSender.USER,
+                text = userText,
+                timestamp = System.currentTimeMillis(),
+                imageUri = finalImageUri,
+                imageLabel = finalImageLabel,
+                sessionId = currentSessionId,
+                recalledMemories = recalledList
+            )
+
             repository.insertMessage(userMessage)
             _isGenerating.value = true
             _streamingChunk.value = null
@@ -533,6 +593,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         attachedDoc = attachedDoc,
                         attachedImageUri = finalImageUri,
                         attachedImageLabel = finalImageLabel,
+                        recalledMemories = recalledList,
                         isAirGapped = _isAirGappedMode.value
                     ).collect { chunk ->
                         _streamingChunk.value = chunk
@@ -546,9 +607,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 tokensPerSecond = chunk.tokensPerSecond,
                                 timeToFirstTokenMs = chunk.timeToFirstTokenMs,
                                 executionBackend = chunk.backendUsed,
-                                modelId = activeModel.name
+                                modelId = activeModel.name,
+                                sessionId = currentSessionId,
+                                recalledMemories = recalledList
                             )
                             repository.insertMessage(assistantMessage)
+                            repository.createOrUpdateSession(
+                                id = currentSessionId,
+                                title = "Session ${currentSessionId.takeLast(4)}",
+                                contextSummary = userText.take(60),
+                                personaId = persona?.id ?: "general",
+                                tokensDelta = chunk.tokenCount
+                            )
                             billingRepository.recordAllocationUsage(chunk.tokenCount)
                             _streamingChunk.value = null
                             _isGenerating.value = false
@@ -598,6 +668,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateAccelerationSettings(settings: HardwareAccelerationSettings) {
         _accelerationSettings.value = settings
+    }
+
+    fun toggleSpeculativeDecoding(enabled: Boolean? = null) {
+        val current = _accelerationSettings.value
+        val next = enabled ?: !current.enableSpeculativeDecoding
+        _accelerationSettings.value = current.copy(enableSpeculativeDecoding = next)
+    }
+
+    fun toggleAttentionSinksStreamingLLM(enabled: Boolean? = null) {
+        val current = _accelerationSettings.value
+        val next = enabled ?: !current.enableAttentionSinksStreamingLLM
+        _accelerationSettings.value = current.copy(enableAttentionSinksStreamingLLM = next)
+    }
+
+    fun setSpeculativeLookahead(lookaheadK: Int) {
+        val current = _accelerationSettings.value
+        _accelerationSettings.value = current.copy(speculativeLookaheadTokens = lookaheadK.coerceIn(1, 8))
     }
 
     fun updateGenerationParameters(params: GenerationParameters) {
@@ -659,6 +746,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addCustomPlugin(name: String, category: String, description: String, filterKeyword: String) {
         pluginRegistry.addCustomPlugin(name, category, description, filterKeyword)
+    }
+
+    fun installCommunityPlugin(spec: PluginSpec) {
+        pluginRegistry.installFromCommunity(spec)
+    }
+
+    fun uninstallPlugin(pluginId: String) {
+        pluginRegistry.uninstallPlugin(pluginId)
+    }
+
+    // MCP (Model Context Protocol) Server Management
+    fun toggleMcpServer(serverId: String, enabled: Boolean) {
+        mcpClientManager.toggleServer(serverId, enabled)
+    }
+
+    fun addCustomMcpServer(name: String, url: String, transport: com.example.data.model.McpTransportType, authHeader: String? = null) {
+        mcpClientManager.addCustomServer(name, url, transport, authHeader)
+    }
+
+    fun removeMcpServer(serverId: String) {
+        mcpClientManager.removeServer(serverId)
+    }
+
+    fun syncMcpServer(serverId: String) {
+        viewModelScope.launch {
+            mcpClientManager.syncServer(serverId)
+        }
+    }
+
+    fun executeMcpTool(serverId: String, toolName: String, argsJson: String) {
+        viewModelScope.launch {
+            mcpClientManager.executeTool(serverId, toolName, argsJson)
+        }
     }
 
     fun exportEncryptedData(
@@ -1041,6 +1161,80 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onResult(0, "Error: ${e.message ?: "Connection refused. Make sure API Server is started."}", latency)
                 }
             }
+        }
+    }
+
+    // --- Semantic Memory & Vector Search Operations ---
+
+    fun searchSemanticMemories(query: String) {
+        if (query.isBlank()) {
+            _semanticSearchResults.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            _isSearchingMemories.value = true
+            try {
+                val results = repository.searchSemanticMemories(query, topK = 8, threshold = 0.25f)
+                _semanticSearchResults.value = results
+            } catch (_: Exception) {
+                _semanticSearchResults.value = emptyList()
+            } finally {
+                _isSearchingMemories.value = false
+            }
+        }
+    }
+
+    fun clearSemanticSearchResults() {
+        _semanticSearchResults.value = emptyList()
+    }
+
+    fun addManualSemanticMemory(
+        subject: String,
+        content: String,
+        memoryType: MemoryType = MemoryType.USER_PREFERENCE,
+        importance: Float = 0.9f
+    ) {
+        viewModelScope.launch {
+            val record = SemanticMemoryRecord(
+                id = java.util.UUID.randomUUID().toString(),
+                sessionId = _activeSessionId.value,
+                memoryType = memoryType,
+                subject = subject,
+                content = content,
+                embeddingVector = com.example.data.memory.VectorEmbeddingEngine.generateEmbedding("$subject: $content"),
+                importanceScore = importance
+            )
+            repository.insertSemanticMemory(record)
+        }
+    }
+
+    fun deleteSemanticMemory(id: String) {
+        viewModelScope.launch {
+            repository.deleteSemanticMemory(id)
+        }
+    }
+
+    fun clearAllSemanticMemories() {
+        viewModelScope.launch {
+            repository.clearAllSemanticMemories()
+        }
+    }
+
+    fun switchSession(sessionId: String) {
+        _activeSessionId.value = sessionId
+    }
+
+    fun createNewSession(title: String = "New Conversation") {
+        val newId = java.util.UUID.randomUUID().toString().take(8)
+        _activeSessionId.value = newId
+        viewModelScope.launch {
+            repository.createOrUpdateSession(
+                id = newId,
+                title = title,
+                contextSummary = "Fresh session",
+                personaId = _activePersona.value?.id ?: "general",
+                tokensDelta = 0
+            )
         }
     }
 }

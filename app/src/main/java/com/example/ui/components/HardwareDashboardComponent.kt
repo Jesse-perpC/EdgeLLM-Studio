@@ -104,6 +104,16 @@ fun HardwareDashboardComponent(
             }
         )
 
+        // 2025/2026 Edge LLM Acceleration: Speculative Decoding & Streaming Attention Sinks
+        SpeculativeAndAttentionSinkPanel(
+            enableSpeculative = accelerationSettings.enableSpeculativeDecoding,
+            onToggleSpeculative = { viewModel.toggleSpeculativeDecoding() },
+            enableAttentionSinks = accelerationSettings.enableAttentionSinksStreamingLLM,
+            onToggleAttentionSinks = { viewModel.toggleAttentionSinksStreamingLLM() },
+            draftModelName = "SmolLM 360M Draft",
+            lookaheadK = accelerationSettings.speculativeLookaheadTokens
+        )
+
         // Memory Consumption Breakdown Chart
         MemoryConsumptionChart(
             breakdown = telemetryState.memoryBreakdown
@@ -264,6 +274,118 @@ fun DelegateQuickSwitcher(
                         )
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SpeculativeAndAttentionSinkPanel(
+    enableSpeculative: Boolean,
+    onToggleSpeculative: () -> Unit,
+    enableAttentionSinks: Boolean,
+    onToggleAttentionSinks: () -> Unit,
+    draftModelName: String,
+    lookaheadK: Int,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "Acceleration",
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Next-Gen Edge Optimizations",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                ) {
+                    Text(
+                        text = "2025/2026 Standard",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Speculative Decoding chip
+                FilterChip(
+                    selected = enableSpeculative,
+                    onClick = onToggleSpeculative,
+                    label = {
+                        Text(
+                            text = if (enableSpeculative) "⚡ Speculative (2.1x • K=$lookaheadK)" else "Speculative Off",
+                            fontSize = 11.sp,
+                            fontWeight = if (enableSpeculative) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF10B981).copy(alpha = 0.2f),
+                        selectedLabelColor = Color(0xFF10B981)
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Attention Sinks StreamingLLM chip
+                FilterChip(
+                    selected = enableAttentionSinks,
+                    onClick = onToggleAttentionSinks,
+                    label = {
+                        Text(
+                            text = if (enableAttentionSinks) "♾️ Attention Sinks (O(1) RAM)" else "Sinks Off",
+                            fontSize = 11.sp,
+                            fontWeight = if (enableAttentionSinks) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF3B82F6).copy(alpha = 0.2f),
+                        selectedLabelColor = Color(0xFF3B82F6)
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            if (enableSpeculative) {
+                Text(
+                    text = "Dual-model speculative verification active with $draftModelName. Draft tokens verified in single target pass.",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

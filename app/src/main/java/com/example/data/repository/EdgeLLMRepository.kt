@@ -3,20 +3,28 @@ package com.example.data.repository
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.BackgroundJobEntity
 import com.example.data.local.entity.ChatMessageEntity
+import com.example.data.local.entity.ConversationSessionEntity
 import com.example.data.local.entity.EncryptedExportEntity
 import com.example.data.local.entity.LocalModelEntity
+import com.example.data.local.entity.SemanticMemoryEntity
+import com.example.data.memory.VectorEmbeddingEngine
 import com.example.data.model.BackgroundJob
 import com.example.data.model.CloudStorageTarget
+import com.example.data.model.ConversationSession
 import com.example.data.model.EncryptedExportRecord
 import com.example.data.model.InferenceMessage
 import com.example.data.model.JobStatus
 import com.example.data.model.JobType
+import com.example.data.model.MemoryType
 import com.example.data.model.MessageSender
 import com.example.data.model.ModelCategory
 import com.example.data.model.ModelFormat
 import com.example.data.model.ModelSpec
+import com.example.data.model.SemanticMemoryRecord
+import com.example.data.model.SemanticSearchResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.util.UUID
 
 class EdgeLLMRepository(private val database: AppDatabase) {
 
@@ -37,7 +45,47 @@ class EdgeLLMRepository(private val database: AppDatabase) {
                 executionBackend = entity.executionBackend,
                 modelId = entity.modelId,
                 imageUri = entity.imageUri,
-                imageLabel = entity.imageLabel
+                imageLabel = entity.imageLabel,
+                sessionId = entity.sessionId,
+                thoughtChain = entity.thoughtTrace,
+                conversationalContext = entity.conversationalContext,
+                embeddingVector = VectorEmbeddingEngine.stringToVector(entity.embeddingVectorJson),
+                importanceScore = entity.importanceScore,
+                semanticTags = entity.semanticTags
+            )
+        }
+    }
+
+    val semanticMemories: Flow<List<SemanticMemoryRecord>> = database.semanticMemoryDao().getAllMemories().map { entities ->
+        entities.map { entity ->
+            SemanticMemoryRecord(
+                id = entity.id,
+                sessionId = entity.sessionId,
+                sourceMessageId = entity.sourceMessageId,
+                memoryType = try { MemoryType.valueOf(entity.memoryType) } catch (_: Exception) { MemoryType.FACT },
+                subject = entity.subject,
+                content = entity.content,
+                embeddingVector = VectorEmbeddingEngine.stringToVector(entity.embeddingVector),
+                embeddingDimension = entity.embeddingDimension,
+                importanceScore = entity.importanceScore,
+                recallCount = entity.recallCount,
+                createdAt = entity.createdAt,
+                lastRecalledAt = entity.lastRecalledAt
+            )
+        }
+    }
+
+    val conversationSessions: Flow<List<ConversationSession>> = database.conversationSessionDao().getAllSessions().map { entities ->
+        entities.map { entity ->
+            ConversationSession(
+                id = entity.id,
+                title = entity.title,
+                contextSummary = entity.contextSummary,
+                activePersonaId = entity.activePersonaId,
+                messageCount = entity.messageCount,
+                totalTokens = entity.totalTokens,
+                createdAt = entity.createdAt,
+                lastActiveAt = entity.lastActiveAt
             )
         }
     }
@@ -84,6 +132,12 @@ class EdgeLLMRepository(private val database: AppDatabase) {
     }
 
     suspend fun insertMessage(message: InferenceMessage) {
+        val vector = if (message.embeddingVector.isNotEmpty()) {
+            message.embeddingVector
+        } else {
+            VectorEmbeddingEngine.generateEmbedding(message.text)
+        }
+
         database.chatDao().insertMessage(
             ChatMessageEntity(
                 id = message.id,
@@ -96,9 +150,191 @@ class EdgeLLMRepository(private val database: AppDatabase) {
                 executionBackend = message.executionBackend,
                 modelId = message.modelId,
                 imageUri = message.imageUri,
-                imageLabel = message.imageLabel
+                imageLabel = message.imageLabel,
+                sessionId = message.sessionId,
+                thoughtTrace = message.thoughtChain,
+                conversationalContext = message.conversationalContext,
+                embeddingVectorJson = VectorEmbeddingEngine.vectorToString(vector),
+                importanceScore = message.importanceScore,
+                semanticTags = message.semanticTags
             )
         )
+
+        // Automatically extract and persist semantic memory facts and user preferences from user turns
+        if (message.sender == MessageSender.USER && message.text.length >= 8 && !message.text.startsWith("/")) {
+            val extracted = VectorEmbeddingEngine.extractSemanticMemoriesFromTurn(
+                userText = message.text,
+                assistantText = "",
+                sessionId = message.sessionId,
+                sourceMessageId = message.id
+            )
+            for (mem in extracted) {
+                insertSemanticMemory(mem)
+            }
+        }
+    }
+
+    // --- Semantic Memory & Vector Search (Room) ---
+
+    suspend fun searchSemanticMemories(
+        query: String,
+        topK: Int = 5,
+        threshold: Float = 0.35f
+    ): List<SemanticSearchResult> {
+        val queryVector = VectorEmbeddingEngine.generateEmbedding(query)
+        val allEntities = database.semanticMemoryDao().getAllMemoriesSnapshot()
+
+        val results = allEntities.mapNotNull { entity ->
+            val memVector = VectorEmbeddingEngine.stringToVector(entity.embeddingVector)
+            val sim = VectorEmbeddingEngine.computeCosineSimilarity(queryVector, memVector)
+            if (sim >= threshold) {
+                val record = SemanticMemoryRecord(
+                    id = entity.id,
+                    sessionId = entity.sessionId,
+                    sourceMessageId = entity.sourceMessageId,
+                    memoryType = try { MemoryType.valueOf(entity.memoryType) } catch (_: Exception) { MemoryType.FACT },
+                    subject = entity.subject,
+                    content = entity.content,
+                    embeddingVector = memVector,
+                    embeddingDimension = entity.embeddingDimension,
+                    importanceScore = entity.importanceScore,
+                    recallCount = entity.recallCount,
+                    createdAt = entity.createdAt,
+                    lastRecalledAt = entity.lastRecalledAt
+                )
+                SemanticSearchResult(
+                    memory = record,
+                    similarityScore = sim,
+                    matchedExcerpt = entity.content
+                )
+            } else null
+        }.sortedByDescending { it.similarityScore }
+            .take(topK)
+
+        // Update recall statistics for top matched memories in Room
+        val now = System.currentTimeMillis()
+        for (res in results) {
+            database.semanticMemoryDao().updateRecall(
+                id = res.memory.id,
+                lastRecalled = now,
+                newCount = res.memory.recallCount + 1
+            )
+        }
+
+        return results
+    }
+
+    suspend fun getRecalledContextForPrompt(prompt: String): List<String> {
+        val searchResults = searchSemanticMemories(prompt, topK = 3, threshold = 0.45f)
+        return searchResults.map { result ->
+            val matchPercent = (result.similarityScore * 100).toInt()
+            "[${result.memory.memoryType.displayName}] ${result.memory.content} (Semantic Match: $matchPercent%)"
+        }
+    }
+
+    suspend fun insertSemanticMemory(record: SemanticMemoryRecord) {
+        val vectorStr = if (record.embeddingVector.isNotEmpty()) {
+            VectorEmbeddingEngine.vectorToString(record.embeddingVector)
+        } else {
+            VectorEmbeddingEngine.vectorToString(VectorEmbeddingEngine.generateEmbedding(record.content))
+        }
+
+        database.semanticMemoryDao().insertMemory(
+            SemanticMemoryEntity(
+                id = record.id,
+                sessionId = record.sessionId,
+                sourceMessageId = record.sourceMessageId,
+                memoryType = record.memoryType.name,
+                subject = record.subject,
+                content = record.content,
+                embeddingVector = vectorStr,
+                embeddingDimension = record.embeddingDimension,
+                importanceScore = record.importanceScore,
+                recallCount = record.recallCount,
+                createdAt = record.createdAt,
+                lastRecalledAt = record.lastRecalledAt
+            )
+        )
+    }
+
+    suspend fun deleteSemanticMemory(id: String) {
+        database.semanticMemoryDao().deleteMemory(id)
+    }
+
+    suspend fun clearAllSemanticMemories() {
+        database.semanticMemoryDao().clearAllMemories()
+    }
+
+    suspend fun seedInitialMemoriesIfEmpty() {
+        if (database.semanticMemoryDao().getCount() == 0) {
+            val defaults = listOf(
+                SemanticMemoryRecord(
+                    id = "mem_seed_1",
+                    sessionId = "default_session",
+                    memoryType = MemoryType.USER_PREFERENCE,
+                    subject = "Engineering Style",
+                    content = "User prefers clear, production-grade Jetpack Compose and Kotlin code with concise explanations.",
+                    embeddingVector = VectorEmbeddingEngine.generateEmbedding("User prefers clear, production-grade Jetpack Compose and Kotlin code"),
+                    importanceScore = 0.95f
+                ),
+                SemanticMemoryRecord(
+                    id = "mem_seed_2",
+                    sessionId = "default_session",
+                    memoryType = MemoryType.FACT,
+                    subject = "Hardware Architecture",
+                    content = "System operates on an on-device local runtime with GGUF quantizations (Q4_K_M) and Vulkan/NPU acceleration.",
+                    embeddingVector = VectorEmbeddingEngine.generateEmbedding("System operates on an on-device local runtime with GGUF quantizations"),
+                    importanceScore = 0.88f
+                ),
+                SemanticMemoryRecord(
+                    id = "mem_seed_3",
+                    sessionId = "default_session",
+                    memoryType = MemoryType.FACT,
+                    subject = "Privacy Guarantee",
+                    content = "Conversations and memory embeddings are persisted exclusively in local encrypted Room database with zero cloud egress.",
+                    embeddingVector = VectorEmbeddingEngine.generateEmbedding("Conversations and memory embeddings are persisted exclusively in local Room database"),
+                    importanceScore = 0.92f
+                )
+            )
+            for (mem in defaults) {
+                insertSemanticMemory(mem)
+            }
+        }
+    }
+
+    // --- Conversation Sessions ---
+
+    suspend fun createOrUpdateSession(
+        id: String,
+        title: String,
+        contextSummary: String,
+        personaId: String,
+        tokensDelta: Int
+    ) {
+        val existing = database.conversationSessionDao().getSessionById(id)
+        val now = System.currentTimeMillis()
+        if (existing == null) {
+            database.conversationSessionDao().insertSession(
+                ConversationSessionEntity(
+                    id = id,
+                    title = title,
+                    contextSummary = contextSummary,
+                    activePersonaId = personaId,
+                    messageCount = 1,
+                    totalTokens = tokensDelta,
+                    createdAt = now,
+                    lastActiveAt = now
+                )
+            )
+        } else {
+            database.conversationSessionDao().updateSessionStats(
+                id = id,
+                summary = if (contextSummary.isNotBlank()) contextSummary else existing.contextSummary,
+                messageCount = existing.messageCount + 1,
+                tokens = existing.totalTokens + tokensDelta,
+                lastActive = now
+            )
+        }
     }
 
     suspend fun deleteChatMessage(id: String) {

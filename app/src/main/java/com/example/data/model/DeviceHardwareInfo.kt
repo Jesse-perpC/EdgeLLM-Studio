@@ -56,6 +56,11 @@ data class HardwareAccelerationSettings(
     val kvCacheQuantization: KvCacheQuant = KvCacheQuant.Q8_0,
     val useMmap: Boolean = true,
     val useFlashAttention: Boolean = true,
+    val enableSpeculativeDecoding: Boolean = true,
+    val speculativeDraftModelId: String = "smollm-360m-gguf",
+    val speculativeLookaheadTokens: Int = 4,
+    val enableAttentionSinksStreamingLLM: Boolean = true,
+    val streamingLlmWindowTokens: Int = 2048,
     val batteryCutoffPercent: Int = 15,
     val pauseOnThermalThrottling: Boolean = true,
     val allowScreenLockedProcessing: Boolean = true
