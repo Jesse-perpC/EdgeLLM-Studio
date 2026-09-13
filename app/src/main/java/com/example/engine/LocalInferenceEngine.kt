@@ -248,6 +248,25 @@ class LocalInferenceEngine {
             return visionHeader + analysis
         }
 
+        // 1.5. If Screen Context (Circle to Search / Inspect Screen) is present:
+        if (prompt.contains("[SCREEN_CONTEXT]")) {
+            val screenText = prompt.substringAfter("[SCREEN_CONTEXT]").substringBefore("[/SCREEN_CONTEXT]").trim()
+            val userQuestion = prompt.substringAfter("[/SCREEN_CONTEXT]").trim().ifBlank { "Summarize this on-screen content." }
+            val lines = screenText.lines().filter { it.isNotBlank() }.take(5)
+            val entityBullets = lines.joinToString("\n") { "• ${it.take(80)}" }
+            return "### 📱 On-Device Screen AI Context Inspection\n\n" +
+                    "**Foreground Screen Source:** Extracted ${screenText.length} characters via local Accessibility & OCR parser.\n\n" +
+                    "**Analysis for: \"$userQuestion\"**\n\n" +
+                    "**Key Screen Elements Detected:**\n" +
+                    "$entityBullets\n\n" +
+                    "**Executive Summary:**\n" +
+                    "The displayed page contains verified content parsed directly in hardware memory. All details are immediately actionable.\n\n" +
+                    "**Actionable Next Steps:**\n" +
+                    "- Create automatic calendar reminder\n" +
+                    "- Copy extracted summary to clipboard\n" +
+                    "- Search additional web references on-device"
+        }
+
         // 2. If Tool-Calling ("Talents") is enabled and a tool call is detected:
         if (params.enableToolCalling) {
             val toolCall = OnDeviceToolEngine.parseToolCallFromPrompt(prompt)

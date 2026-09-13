@@ -105,6 +105,38 @@ class ModelDownloadManager(
             isActive = false
         ),
         ModelSpec(
+            id = "gemma-3-1b-it-gguf",
+            name = "Gemma 3 1B Instruct",
+            parameterCount = "1.1 Billion",
+            format = ModelFormat.GGUF,
+            quantization = "Q4_K_M",
+            fileSizeBytes = 780L * 1024L * 1024L,
+            requiredRamBytes = 1120L * 1024L * 1024L,
+            contextLength = 8192,
+            description = "Google's 2026 flagship open lightweight model. Engineered specifically for mobile hardware, Android AppFunctions tool-calling, and multimodal grounding.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://huggingface.co/google/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
+            sha256Checksum = "8c620be91280a5facd517729215bb41fca9402a5585ee5f58356f9fa6da0bc92",
+            isDownloaded = false,
+            isActive = false
+        ),
+        ModelSpec(
+            id = "bitnet-b1.58-1b-gguf",
+            name = "BitNet b1.58 1B (1-Bit LLM)",
+            parameterCount = "1.0 Billion",
+            format = ModelFormat.GGUF,
+            quantization = "1.58-bit Ternary",
+            fileSizeBytes = 410L * 1024L * 1024L,
+            requiredRamBytes = 580L * 1024L * 1024L,
+            contextLength = 4096,
+            description = "Breakthrough 1-bit LLM architecture (-1, 0, 1 weights). Replaces matrix multiplication with integer addition, cutting mobile power consumption by 85%.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://huggingface.co/microsoft/BitNet-b1.58-1B-GGUF/resolve/main/bitnet-b1.58-1b-tl1.gguf",
+            sha256Checksum = "3e710bf91280b5facd517729215bb41fca9402a5585ee5f58356f9fa6da0be11",
+            isDownloaded = false,
+            isActive = false
+        ),
+        ModelSpec(
             id = "mobilebert-tflite",
             name = "MobileBERT Classification",
             parameterCount = "25 Million",

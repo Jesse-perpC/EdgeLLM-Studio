@@ -108,6 +108,8 @@ import com.example.ui.components.ModelSelectorSheet
 import com.example.ui.components.PersonaSelectorSheet
 import com.example.ui.components.PromptToolsSheet
 import com.example.ui.components.SemanticMemorySheet
+import com.example.ui.components.ScreenContextInspectorSheet
+import com.example.ui.components.EdgeLiveVoiceSheet
 
 @Composable
 fun InferenceScreen(
@@ -160,6 +162,8 @@ fun InferenceScreen(
     var showVoiceRateDialog by remember { mutableStateOf(false) }
     var showSampleVisualsDialog by remember { mutableStateOf(false) }
     var showMemorySheet by remember { mutableStateOf(false) }
+    var showScreenContextSheet by remember { mutableStateOf(false) }
+    var showLiveVoiceSheet by remember { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -265,6 +269,36 @@ fun InferenceScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Edge Live Duplex Conversational Mode (Gemini Live inspired)
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF38BDF8).copy(alpha = 0.2f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8)),
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .clickable { showLiveVoiceSheet = true }
+                                .testTag("trigger_live_voice_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF38BDF8))
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "LIVE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF38BDF8)
+                                )
+                            }
+                        }
+
                         // Quick Assistant Overlay Trigger
                         IconButton(
                             onClick = {
@@ -497,6 +531,37 @@ fun InferenceScreen(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
+
+                    // Screen Context / AI Page Inspector Chip (2025/2026 Feature)
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF0EA5E9).copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0EA5E9).copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .clickable { showScreenContextSheet = true }
+                                .testTag("screen_context_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Description,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0EA5E9),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "📱 Screen AI Context",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF0EA5E9)
                                 )
                             }
                         }
@@ -1010,6 +1075,31 @@ fun InferenceScreen(
             onDismiss = {
                 showMemorySheet = false
                 viewModel.clearSemanticSearchResults()
+            }
+        )
+    }
+
+    // Screen AI Context Inspector Sheet (2025/2026 Feature)
+    if (showScreenContextSheet) {
+        ScreenContextInspectorSheet(
+            onDismiss = { showScreenContextSheet = false },
+            onInjectScreenContext = { screenText, userQuestion ->
+                val composedPrompt = "[SCREEN_CONTEXT]\n$screenText\n[/SCREEN_CONTEXT]\n$userQuestion"
+                viewModel.sendPrompt(composedPrompt)
+            }
+        )
+    }
+
+    // Edge Live Duplex Voice Sheet (Gemini Live Inspired)
+    if (showLiveVoiceSheet) {
+        EdgeLiveVoiceSheet(
+            activeModelName = activeModel?.name ?: "Edge Neural Kernel",
+            onDismiss = { showLiveVoiceSheet = false },
+            onSendPrompt = { prompt ->
+                viewModel.sendPrompt(prompt)
+            },
+            onStopSpeech = {
+                viewModel.stopGeneration()
             }
         )
     }
