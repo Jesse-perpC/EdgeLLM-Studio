@@ -324,7 +324,12 @@ fun DeviceAndModelsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Button(
-                        onClick = { showBenchmarkSheet = true },
+                        onClick = {
+                            showBenchmarkSheet = true
+                            if (benchmarkState.results.isEmpty() && !benchmarkState.isRunning) {
+                                viewModel.runHardwareBenchmark()
+                            }
+                        },
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         modifier = Modifier.testTag("open_benchmark_dialog_btn")

@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import java.util.Locale
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -126,7 +127,7 @@ fun HardwareHeaderCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "${String.format("%.1f", hardware.availableRamGb)} GB Free / ${String.format("%.1f", hardware.totalRamGb)} GB Total",
+                    text = "${String.format(Locale.US, "%.1f", hardware.availableRamGb)} GB Free / ${String.format(Locale.US, "%.1f", hardware.totalRamGb)} GB Total",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = if (hardware.isLowMemory) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurface

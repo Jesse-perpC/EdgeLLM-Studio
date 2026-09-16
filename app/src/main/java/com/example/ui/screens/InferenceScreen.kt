@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
@@ -110,6 +111,10 @@ import com.example.ui.components.PromptToolsSheet
 import com.example.ui.components.SemanticMemorySheet
 import com.example.ui.components.ScreenContextInspectorSheet
 import com.example.ui.components.EdgeLiveVoiceSheet
+import com.example.ui.components.GrammarSelectorSheet
+import com.example.ui.components.ModelCapabilityInspectorSheet
+import com.example.ui.components.LoraAdapterSelectorSheet
+import com.example.engine.GrammarMode
 
 @Composable
 fun InferenceScreen(
@@ -164,6 +169,10 @@ fun InferenceScreen(
     var showMemorySheet by remember { mutableStateOf(false) }
     var showScreenContextSheet by remember { mutableStateOf(false) }
     var showLiveVoiceSheet by remember { mutableStateOf(false) }
+    var showGrammarSheet by remember { mutableStateOf(false) }
+    var showCapabilityInspectorSheet by remember { mutableStateOf(false) }
+    var showLoraAdapterSheet by remember { mutableStateOf(false) }
+    val activeLoraAdapter by viewModel.activeLoraAdapter.collectAsState()
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -502,6 +511,177 @@ fun InferenceScreen(
                         }
                     }
 
+                    // ⚡ Turbo Boost Max Speed Chip (Eagle-2 Speculative Decoding)
+                    item {
+                        val isTurboActive = params.isTurboBoost
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isTurboActive) Color(0xFF10B981).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isTurboActive) Color(0xFF10B981) else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clickable { viewModel.toggleTurboBoost() }
+                                .testTag("turbo_boost_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = if (isTurboActive) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isTurboActive) "⚡ Turbo (85+ t/s)" else "Turbo Boost",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isTurboActive) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isTurboActive) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // 🔬 Full Model Capabilities & Accuracy Benchmark Chip
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF06B6D4).copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF06B6D4).copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .clickable { showCapabilityInspectorSheet = true }
+                                .testTag("model_capabilities_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color(0xFF06B6D4),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "🔬 Capabilities & Accuracy",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF06B6D4)
+                                )
+                            }
+                        }
+                    }
+
+                    // 🧩 LoRA Micro-Adapter Chip
+                    item {
+                        val isLoraActive = activeLoraAdapter != null
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isLoraActive) Color(0xFF8B5CF6).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isLoraActive) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clickable { showLoraAdapterSheet = true }
+                                .testTag("lora_adapter_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Extension,
+                                    contentDescription = null,
+                                    tint = if (isLoraActive) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isLoraActive) "🧩 ${activeLoraAdapter!!.name.take(16)}" else "🧩 LoRA",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isLoraActive) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isLoraActive) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // 📐 GBNF Grammar Constraint Mode Chip
+                    item {
+                        val isGrammarActive = params.grammarMode != GrammarMode.NONE
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isGrammarActive) Color(0xFFF59E0B).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isGrammarActive) Color(0xFFF59E0B) else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clickable { showGrammarSheet = true }
+                                .testTag("grammar_mode_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = if (isGrammarActive) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isGrammarActive) "📐 ${params.grammarMode.shortName}" else "📐 Grammar",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isGrammarActive) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isGrammarActive) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // 🧠 Deep Think (<think>) Reasoning Mode Chip
+                    item {
+                        val isThinkingActive = params.enableThinkingMode
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isThinkingActive) Color(0xFF8B5CF6).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isThinkingActive) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clickable { viewModel.toggleThinkingMode() }
+                                .testTag("deep_think_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Psychology,
+                                    contentDescription = null,
+                                    tint = if (isThinkingActive) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isThinkingActive) "🧠 Deep Think: ON" else "🧠 Deep Think",
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isThinkingActive) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isThinkingActive) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
                     // Cognitive Semantic Memory & Vector Search Chip
                     item {
                         Surface(
@@ -630,10 +810,10 @@ fun InferenceScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "${streamingChunk?.tokensPerSecond ?: 0f} tok/s",
+                            text = if (streamingChunk?.isTurboBoost == true) "⚡ ${streamingChunk?.tokensPerSecond ?: 0f} tok/s" else "${streamingChunk?.tokensPerSecond ?: 0f} tok/s",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (streamingChunk?.isTurboBoost == true) Color(0xFF10B981) else MaterialTheme.colorScheme.primary
                         )
                         if ((streamingChunk?.speculativeSpeedup ?: 1.0f) > 1.05f) {
                             Spacer(modifier = Modifier.width(4.dp))
@@ -642,10 +822,40 @@ fun InferenceScreen(
                                 color = Color(0xFF10B981).copy(alpha = 0.2f)
                             ) {
                                 Text(
-                                    text = "⚡ ${streamingChunk?.speculativeSpeedup}x Speculative",
+                                    text = "Eagle Spec (${streamingChunk?.speculativeSpeedup}x)",
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF10B981),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        if (streamingChunk?.isPrefixCacheHit == true) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFF06B6D4).copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "⚡ 0ms Prefix",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF06B6D4),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        if (streamingChunk?.grammarModeUsed != null && streamingChunk?.grammarModeUsed != GrammarMode.NONE) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFF59E0B).copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "📐 ${streamingChunk?.grammarModeUsed?.shortName}",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF59E0B),
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                 )
                             }
@@ -1104,6 +1314,36 @@ fun InferenceScreen(
         )
     }
 
+    // GBNF Constrained Grammar Selector Sheet
+    if (showGrammarSheet) {
+        GrammarSelectorSheet(
+            currentMode = params.grammarMode,
+            currentCustomRegex = params.customRegexPattern,
+            onSelectGrammar = { mode, regex ->
+                viewModel.setGrammarMode(mode, regex)
+            },
+            onDismiss = { showGrammarSheet = false }
+        )
+    }
+
+    // Full Model Capabilities & Accuracy Benchmark Sheet
+    if (showCapabilityInspectorSheet && activeModel != null) {
+        ModelCapabilityInspectorSheet(
+            model = activeModel,
+            isTurboBoost = params.isTurboBoost,
+            onDismiss = { showCapabilityInspectorSheet = false }
+        )
+    }
+
+    // Runtime LoRA Adapter Selection Sheet
+    if (showLoraAdapterSheet) {
+        LoraAdapterSelectorSheet(
+            activeAdapter = activeLoraAdapter,
+            onSelectAdapter = { viewModel.selectLoraAdapter(it) },
+            onDismiss = { showLoraAdapterSheet = false }
+        )
+    }
+
     // Export Conversation Dialog
     if (showExportDialog) {
         ExportChatDialog(
@@ -1120,6 +1360,9 @@ fun InferenceScreen(
     if (showParamsDialog) {
         var tempValue by remember { mutableFloatStateOf(params.temperature) }
         var topPValue by remember { mutableFloatStateOf(params.topP) }
+        var minPValue by remember { mutableFloatStateOf(params.minP) }
+        var isTurboEnabled by remember { mutableStateOf(params.isTurboBoost) }
+        var isThinkingEnabled by remember { mutableStateOf(params.enableThinkingMode) }
         var toolCallingEnabled by remember { mutableStateOf(params.enableToolCalling) }
         var jsonSchemaEnforced by remember { mutableStateOf(params.enforceJsonSchema) }
 
@@ -1134,7 +1377,15 @@ fun InferenceScreen(
                         onValueChange = { tempValue = it },
                         valueRange = 0.1f..1.5f
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("Min-P Sampling (2025/2026 Tech): ${"%.2f".format(minPValue)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF0EA5E9))
+                    Text("Prunes low-probability tokens relative to top logit. Preserves model IQ.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Slider(
+                        value = minPValue,
+                        onValueChange = { minPValue = it },
+                        valueRange = 0.01f..0.20f
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text("Top-P Nucleus: ${"%.2f".format(topPValue)}", style = MaterialTheme.typography.bodyMedium)
                     Slider(
                         value = topPValue,
@@ -1142,14 +1393,36 @@ fun InferenceScreen(
                         valueRange = 0.1f..1.0f
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Max Generation Tokens: ${params.maxNewTokens}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
                     HorizontalDivider()
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("⚡ Turbo Max Speed (Eagle-2)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
+                            Text("Tree speculative drafting + big-core pinning (80+ tok/s)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = isTurboEnabled, onCheckedChange = { isTurboEnabled = it })
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("🧠 Deep Thinking Mode (<think>)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = Color(0xFF8B5CF6))
+                            Text("Forces multi-step chain-of-thought scratchpad", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = isThinkingEnabled, onCheckedChange = { isThinkingEnabled = it })
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1163,7 +1436,7 @@ fun InferenceScreen(
                         Switch(checked = toolCallingEnabled, onCheckedChange = { toolCallingEnabled = it })
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1177,9 +1450,9 @@ fun InferenceScreen(
                         Switch(checked = jsonSchemaEnforced, onCheckedChange = { jsonSchemaEnforced = it })
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider()
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text("Text-to-Speech Speed: ${"%.2f".format(speechRate)}x", style = MaterialTheme.typography.bodyMedium)
                     Slider(
@@ -1196,6 +1469,9 @@ fun InferenceScreen(
                             params.copy(
                                 temperature = tempValue,
                                 topP = topPValue,
+                                minP = minPValue,
+                                isTurboBoost = isTurboEnabled,
+                                enableThinkingMode = isThinkingEnabled,
                                 enableToolCalling = toolCallingEnabled,
                                 enforceJsonSchema = jsonSchemaEnforced
                             )
@@ -1537,13 +1813,60 @@ fun ChatMessageBubble(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (!isUser && message.tokensGenerated > 0) {
-                        Text(
-                            text = "${message.tokensGenerated} tok • ${message.tokensPerSecond} t/s • ${message.timeToFirstTokenMs}ms",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${message.tokensGenerated} tok • ${message.tokensPerSecond} t/s",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            if (message.isTurboBoost) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(3.dp),
+                                    color = Color(0xFF10B981).copy(alpha = 0.18f)
+                                ) {
+                                    Text(
+                                        text = "⚡ Turbo",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF10B981),
+                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                            if (message.isPrefixCacheHit) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(3.dp),
+                                    color = Color(0xFF06B6D4).copy(alpha = 0.18f)
+                                ) {
+                                    Text(
+                                        text = "0ms Prefix",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF06B6D4),
+                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                            if (message.grammarModeUsed != GrammarMode.NONE) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(3.dp),
+                                    color = Color(0xFFF59E0B).copy(alpha = 0.18f)
+                                ) {
+                                    Text(
+                                        text = message.grammarModeUsed.shortName,
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFF59E0B),
+                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
                     } else {
                         Spacer(modifier = Modifier.width(1.dp))
                     }

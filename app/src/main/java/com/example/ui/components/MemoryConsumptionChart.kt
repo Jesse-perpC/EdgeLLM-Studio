@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import java.util.Locale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -204,7 +205,7 @@ fun MemoryConsumptionChart(
                 ) {
                     MemoryLegendRow(
                         label = "Model Weights (VRAM)",
-                        value = "${String.format("%.2f", breakdown.modelWeightsGb)} GB",
+                        value = "${String.format(Locale.US, "%.2f", breakdown.modelWeightsGb)} GB",
                         color = modelColor
                     )
                     MemoryLegendRow(
@@ -214,12 +215,12 @@ fun MemoryConsumptionChart(
                     )
                     MemoryLegendRow(
                         label = "System & Runtime Buffer",
-                        value = "${String.format("%.1f", breakdown.systemOsGb)} GB",
+                        value = "${String.format(Locale.US, "%.1f", breakdown.systemOsGb)} GB",
                         color = osColor
                     )
                     MemoryLegendRow(
                         label = "Free RAM Headroom",
-                        value = "+${String.format("%.1f", breakdown.availableHeadroomGb)} GB",
+                        value = "+${String.format(Locale.US, "%.1f", breakdown.availableHeadroomGb)} GB",
                         color = headroomColor
                     )
                 }
@@ -239,7 +240,7 @@ fun MemoryConsumptionChart(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${String.format("%.1f", breakdown.usedRamGb)} / ${String.format("%.1f", breakdown.totalRamGb)} GB",
+                        text = "${String.format(Locale.US, "%.1f", breakdown.usedRamGb)} / ${String.format(Locale.US, "%.1f", breakdown.totalRamGb)} GB",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )

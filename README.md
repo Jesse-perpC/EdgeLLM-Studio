@@ -227,9 +227,44 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - [x] **Multi-format Engine Loader** (GGUF, TFLite, ONNX Runtime)
 - [x] **Dynamic KV-Cache Sizer** (Interactive context window token scaling)
 - [x] **Continuous Integration Pipeline** (Automated GitHub Actions APK builds on every push)
+- [x] **Full Android System Assistant Integration** (VoiceInteractionService, RecognitionService, Floating Overlay)
+- [x] **Multi-OEM Digital Assistant Setup Guide** (Pixel, Samsung Galaxy, Xiaomi, OnePlus)
 - [ ] **Speculative Decoding Accelerator** (Draft model pairing for 2x+ tokens/sec)
 - [ ] **Direct LoRA Adapter Hot-Swapping** (Runtime micro-fine-tune switching)
 - [ ] **INT2/FP8 Experimental Quantization Engine**
+
+---
+
+## 🤖 Android System Digital Assistant Setup Guide
+
+EdgeLLM Studio is a fully compliant Android **System Voice & Digital Assistant**, implementing the Android OS `VoiceInteractionService` (`EdgeVoiceInteractionService`), `VoiceInteractionSessionService`, and `RecognitionService` (`EdgeRecognitionService`).
+
+### Setting EdgeLLM as Your Device Default Assistant:
+
+1. **In-App 1-Tap Launcher**:
+   - In EdgeLLM Studio, open the **Dashboard** or **Settings** screen.
+   - Tap the **System Assistant App** card or **"Set as Assistant"** button.
+   - A step-by-step setup sheet will open with direct shortcuts to your device's assistant settings.
+
+2. **Manual Configuration by Manufacturer**:
+   - **Google Pixel / Motorola / Stock Android**:
+     - Go to `Settings` > `Apps` > `Default apps` > `Digital assistant app` > `Default digital assistant app`.
+     - Tap **EdgeLLM** and select **OK** to confirm.
+   - **Samsung Galaxy (One UI)**:
+     - Go to `Settings` > `Apps` > `Choose default apps` > `Digital assistant app` > `Device assistance app`.
+     - Tap the gear icon or select **EdgeLLM**.
+   - **Xiaomi / Redmi / POCO (HyperOS / MIUI)**:
+     - Go to `Settings` > `Apps` > `Manage apps` > tap three dots (top right) > `Default apps` > `Assist & voice input` > `Assist app`.
+     - Select **EdgeLLM**.
+   - **OnePlus / OPPO / Realme (OxygenOS / ColorOS)**:
+     - Go to `Settings` > `Apps` > `Default apps` > `Digital assistant app` > `Default assistant`.
+     - Choose **EdgeLLM**.
+
+3. **How to Invoke EdgeLLM Anywhere**:
+   - **Gesture Navigation**: Swipe diagonally upward from either bottom corner (left or right).
+   - **3-Button Navigation**: Long-press the round Home button.
+   - **Power Button**: On Android 12+, navigate to `Settings` > `System` > `Gestures` > `Press & hold power button` > select `Digital assistant`.
+   - **Floating Overlay**: Launches instantly over any active application with screen context awareness and voice input!
 
 ---
 

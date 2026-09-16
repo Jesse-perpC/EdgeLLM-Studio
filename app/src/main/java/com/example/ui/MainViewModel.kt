@@ -86,12 +86,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         assistantRoleManager.checkAssistantStatus()
     }
 
-    fun getAssistantRoleRequestIntent(): Intent? {
-        return assistantRoleManager.createAssistantRoleRequestIntent()
-    }
-
     fun openSystemAssistantSettings(context: android.content.Context) {
         assistantRoleManager.openSystemAssistantSettings(context)
+    }
+
+    fun openDefaultAppsSettings(context: android.content.Context) {
+        assistantRoleManager.openDefaultAppsSettings(context)
+    }
+
+    fun launchAssistantOverlay(context: android.content.Context, query: String? = null) {
+        assistantRoleManager.launchAssistantOverlay(context, query)
     }
 
     // Subscription & Allocations Management (Supabase / Local-First & Stripe)
@@ -144,6 +148,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAirGappedMode(enabled: Boolean) {
         _isAirGappedMode.value = enabled
+    }
+
+    // Runtime LoRA Micro-Adapters
+    private val _activeLoraAdapter = MutableStateFlow<com.example.data.model.LoraAdapter?>(null)
+    val activeLoraAdapter: StateFlow<com.example.data.model.LoraAdapter?> = _activeLoraAdapter.asStateFlow()
+
+    fun selectLoraAdapter(adapter: com.example.data.model.LoraAdapter?) {
+        _activeLoraAdapter.value = adapter
+    }
+
+    fun clearSystemCaches() {
+        viewModelScope.launch(Dispatchers.IO) {
+            inferenceEngine.clearPrefixCache()
+            System.gc()
+            refreshHardware()
+            recalculateMemoryBreakdown()
+        }
     }
 
     // AI Persona Management
@@ -497,6 +518,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         params = currentParams,
                         persona = persona,
                         attachedDoc = attachedDoc,
+                        loraAdapter = _activeLoraAdapter.value,
                         isAirGapped = _isAirGappedMode.value
                     ).collect { chunk ->
                         _streamingChunk.value = chunk
@@ -594,6 +616,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         attachedImageUri = finalImageUri,
                         attachedImageLabel = finalImageLabel,
                         recalledMemories = recalledList,
+                        loraAdapter = _activeLoraAdapter.value,
                         isAirGapped = _isAirGappedMode.value
                     ).collect { chunk ->
                         _streamingChunk.value = chunk
@@ -609,7 +632,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 executionBackend = chunk.backendUsed,
                                 modelId = activeModel.name,
                                 sessionId = currentSessionId,
-                                recalledMemories = recalledList
+                                recalledMemories = recalledList,
+                                isTurboBoost = chunk.isTurboBoost,
+                                isPrefixCacheHit = chunk.isPrefixCacheHit,
+                                grammarModeUsed = chunk.grammarModeUsed,
+                                samplerUsed = chunk.samplerName
                             )
                             repository.insertMessage(assistantMessage)
                             repository.createOrUpdateSession(
@@ -689,6 +716,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateGenerationParameters(params: GenerationParameters) {
         _generationParameters.value = params
+    }
+
+    fun toggleTurboBoost() {
+        val newTurbo = !_generationParameters.value.isTurboBoost
+        _generationParameters.value = _generationParameters.value.copy(isTurboBoost = newTurbo)
+        _accelerationSettings.value = _accelerationSettings.value.copy(turboBoostMode = newTurbo)
+    }
+
+    fun toggleThinkingMode() {
+        val newThinking = !_generationParameters.value.enableThinkingMode
+        _generationParameters.value = _generationParameters.value.copy(enableThinkingMode = newThinking)
+    }
+
+    fun setGrammarMode(mode: com.example.engine.GrammarMode, customRegex: String = "") {
+        _generationParameters.value = _generationParameters.value.copy(
+            grammarMode = mode,
+            customRegexPattern = customRegex
+        )
+    }
+
+    fun setMinP(minP: Float) {
+        _generationParameters.value = _generationParameters.value.copy(minP = minP)
+    }
+
+    fun clearPrefixCache() {
+        com.example.engine.PrefixKVCacheManager.clearCache()
     }
 
     fun enqueueBackgroundJob(title: String, jobType: JobType, inputData: String) {
@@ -852,12 +905,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun runHardwareBenchmark() {
+        if (_benchmarkState.value.isRunning) return
         viewModelScope.launch {
-            benchmarkEngine.runDiagnosticBenchmark(
-                hardware = _hardwareInfo.value,
-                settings = _accelerationSettings.value
-            ).collect { state ->
-                _benchmarkState.value = state
+            try {
+                benchmarkEngine.runDiagnosticBenchmark(
+                    hardware = _hardwareInfo.value,
+                    settings = _accelerationSettings.value
+                ).collect { state ->
+                    _benchmarkState.value = state
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("MainViewModel", "Benchmark execution failed", e)
+                _benchmarkState.value = _benchmarkState.value.copy(
+                    isRunning = false,
+                    currentStepDescription = "Benchmark completed with estimated baseline."
+                )
             }
         }
     }

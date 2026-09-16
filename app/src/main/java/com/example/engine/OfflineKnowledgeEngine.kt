@@ -45,11 +45,31 @@ object OfflineKnowledgeEngine {
         }
 
         // 6. MACHINE LEARNING & QUANTIZATION
-        if (lower.contains("quantiz") || lower.contains("gguf") || lower.contains("kv cache") || lower.contains("transformer") || lower.contains("attention") || lower.contains("temperature")) {
+        if (lower.contains("quantiz") || lower.contains("gguf") || lower.contains("kv cache") || lower.contains("transformer") || lower.contains("attention") || lower.contains("temperature") || lower.contains("rope")) {
             return generateMlExplanation(lower, model)
         }
 
-        // 7. GENERAL QUERY SYNTHESIS (Explaining concepts, answering "what is", "how to", "explain")
+        // 7. SYSTEM DESIGN & DISTRIBUTED SYSTEMS
+        if (lower.contains("system design") || lower.contains("microservice") || lower.contains("caching") || lower.contains("redis") || lower.contains("cap theorem") || lower.contains("load balance") || lower.contains("kafka")) {
+            return generateSystemDesignExplanation(lower)
+        }
+
+        // 8. DATABASE INTERNALS & SQL
+        if (lower.contains("database") || lower.contains("sql") || lower.contains("acid") || lower.contains("b-tree") || lower.contains("index") || lower.contains("nosql")) {
+            return generateDatabaseExplanation(lower)
+        }
+
+        // 9. RUST & MEMORY SAFETY
+        if (lower.contains("rust") && (lower.contains("borrow") || lower.contains("ownership") || lower.contains("lifetime") || lower.contains("safety") || lower.contains("concurrency"))) {
+            return generateRustExplanation(lower)
+        }
+
+        // 10. MATHEMATICS, CALCULUS & LOGIC
+        if (lower.contains("calculus") || lower.contains("derivative") || lower.contains("integral") || lower.contains("bayes") || lower.contains("matrix") || lower.contains("linear algebra") || lower.contains("math")) {
+            return generateMathExplanation(lower)
+        }
+
+        // 11. GENERAL QUERY SYNTHESIS (Explaining concepts, answering "what is", "how to", "explain")
         return generateGeneralEducationalResponse(prompt, model, persona)
     }
 
@@ -275,6 +295,101 @@ Running machine learning models locally on mobile devices requires aggressive co
    - **Current Model:** ${model.name} (${model.parameterCount})
    - **Format:** ${model.format.displayName} | **Precision:** ${model.quantization}
    - **Context Window:** ${model.contextLength} tokens
+""".trimIndent()
+    }
+
+    private fun generateSystemDesignExplanation(topic: String): String {
+        return """
+### System Design & Scalable Architecture
+
+Scalable distributed systems rely on decoupled components designed around failure domains:
+
+1. **The CAP Theorem:**
+   - In any asynchronous distributed data store, you can only guarantee at most two of the following three guarantees simultaneously:
+     - **Consistency (C):** Every read receives the most recent write or an error.
+     - **Availability (A):** Every non-failing node returns a valid response (without guarantee that it contains the most recent write).
+     - **Partition Tolerance (P):** The system continues to operate despite arbitrary network partitions/packet loss.
+   - Network partitions are inevitable in real-world infrastructure; thus, systems choose between **CP** (e.g., Spanner, ZooKeeper, etcd) or **AP** (e.g., Cassandra, DynamoDB, CouchDB).
+
+2. **Distributed Caching Strategies:**
+   - **Cache-Aside (Lazy Loading):** Application reads cache; on miss, queries DB and populates cache.
+   - **Write-Through:** Application writes to cache, which synchronously persists to DB.
+   - **Write-Behind (Write-Back):** Application writes to cache; asynchronous worker flushes dirty blocks to DB in batches.
+   - **Eviction Policies:** LRU (Least Recently Used), LFU (Least Frequently Used), and TTL (Time-To-Live expiration).
+
+3. **Message Queues & Event-Driven Decoupling:**
+   - Tools like Kafka (log-partitioned) and RabbitMQ (AMQP broker) buffer asynchronous workloads, preventing cascading timeouts during traffic spikes.
+""".trimIndent()
+    }
+
+    private fun generateDatabaseExplanation(topic: String): String {
+        return """
+### Database Engines, Storage Layouts & ACID
+
+Database performance hinges on the underlying disk storage engine and indexing structure:
+
+1. **ACID Properties:**
+   - **Atomicity:** All operations in a transaction succeed, or the entire transaction rolls back cleanly via Write-Ahead Logging (WAL).
+   - **Consistency:** Transactions transition the database from one valid state to another, strictly satisfying constraints and foreign keys.
+   - **Isolation:** Concurrent transactions execute without cross-interference (Levels: Read Uncommitted < Read Committed < Repeatable Read < Serializable).
+   - **Durability:** Once committed, writes survive power loss, crashes, or reboots via synced disk logs (`fsync`).
+
+2. **Storage Index Structures:**
+   - **B+ Tree (e.g., PostgreSQL, MySQL InnoDB, SQLite):**
+     - Balanced N-ary tree keeping keys sorted for optimal range queries and O(log N) point lookups.
+     - Leaf nodes form a doubly linked list for fast sequential scans.
+   - **LSM Tree (Log-Structured Merge-tree, e.g., RocksDB, Cassandra):**
+     - Writes are appended sequentially to an in-memory MemTable and flushed to immutable SSTables on disk.
+     - Extremely high write throughput at the cost of compaction overhead and read amplification.
+""".trimIndent()
+    }
+
+    private fun generateRustExplanation(topic: String): String {
+        return """
+### Rust Memory Safety & Ownership Semantics
+
+Rust achieves guaranteed memory safety and zero-cost abstractions without a runtime garbage collector through strict compile-time rules:
+
+1. **The Three Ownership Invariants:**
+   - Each value in Rust has an owner variable.
+   - There can only be one owner at a time.
+   - When the owner goes out of scope, the value is automatically dropped (`RAII` - Resource Acquisition Is Initialization).
+
+2. **Borrow Checker & References:**
+   - You can have **either**:
+     - One mutable reference (`&mut T`), OR
+     - Any number of immutable references (`&T`).
+   - References must always be valid (enforced via explicit or elided lifetime parameters `'a`).
+   - Prevents **Data Races**, **Use-After-Free**, and **Dangling Pointers** entirely at compile time!
+
+```rust
+fn process_buffer(data: &mut Vec<u8>) {
+    data.push(0xFF); // Mutating without taking ownership
+}
+```
+""".trimIndent()
+    }
+
+    private fun generateMathExplanation(topic: String): String {
+        return """
+### Mathematical Foundations & Machine Learning Calculus
+
+Machine learning models and gradient descent are grounded in fundamental analytical principles:
+
+1. **Multivariate Calculus & Gradient Vector:**
+   - For a scalar loss function $\mathcal{L}(\mathbf{w})$, the gradient $\nabla \mathcal{L}$ points in the direction of steepest ascent:
+     $$\nabla \mathcal{L} = \left[ \frac{\partial \mathcal{L}}{\partial w_1}, \frac{\partial \mathcal{L}}{\partial w_2}, \dots, \frac{\partial \mathcal{L}}{\partial w_d} \right]^T$$
+   - Gradient descent updates model weights via:
+     $$\mathbf{w}_{t+1} = \mathbf{w}_t - \eta \nabla \mathcal{L}(\mathbf{w}_t)$$
+
+2. **Bayes' Theorem & Conditional Probability:**
+   - Relates prior probability to posterior probability given new evidence:
+     Pr(A | B) = [Pr(B | A) * Pr(A)] / Pr(B)
+
+3. **Transformer Scaled Dot-Product Attention:**
+   - Computes dynamic contextual relevance across token sequences:
+     Attention(Q, K, V) = softmax( (Q * K^T) / sqrt(d_k) ) * V
+   - The scaling factor 1 / sqrt(d_k) prevents vanishing gradients in the softmax function for high-dimensional hidden spaces.
 """.trimIndent()
     }
 

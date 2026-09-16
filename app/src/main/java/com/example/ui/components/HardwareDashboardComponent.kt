@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ComputeBackend
 import com.example.ui.MainViewModel
+import java.util.Locale
 
 @Composable
 fun HardwareDashboardComponent(
@@ -149,7 +150,7 @@ fun TelemetryQuickStatsBar(
             // Speed (tok/s)
             StatItem(
                 label = "THROUGHPUT",
-                value = if (isGenerating) String.format("%.1f", tokensPerSec) else "Standby",
+                value = if (isGenerating) String.format(Locale.US, "%.1f", tokensPerSec) else "Standby",
                 unit = if (isGenerating) "tok/s" else "",
                 color = if (isGenerating) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -165,7 +166,7 @@ fun TelemetryQuickStatsBar(
             // Power
             StatItem(
                 label = "POWER",
-                value = String.format("%.1f", powerWatts),
+                value = String.format(Locale.US, "%.1f", powerWatts),
                 unit = "W",
                 color = Color(0xFFF59E0B)
             )
@@ -173,7 +174,7 @@ fun TelemetryQuickStatsBar(
             // Temp
             StatItem(
                 label = "THERMAL",
-                value = String.format("%.1f", tempCelsius),
+                value = String.format(Locale.US, "%.1f", tempCelsius),
                 unit = "°C",
                 color = if (tempCelsius > 40f) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurface
             )

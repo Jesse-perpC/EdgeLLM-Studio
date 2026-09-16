@@ -55,9 +55,12 @@ import com.example.ui.components.HardwareDashboardComponent
 import com.example.ui.components.ModelDownloadProgressBanner
 import com.example.ui.components.ModelImportStatusBar
 import com.example.assistant.SystemAssistantCard
+import com.example.ui.components.AssistantSetupBottomSheet
 import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 
 @Composable
@@ -69,17 +72,25 @@ fun DashboardScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val telemetryState by viewModel.telemetryState.collectAsState()
     val hardware by viewModel.hardwareInfo.collectAsState()
     val models by viewModel.models.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
     val isDefaultAssistant by viewModel.isDefaultAssistant.collectAsState()
     var showBenchmarkSheet by remember { mutableStateOf(false) }
+    var showAssistantSetupSheet by remember { mutableStateOf(false) }
 
-    val assistantRoleLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        viewModel.refreshAssistantStatus()
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshAssistantStatus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LazyColumn(
@@ -129,26 +140,16 @@ fun DashboardScreen(
             SystemAssistantCard(
                 isDefaultAssistant = isDefaultAssistant,
                 onRequestSetDefault = {
-                    val intent = viewModel.getAssistantRoleRequestIntent()
-                    if (intent != null) {
-                        try {
-                            assistantRoleLauncher.launch(intent)
-                        } catch (e: Exception) {
-                            viewModel.openSystemAssistantSettings(context)
-                        }
-                    } else {
-                        viewModel.openSystemAssistantSettings(context)
-                    }
+                    showAssistantSetupSheet = true
                 },
                 onOpenSystemSettings = {
-                    viewModel.openSystemAssistantSettings(context)
+                    showAssistantSetupSheet = true
                 },
                 onTestAssistantOverlay = {
-                    val intent = Intent(context, com.example.assistant.AssistantOverlayActivity::class.java).apply {
-                        putExtra("query", "Summarize device status, check battery level, and tell me how my silicon engine is running.")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
+                    viewModel.launchAssistantOverlay(
+                        context,
+                        "Summarize device status, check battery level, and tell me how my silicon engine is running."
+                    )
                 }
             )
         }
@@ -359,6 +360,14 @@ fun DashboardScreen(
             onSelectRecommendedTier = { _ ->
                 onNavigateToModels()
             }
+        )
+    }
+
+    if (showAssistantSetupSheet) {
+        AssistantSetupBottomSheet(
+            viewModel = viewModel,
+            isDefaultAssistant = isDefaultAssistant,
+            onDismiss = { showAssistantSetupSheet = false }
         )
     }
 }

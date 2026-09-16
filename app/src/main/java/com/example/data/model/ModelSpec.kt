@@ -1,5 +1,7 @@
 package com.example.data.model
 
+import java.util.Locale
+
 enum class ModelFormat(val displayName: String, val badgeColor: Long) {
     GGUF("GGUF", 0xFF06B6D4),
     TFLITE("TensorFlow Lite", 0xFFF59E0B),
@@ -43,13 +45,23 @@ data class ModelSpec(
     val isActive: Boolean = false,
     val isImported: Boolean = false,
     val localFilePath: String = "",
-    val sourceFolder: String = ""
+    val sourceFolder: String = "",
+    val supportsVision: Boolean = false,
+    val supportsCoT: Boolean = true,
+    val supportsGrammar: Boolean = true,
+    val supportsToolCalling: Boolean = true,
+    val recommendedMinP: Float = 0.05f,
+    val benchmarkMmluScore: Float = 68.4f,
+    val benchmarkGsm8kScore: Float = 74.2f,
+    val benchmarkHumanEvalScore: Float = 62.8f,
+    val accuracyFidelityPercent: Float = 99.2f,
+    val maxTurboTokPerSec: Float = 95.0f
 ) {
     val downloadedBytesFormatted: String
         get() {
             val mb = downloadedBytes / (1024 * 1024)
             return if (mb >= 1024) {
-                String.format("%.2f GB", mb / 1024.0)
+                String.format(Locale.US, "%.2f GB", mb / 1024.0)
             } else {
                 "$mb MB"
             }
@@ -58,7 +70,7 @@ data class ModelSpec(
         get() {
             val mb = fileSizeBytes / (1024 * 1024)
             return if (mb >= 1024) {
-                String.format("%.2f GB", mb / 1024.0)
+                String.format(Locale.US, "%.2f GB", mb / 1024.0)
             } else {
                 "$mb MB"
             }
@@ -68,7 +80,7 @@ data class ModelSpec(
         get() {
             val mb = requiredRamBytes / (1024 * 1024)
             return if (mb >= 1024) {
-                String.format("%.1f GB RAM", mb / 1024.0)
+                String.format(Locale.US, "%.1f GB RAM", mb / 1024.0)
             } else {
                 "$mb MB RAM"
             }

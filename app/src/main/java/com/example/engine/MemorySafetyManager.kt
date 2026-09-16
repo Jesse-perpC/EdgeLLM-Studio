@@ -6,6 +6,7 @@ import android.os.Environment
 import android.os.StatFs
 import com.example.data.model.ModelSpec
 import java.io.File
+import java.util.Locale
 
 data class MemoryConstraintReport(
     val isSafeToRun: Boolean,
@@ -91,7 +92,7 @@ class MemorySafetyManager(private val context: Context) {
     private fun formatBytes(bytes: Long): String {
         val mb = bytes / (1024 * 1024)
         return if (mb >= 1024) {
-            String.format("%.2f GB", mb / 1024.0)
+            String.format(Locale.US, "%.2f GB", mb / 1024.0)
         } else {
             "$mb MB"
         }

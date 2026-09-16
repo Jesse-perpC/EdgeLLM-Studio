@@ -19,12 +19,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -37,6 +44,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,9 +61,16 @@ import com.example.ui.MainViewModel
 import com.example.ui.theme.AccentPalette
 import com.example.ui.theme.AppThemeMode
 import com.example.assistant.SystemAssistantCard
+import com.example.ui.components.SiliconDiagnosticsSheet
+import com.example.ui.components.SystemAboutSheet
+import com.example.ui.components.LoraAdapterSelectorSheet
+import com.example.ui.components.AssistantSetupBottomSheet
+import android.widget.Toast
 import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 
 @Composable
@@ -62,16 +79,29 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val settings by viewModel.accelerationSettings.collectAsState()
     val hardware by viewModel.hardwareInfo.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val accentPalette by viewModel.accentPalette.collectAsState()
     val isDefaultAssistant by viewModel.isDefaultAssistant.collectAsState()
+    val activeLoraAdapter by viewModel.activeLoraAdapter.collectAsState()
 
-    val assistantRoleLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        viewModel.refreshAssistantStatus()
+    var showDiagnosticsSheet by remember { mutableStateOf(false) }
+    var showAboutSheet by remember { mutableStateOf(false) }
+    var showLoraSheet by remember { mutableStateOf(false) }
+    var showAssistantSetupSheet by remember { mutableStateOf(false) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshAssistantStatus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LazyColumn(
@@ -86,26 +116,13 @@ fun SettingsScreen(
             SystemAssistantCard(
                 isDefaultAssistant = isDefaultAssistant,
                 onRequestSetDefault = {
-                    val intent = viewModel.getAssistantRoleRequestIntent()
-                    if (intent != null) {
-                        try {
-                            assistantRoleLauncher.launch(intent)
-                        } catch (e: Exception) {
-                            viewModel.openSystemAssistantSettings(context)
-                        }
-                    } else {
-                        viewModel.openSystemAssistantSettings(context)
-                    }
+                    showAssistantSetupSheet = true
                 },
                 onOpenSystemSettings = {
-                    viewModel.openSystemAssistantSettings(context)
+                    showAssistantSetupSheet = true
                 },
                 onTestAssistantOverlay = {
-                    val intent = Intent(context, com.example.assistant.AssistantOverlayActivity::class.java).apply {
-                        putExtra("query", "Summarize device status and check battery level.")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
+                    viewModel.launchAssistantOverlay(context, "Summarize device status and check battery level.")
                 }
             )
         }
@@ -439,6 +456,105 @@ fun SettingsScreen(
             }
         }
 
+        // Silicon Diagnostics, LoRA & System Architecture Tools
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Silicon Auditing & Engineering Tools",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Hardware benchmark suite, runtime LoRA patching & system diagnostics",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Silicon Diagnostics Button
+                    OutlinedButton(
+                        onClick = { showDiagnosticsSheet = true },
+                        modifier = Modifier.fillMaxWidth().testTag("open_diagnostics_btn"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Silicon Capability & Diagnostics Audit")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // LoRA Micro-Adapters Button
+                    OutlinedButton(
+                        onClick = { showLoraSheet = true },
+                        modifier = Modifier.fillMaxWidth().testTag("open_lora_settings_btn"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Extension,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            if (activeLoraAdapter != null) "Active LoRA: ${activeLoraAdapter!!.name}"
+                            else "Runtime LoRA Weight Adapters"
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Free RAM & Purge Attention Caches Button
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.clearSystemCaches()
+                            Toast.makeText(context, "KV attention caches purged. System memory trimmed.", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("purge_caches_btn"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Purge Attention Caches & Free RAM")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // System Architecture & Attributions Button
+                    OutlinedButton(
+                        onClick = { showAboutSheet = true },
+                        modifier = Modifier.fillMaxWidth().testTag("open_about_btn"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("System Architecture & Attributions")
+                    }
+                }
+            }
+        }
+
         // Privacy & Security Guarantee
         item {
             Card(
@@ -468,5 +584,39 @@ fun SettingsScreen(
         item {
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    // Silicon Diagnostics Sheet
+    if (showDiagnosticsSheet) {
+        SiliconDiagnosticsSheet(
+            hardware = hardware,
+            onDismiss = { showDiagnosticsSheet = false }
+        )
+    }
+
+    // System About & Attributions Sheet
+    if (showAboutSheet) {
+        SystemAboutSheet(
+            onClearCaches = { viewModel.clearSystemCaches() },
+            onDismiss = { showAboutSheet = false }
+        )
+    }
+
+    // Runtime LoRA Micro-Adapter Sheet
+    if (showLoraSheet) {
+        LoraAdapterSelectorSheet(
+            activeAdapter = activeLoraAdapter,
+            onSelectAdapter = { viewModel.selectLoraAdapter(it) },
+            onDismiss = { showLoraSheet = false }
+        )
+    }
+
+    // System Assistant Setup Sheet
+    if (showAssistantSetupSheet) {
+        AssistantSetupBottomSheet(
+            viewModel = viewModel,
+            isDefaultAssistant = isDefaultAssistant,
+            onDismiss = { showAssistantSetupSheet = false }
+        )
     }
 }

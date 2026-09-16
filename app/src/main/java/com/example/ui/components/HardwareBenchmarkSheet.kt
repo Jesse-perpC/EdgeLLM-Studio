@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import java.util.Locale
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -77,7 +79,8 @@ fun HardwareBenchmarkSheet(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             // Header Row
@@ -143,7 +146,7 @@ fun HardwareBenchmarkSheet(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "${hardware.cpuCores} Cores • ${String.format("%.1f", hardware.availableRamGb)} GB Free RAM • ${acceleration.computeBackend.shortName}",
+                            text = "${hardware.cpuCores} Cores • ${String.format(Locale.US, "%.1f", hardware.availableRamGb)} GB Free RAM • ${acceleration.computeBackend.shortName}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -327,7 +330,9 @@ fun HardwareBenchmarkSheet(
                 )
 
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(benchmarkState.results) { item ->
@@ -480,7 +485,7 @@ fun BenchmarkTierCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${item.memoryUsedGb} GB / +${String.format("%.1f", item.memoryHeadroomGb)} GB",
+                        text = "${item.memoryUsedGb} GB / +${String.format(Locale.US, "%.1f", item.memoryHeadroomGb)} GB",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (item.memoryHeadroomGb < 0.5f) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurface

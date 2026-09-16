@@ -69,6 +69,7 @@ fun SystemAssistantCard(
         ),
         modifier = modifier
             .fillMaxWidth()
+            .clickable { onRequestSetDefault() }
             .testTag("system_assistant_card")
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

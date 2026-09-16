@@ -6,6 +6,8 @@ import com.example.data.model.HardwareAccelerationSettings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import java.util.Locale
+import kotlin.math.round
 import kotlin.system.measureTimeMillis
 
 data class GgufTierBenchmark(
@@ -168,13 +170,13 @@ class HardwareBenchmarkEngine {
                 isOom -> {
                     ratingLabel = "OOM Risk"
                     ratingColor = 0xFFEF4444 // Red
-                    rationale = "Insufficient free RAM (${String.format("%.1f", availableRamGb)} GB). Likely to trigger Android LowMemoryKiller."
+                    rationale = "Insufficient free RAM (${String.format(Locale.US, "%.1f", availableRamGb)} GB). Likely to trigger Android LowMemoryKiller."
                     isViable = false
                 }
                 measuredTokPerSec >= 20.0f -> {
                     ratingLabel = "Ultra Fast"
                     ratingColor = 0xFF10B981 // Green
-                    rationale = "Lightning-fast generation (${String.format("%.1f", measuredTokPerSec)} tok/s). Excellent for instant chat & interactive tools."
+                    rationale = "Lightning-fast generation (${String.format(Locale.US, "%.1f", measuredTokPerSec)} tok/s). Excellent for instant chat & interactive tools."
                     isViable = true
                 }
                 measuredTokPerSec >= 12.0f -> {
@@ -192,18 +194,22 @@ class HardwareBenchmarkEngine {
                 else -> {
                     ratingLabel = "Sluggish"
                     ratingColor = 0xFFF97316 // Orange
-                    rationale = "Slow throughput (${String.format("%.1f", measuredTokPerSec)} tok/s). Feasible only for unattended queue tasks."
+                    rationale = "Slow throughput (${String.format(Locale.US, "%.1f", measuredTokPerSec)} tok/s). Feasible only for unattended queue tasks."
                     isViable = true
                 }
             }
 
+            val safeTokPerSec = if (measuredTokPerSec.isNaN() || measuredTokPerSec <= 0f) 1.0f else measuredTokPerSec
+            val roundedTokPerSec = round(safeTokPerSec * 10f) / 10f
+            val roundedHeadroom = round(memoryHeadroom.coerceAtLeast(0f) * 10f) / 10f
+
             results.add(
                 BenchmarkResultItem(
                     tier = tier,
-                    tokensPerSecond = String.format("%.1f", measuredTokPerSec).toFloat(),
+                    tokensPerSecond = roundedTokPerSec,
                     timeToFirstTokenMs = ttftMs,
                     memoryUsedGb = tier.requiredRamGb,
-                    memoryHeadroomGb = memoryHeadroom.coerceAtLeast(0f),
+                    memoryHeadroomGb = roundedHeadroom,
                     isViable = isViable,
                     isRecommended = false, // will mark after all are computed
                     ratingLabel = ratingLabel,
@@ -234,9 +240,9 @@ class HardwareBenchmarkEngine {
 
         val bestTier = finalizedResults[recommendedIndex].tier
         val summary = buildString {
-            append("Based on your ${hardware.socModel} (${hardware.cpuCores} cores, ${String.format("%.1f", hardware.availableRamGb)} GB free RAM), ")
+            append("Based on your ${hardware.socModel} (${hardware.cpuCores} cores, ${String.format(Locale.US, "%.1f", hardware.availableRamGb)} GB free RAM), ")
             append("the optimal sweet spot is **${bestTier.paramSize} models** (${bestTier.tierName}). ")
-            append("It yields ~${finalizedResults[recommendedIndex].tokensPerSecond} tokens/sec with ${String.format("%.1f", finalizedResults[recommendedIndex].memoryHeadroomGb)} GB safe headroom.")
+            append("It yields ~${finalizedResults[recommendedIndex].tokensPerSecond} tokens/sec with ${String.format(Locale.US, "%.1f", finalizedResults[recommendedIndex].memoryHeadroomGb)} GB safe headroom.")
         }
 
         emit(

@@ -63,5 +63,9 @@ data class HardwareAccelerationSettings(
     val streamingLlmWindowTokens: Int = 2048,
     val batteryCutoffPercent: Int = 15,
     val pauseOnThermalThrottling: Boolean = true,
-    val allowScreenLockedProcessing: Boolean = true
+    val allowScreenLockedProcessing: Boolean = true,
+    val turboBoostMode: Boolean = true,
+    val chunkedPrefillBatchSize: Int = 128,
+    val enablePrefixCaching: Boolean = true,
+    val bigCorePinning: Boolean = true
 )

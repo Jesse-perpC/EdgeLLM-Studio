@@ -22,7 +22,11 @@ data class StreamTokenChunk(
     val backendUsed: String,
     val speculativeSpeedup: Float = 1.0f,
     val speculativeAcceptedTokens: Int = 0,
-    val kvCacheSavedPercent: Float = 0f
+    val kvCacheSavedPercent: Float = 0f,
+    val isPrefixCacheHit: Boolean = false,
+    val isTurboBoost: Boolean = true,
+    val samplerName: String = "Min-P (0.05)",
+    val grammarModeUsed: GrammarMode = GrammarMode.NONE
 )
 
 class LocalInferenceEngine {
@@ -39,31 +43,44 @@ class LocalInferenceEngine {
         attachedImageUri: String? = null,
         attachedImageLabel: String? = null,
         recalledMemories: List<String> = emptyList(),
+        loraAdapter: com.example.data.model.LoraAdapter? = null,
         isAirGapped: Boolean = false
     ): Flow<StreamTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
 
-        // Calculate realistic speed based on hardware settings & power profile
+        val isTurbo = params.isTurboBoost || settings.turboBoostMode
+
+        // Calculate realistic speed based on hardware settings & power profile with Turbo Boost
         val baseSpeed = when (settings.computeBackend) {
-            ComputeBackend.NPU_NNAPI -> 32f
-            ComputeBackend.GPU_VULKAN -> 24f
-            ComputeBackend.OPENCL -> 20f
-            ComputeBackend.CPU_NEON -> 14f
+            ComputeBackend.NPU_NNAPI -> if (isTurbo) 48f else 32f
+            ComputeBackend.GPU_VULKAN -> if (isTurbo) 40f else 24f
+            ComputeBackend.OPENCL -> if (isTurbo) 32f else 20f
+            ComputeBackend.CPU_NEON -> if (isTurbo) 24f else 14f
         }
         val powerMultiplier = when (settings.powerProfile) {
-            PowerProfile.HIGH_PERFORMANCE -> 1.35f
-            PowerProfile.BALANCED -> 1.0f
+            PowerProfile.HIGH_PERFORMANCE -> if (isTurbo) 1.55f else 1.35f
+            PowerProfile.BALANCED -> if (isTurbo) 1.25f else 1.0f
             PowerProfile.BATTERY_SAVER -> 0.65f
         }
-        val threadBonus = (settings.threadCount.coerceAtLeast(1) * 0.08f)
-        val rawTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 45f)
+        val threadBonus = (settings.threadCount.coerceAtLeast(1) * (if (isTurbo) 0.14f else 0.08f))
+        val rawTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 65f)
 
-        // Time to first token (TTFT): Prompt evaluation / KV cache prefill + document/image context + memory recall
+        // Time to first token (TTFT) & Prefix KV Cache Look-up
         val docTokens = (attachedDoc?.tokenCountEstimate ?: 0)
         val imageTokens = if (attachedImageUri != null || attachedImageLabel != null) 256 else 0
         val memoryTokens = recalledMemories.sumOf { it.length / 4 }
         val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1) + docTokens + imageTokens + memoryTokens
-        val prefillTimeMs = (40L + (promptTokens * 1.2f).toLong()).coerceIn(60L, 500L)
+
+        val (prefixEntry, isPrefixHit) = if (settings.enablePrefixCaching && params.enablePrefixCaching) {
+            PrefixKVCacheManager.getOrComputePrefix(model.id, params.systemPrompt, persona?.id)
+        } else Pair(null, false)
+
+        val prefillTimeMs = if (isPrefixHit) {
+            // Instantaneous TTFT with cached prefix KV states
+            (6L + (promptTokens * 0.06f).toLong()).coerceIn(6L, 20L)
+        } else {
+            (40L + (promptTokens * 1.2f).toLong()).coerceIn(55L, 500L)
+        }
         delay(prefillTimeMs)
         val ttft = System.currentTimeMillis() - startTime
 
@@ -75,21 +92,22 @@ class LocalInferenceEngine {
             prompt
         }
 
-        val isCloudCandidate = !isAirGapped && geminiClient.isApiKeyConfigured() && attachedImageUri == null && attachedDoc == null && !params.enableToolCalling && !params.enforceJsonSchema
+        val isCloudCandidate = !isAirGapped && geminiClient.isApiKeyConfigured() && attachedImageUri == null && attachedDoc == null && !params.enableToolCalling && !params.enforceJsonSchema && params.grammarMode == GrammarMode.NONE
 
-        // Speculative Decoding Engine evaluation (2025/2026 Edge Optimization)
-        val specResult = if (settings.enableSpeculativeDecoding && !isCloudCandidate) {
+        // Speculative Decoding Engine evaluation (Eagle-2 / Medusa Multi-Candidate Tree Drafting)
+        val specResult = if ((settings.enableSpeculativeDecoding || isTurbo) && !isCloudCandidate) {
             SpeculativeDecodingEngine.evaluateSpeculativeBatch(
                 draftModel = null,
                 targetModel = model,
-                lookaheadK = settings.speculativeLookaheadTokens,
-                temperature = params.temperature
+                lookaheadK = if (isTurbo) (settings.speculativeLookaheadTokens + 2).coerceAtMost(8) else settings.speculativeLookaheadTokens,
+                temperature = params.temperature,
+                isTurboBoost = isTurbo
             )
         } else null
 
         val speedupMultiplier = specResult?.metrics?.effectiveSpeedupMultiplier ?: 1.0f
-        val calculatedTokPerSec = (rawTokPerSec * speedupMultiplier).coerceIn(4f, 85f)
-        val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(10L, 250L)
+        val calculatedTokPerSec = (rawTokPerSec * speedupMultiplier).coerceIn(4f, 120f)
+        val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(6L, 250L)
 
         // Attention Sink & StreamingLLM KV-Cache Compression Evaluation
         val kvProfile = if (settings.enableAttentionSinksStreamingLLM) {
@@ -98,6 +116,11 @@ class LocalInferenceEngine {
                 windowSize = settings.streamingLlmWindowTokens
             )
         } else null
+
+        val turboBadge = if (isTurbo) "⚡ Turbo Max" else ""
+        val prefixBadge = if (isPrefixHit) " • ⚡ 0ms Prefix" else ""
+        val specBadge = if (specResult != null) " + Eagle Spec (${speedupMultiplier}x)" else ""
+        val samplerBadge = " • Min-P (${params.minP})"
 
         // Determine if response should come from Cloud Assist (Gemini 3.5 Flash) or On-Device Offline Engine
         val (responseText, backendUsed) = if (isCloudCandidate) {
@@ -109,17 +132,19 @@ class LocalInferenceEngine {
             if (geminiRes.isSuccess) {
                 Pair(geminiRes.getOrThrow(), "Cloud Assist • Gemini 3.5 Flash")
             } else {
-                val specTag = if (specResult != null) " + Speculative (α=${specResult.metrics.acceptanceRate}%, ${speedupMultiplier}x)" else ""
+                val loraBadge = if (loraAdapter != null) " • LoRA: ${loraAdapter.name} (r=${loraAdapter.rank})" else ""
+                val backendDesc = "${settings.computeBackend.shortName} (${settings.threadCount}T)$turboBadge$prefixBadge$specBadge$samplerBadge$loraBadge"
                 Pair(
-                    generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories),
-                    "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})$specTag"
+                    generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
+                    backendDesc
                 )
             }
         } else {
-            val specTag = if (specResult != null) " + Speculative (α=${specResult.metrics.acceptanceRate}%, ${speedupMultiplier}x)" else ""
+            val loraBadge = if (loraAdapter != null) " • LoRA: ${loraAdapter.name} (r=${loraAdapter.rank})" else ""
+            val backendDesc = "${settings.computeBackend.shortName} (${settings.threadCount}T)$turboBadge$prefixBadge$specBadge$samplerBadge$loraBadge"
             Pair(
-                generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories),
-                "${settings.computeBackend.shortName} (${settings.threadCount}T, ${settings.powerProfile.displayName})$specTag"
+                generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
+                backendDesc
             )
         }
 
@@ -150,13 +175,17 @@ class LocalInferenceEngine {
                     backendUsed = backendUsed,
                     speculativeSpeedup = speedupMultiplier,
                     speculativeAcceptedTokens = specResult?.acceptedTokensThisPass ?: 0,
-                    kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f
+                    kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f,
+                    isPrefixCacheHit = isPrefixHit,
+                    isTurboBoost = isTurbo,
+                    samplerName = "Min-P (${params.minP})",
+                    grammarModeUsed = params.grammarMode
                 )
             )
 
             // Dynamic micro-jitter to simulate local transformer tensor compute
-            val jitter = Random.nextLong(-3L, 6L)
-            delay((delayPerTokenMs + jitter).coerceAtLeast(8L))
+            val jitter = if (isTurbo) Random.nextLong(-1L, 3L) else Random.nextLong(-3L, 6L)
+            delay((delayPerTokenMs + jitter).coerceAtLeast(4L))
         }
 
         // Final completion chunk
@@ -172,7 +201,11 @@ class LocalInferenceEngine {
                 backendUsed = backendUsed,
                 speculativeSpeedup = speedupMultiplier,
                 speculativeAcceptedTokens = specResult?.acceptedTokensThisPass ?: 0,
-                kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f
+                kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f,
+                isPrefixCacheHit = isPrefixHit,
+                isTurboBoost = isTurbo,
+                samplerName = "Min-P (${params.minP})",
+                grammarModeUsed = params.grammarMode
             )
         )
     }
@@ -202,7 +235,8 @@ class LocalInferenceEngine {
         attachedDoc: KnowledgeDocument? = null,
         attachedImageUri: String? = null,
         attachedImageLabel: String? = null,
-        recalledMemories: List<String> = emptyList()
+        recalledMemories: List<String> = emptyList(),
+        loraAdapter: com.example.data.model.LoraAdapter? = null
     ): String {
         val lower = prompt.trim().lowercase()
 
@@ -312,8 +346,8 @@ class LocalInferenceEngine {
                     "All facts above were retrieved entirely offline from your local document buffer. No content was sent outside this device."
         }
 
-        // 2. If Deep Reasoner or reasoning model is selected, prepend an interactive chain-of-thought block:
-        val includeCoT = persona?.supportsReasoningTrace == true || model.name.lowercase().contains("r1") || model.name.lowercase().contains("reason")
+        // 2. If Deep Reasoner or reasoning model or thinking mode is selected, prepend an interactive chain-of-thought block:
+        val includeCoT = params.enableThinkingMode || persona?.supportsReasoningTrace == true || model.name.lowercase().contains("r1") || model.name.lowercase().contains("reason") || params.grammarMode == GrammarMode.STEP_BY_STEP_REASONING
 
         val memoryThought = if (recalledMemories.isNotEmpty()) {
             "• Memory Anchor: Recalled ${recalledMemories.size} semantic node(s) via 128-D vector cosine similarity.\n"
@@ -330,7 +364,7 @@ class LocalInferenceEngine {
         } else ""
 
         // 3. Response generation based on offline intelligence and rich domain knowledge:
-        val body = when {
+        val rawBody = when {
             lower.contains("what do you remember") || lower.contains("do you remember") || lower.contains("my preference") || lower.contains("my memory") || lower.contains("remember me") -> {
                 if (recalledMemories.isNotEmpty()) {
                     "I recall the following facts and preferences from our persistent semantic memory database:\n\n" +
@@ -353,6 +387,32 @@ class LocalInferenceEngine {
             }
         }
 
-        return reasoningTrace + body
+        // Apply Grammar Mode Constraints (GBNF Automaton simulation)
+        val body = when (params.grammarMode) {
+            GrammarMode.JSON_STRICT -> {
+                val safePrompt = prompt.replace("\"", "\\\"").take(60)
+                "{\n  \"status\": \"success\",\n  \"model\": \"${model.name}\",\n  \"query\": \"$safePrompt\",\n  \"verified\": true,\n  \"offline_execution\": true,\n  \"grammar_mode\": \"JSON_STRICT\",\n  \"data\": {\n    \"content\": \"${rawBody.lines().firstOrNull()?.replace("\"", "\\\"") ?: "Processed"}\"\n  }\n}"
+            }
+            GrammarMode.PYTHON_CODE -> {
+                if (rawBody.contains("```python")) rawBody else "```python\n# Constrained Python 3 Output\ndef solution():\n    \"\"\"Generated on-device without cloud API\"\"\"\n    return True\n```"
+            }
+            GrammarMode.SQL_QUERY -> {
+                "SELECT id, model_name, inference_speed, accuracy_score\nFROM on_device_models\nWHERE is_active = 1\nORDER BY inference_speed DESC;"
+            }
+            GrammarMode.REGEX_PATTERN -> {
+                if (params.customRegexPattern.isNotBlank()) "2026-09-15" else rawBody
+            }
+            else -> rawBody
+        }
+
+        val loraNote = if (loraAdapter != null) {
+            "\n\n> 🧩 _LoRA Active: **${loraAdapter.name}** (r=${loraAdapter.rank}, α=${loraAdapter.alpha} • ${loraAdapter.accuracyBoost})_"
+        } else ""
+
+        return reasoningTrace + body + loraNote
+    }
+
+    fun clearPrefixCache() {
+        PrefixKVCacheManager.clearCache()
     }
 }
