@@ -319,4 +319,23 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertTrue("Response should mention heap memory", response.contains("Heap", ignoreCase = true))
     org.junit.Assert.assertTrue("Response should include Java code snippet", response.contains("public class") || response.contains("new "))
   }
+
+  @Test
+  fun `speech to text manager initializes and reports state properly`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val sttManager = com.example.engine.SpeechToTextManager(context)
+
+    assertEquals(com.example.engine.SpeechToTextManager.SpeechState.Idle, sttManager.speechState.value)
+    org.junit.Assert.assertFalse(sttManager.isListening.value)
+    assertEquals("", sttManager.partialText.value)
+
+    sttManager.cancel()
+    sttManager.destroy()
+  }
+
+  @Test
+  fun `edge recognition service instance creation succeeds`() {
+    val service = com.example.assistant.EdgeRecognitionService()
+    org.junit.Assert.assertNotNull(service)
+  }
 }

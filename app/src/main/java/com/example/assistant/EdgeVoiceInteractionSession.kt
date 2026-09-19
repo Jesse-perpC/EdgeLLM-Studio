@@ -2,19 +2,23 @@ package com.example.assistant
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
-import android.provider.AlarmClock
-import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.service.voice.VoiceInteractionSession
+import android.util.Log
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
-import com.example.data.local.AppDatabase
+import androidx.core.content.ContextCompat
 import com.example.data.model.HardwareAccelerationSettings
 import com.example.data.model.ModelCategory
 import com.example.data.model.ModelFormat
@@ -27,25 +31,47 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
+/**
+ * System-Wide Voice Interaction Session with Android Speech-to-Text Integration
+ * and Gemini / On-Device Cognitive Engine conversational processing.
+ */
 class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(context) {
+
+    companion object {
+        private const val TAG = "EdgeVoiceSession"
+    }
 
     private val sessionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val inferenceEngine = LocalInferenceEngine()
     private val cognitiveEngine = AssistantCognitiveEngine(context, inferenceEngine)
     private val voiceSpeechManager = VoiceSpeechManager(context.applicationContext as android.app.Application)
 
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var isListening = false
+    private var lastScreenContext: String? = null
+
+    // UI Elements
     private var rootView: View? = null
     private var statusTextView: TextView? = null
+    private var liveTranscribeTextView: TextView? = null
     private var thoughtTextView: TextView? = null
     private var responseTextView: TextView? = null
+    private var micButton: ImageButton? = null
+    private var inputQueryEditText: EditText? = null
+    private var micWaveIndicator: View? = null
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "EdgeVoiceInteractionSession created")
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        stopSpeechRecognition()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         sessionScope.cancel()
         voiceSpeechManager.shutdown()
     }
@@ -60,10 +86,10 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
 
         val cardLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 48)
+            setPadding(40, 36, 40, 36)
             val bgDrawable = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xF018181B.toInt()) // Dark sleek glass container
-                cornerRadius = 36f
+                setColor(0xF0131722.toInt()) // Deep slate modern glass container
+                cornerRadius = 32f
                 setStroke(2, 0xFF38BDF8.toInt())
             }
             background = bgDrawable
@@ -72,38 +98,93 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                setMargins(24, 24, 24, 60)
+                setMargins(20, 20, 20, 48)
             }
             layoutParams = lp
         }
 
-        // Header Title
+        // Top Header Row
+        val headerRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
         val titleView = TextView(context).apply {
-            text = "✨ EdgeLLM Assistant • Device Active"
-            textSize = 16f
+            text = "✨ EdgeLLM Voice Assistant"
+            textSize = 15f
             setTextColor(0xFF38BDF8.toInt())
             setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        cardLayout.addView(titleView)
+        headerRow.addView(titleView)
+
+        val dismissBtn = TextView(context).apply {
+            text = "✕"
+            textSize = 18f
+            setTextColor(0xFF94A3B8.toInt())
+            setPadding(16, 8, 8, 8)
+            setOnClickListener {
+                stopSpeechRecognition()
+                voiceSpeechManager.stop()
+                hide()
+            }
+        }
+        headerRow.addView(dismissBtn)
+        cardLayout.addView(headerRow)
 
         // Telemetry status
         statusTextView = TextView(context).apply {
-            text = "Ingesting screen context and listening..."
-            textSize = 12f
+            text = "Ready to listen • Connected to Gemini & Edge Silicon"
+            textSize = 11.5f
             setTextColor(0xFF94A3B8.toInt())
-            setPadding(0, 8, 0, 12)
+            setPadding(0, 4, 0, 8)
         }
         cardLayout.addView(statusTextView)
+
+        // Live Voice Transcription Box
+        liveTranscribeTextView = TextView(context).apply {
+            text = "Tap microphone to speak or use text input below..."
+            textSize = 13.5f
+            setTextColor(0xFFE2E8F0.toInt())
+            setPadding(20, 14, 20, 14)
+            val liveBg = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x2538BDF8.toInt())
+                cornerRadius = 16f
+                setStroke(1, 0x4038BDF8.toInt())
+            }
+            background = liveBg
+        }
+        cardLayout.addView(liveTranscribeTextView)
+
+        // Mic volume wave indicator bar
+        micWaveIndicator = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                6
+            ).apply {
+                setMargins(16, 8, 16, 8)
+            }
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF38BDF8.toInt())
+                cornerRadius = 3f
+            }
+            visibility = View.GONE
+        }
+        cardLayout.addView(micWaveIndicator)
 
         // Autonomous Thought Box
         thoughtTextView = TextView(context).apply {
             text = "Thinking..."
-            textSize = 12f
+            textSize = 11.5f
             setTextColor(0xFFA78BFA.toInt())
-            setPadding(24, 16, 24, 16)
+            setPadding(20, 12, 20, 12)
             val thoughtBg = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x30A78BFA.toInt())
-                cornerRadius = 18f
+                setColor(0x25A78BFA.toInt())
+                cornerRadius = 14f
             }
             background = thoughtBg
             visibility = View.GONE
@@ -113,29 +194,106 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
         // Assistant Output Text
         responseTextView = TextView(context).apply {
             text = ""
-            textSize = 15f
+            textSize = 14f
             setTextColor(0xFFF8FAFC.toInt())
-            setPadding(0, 16, 0, 16)
+            setPadding(0, 12, 0, 12)
+            visibility = View.GONE
         }
         cardLayout.addView(responseTextView)
 
-        // Close button
-        val dismissBtn = TextView(context).apply {
-            text = "✕ Dismiss"
-            textSize = 13f
-            setTextColor(0xFF64748B.toInt())
-            gravity = Gravity.END
-            setPadding(16, 16, 16, 16)
-            setOnClickListener { hide() }
+        // Input Controls Bar (Mic Button + Text Input + Send Button)
+        val inputControlsLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
-        cardLayout.addView(dismissBtn)
 
+        // Microphone Button
+        micButton = ImageButton(context).apply {
+            setImageResource(android.R.drawable.ic_btn_speak_now)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val micBg = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0xFF0284C7.toInt())
+            }
+            background = micBg
+            val p = LinearLayout.LayoutParams(88, 88).apply {
+                setMargins(0, 0, 12, 0)
+            }
+            layoutParams = p
+            setOnClickListener {
+                if (isListening) {
+                    stopSpeechRecognition()
+                } else {
+                    startSpeechRecognition()
+                }
+            }
+        }
+        inputControlsLayout.addView(micButton)
+
+        // Text input field
+        inputQueryEditText = EditText(context).apply {
+            hint = "Or type query..."
+            textSize = 13f
+            setTextColor(0xFFF1F5F9.toInt())
+            setHintTextColor(0xFF64748B.toInt())
+            val editBg = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x20FFFFFF.toInt())
+                cornerRadius = 24f
+                setStroke(1, 0x40FFFFFF.toInt())
+            }
+            background = editBg
+            setPadding(24, 14, 24, 14)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            maxLines = 2
+        }
+        inputControlsLayout.addView(inputQueryEditText)
+
+        // Send Button
+        val sendBtn = TextView(context).apply {
+            text = "Send"
+            textSize = 13f
+            setTextColor(0xFFFFFFFF.toInt())
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            val sendBg = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF38BDF8.toInt())
+                cornerRadius = 24f
+            }
+            background = sendBg
+            setPadding(28, 14, 28, 14)
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(12, 0, 0, 0)
+            }
+            layoutParams = lp
+            setOnClickListener {
+                val entered = inputQueryEditText?.text?.toString()?.trim() ?: ""
+                if (entered.isNotBlank()) {
+                    inputQueryEditText?.setText("")
+                    stopSpeechRecognition()
+                    processAssistantQuery(entered, lastScreenContext)
+                }
+            }
+        }
+        inputControlsLayout.addView(sendBtn)
+
+        cardLayout.addView(inputControlsLayout)
         container.addView(cardLayout)
         rootView = container
         return container
     }
 
-    override fun onHandleAssist(data: Bundle?, structure: android.app.assist.AssistStructure?, content: android.app.assist.AssistContent?) {
+    override fun onHandleAssist(
+        data: Bundle?,
+        structure: android.app.assist.AssistStructure?,
+        content: android.app.assist.AssistContent?
+    ) {
         super.onHandleAssist(data, structure, content)
 
         val extractedScreenText = StringBuilder()
@@ -147,11 +305,15 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
         }
 
         val screenContext = extractedScreenText.toString().take(1500).ifBlank { null }
-        statusTextView?.text = if (screenContext != null) "Foreground context parsed • Ready" else "Ready to assist"
+        lastScreenContext = screenContext
+        statusTextView?.text = if (screenContext != null) {
+            "Foreground screen parsed • Listening for query..."
+        } else {
+            "Listening for voice query..."
+        }
 
-        // Default query if triggered via system home gesture
-        val prompt = "What can I do for you right now on your device?"
-        processAssistantQuery(prompt, screenContext)
+        // Start listening via Speech-to-Text automatically on trigger
+        startSpeechRecognition()
     }
 
     private fun traverseViewNode(node: android.app.assist.AssistStructure.ViewNode?, out: StringBuilder) {
@@ -166,10 +328,141 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
         }
     }
 
+    private fun startSpeechRecognition() {
+        // Verify audio recording permission
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasPermission) {
+            statusTextView?.text = "⚠️ Microphone permission required for voice recognition."
+            liveTranscribeTextView?.text = "Grant RECORD_AUDIO permission to speak."
+            return
+        }
+
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            statusTextView?.text = "SpeechRecognizer unavailable on device. You can type below."
+            return
+        }
+
+        stopSpeechRecognition()
+
+        try {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context.applicationContext).apply {
+                setRecognitionListener(createSpeechListener())
+            }
+
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            }
+
+            speechRecognizer?.startListening(intent)
+            isListening = true
+            updateMicUiState(true)
+            statusTextView?.text = "🎙️ Listening... Speak your prompt"
+            liveTranscribeTextView?.text = "Listening..."
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting voice recognition", e)
+            isListening = false
+            updateMicUiState(false)
+            statusTextView?.text = "Voice recognizer error: ${e.message}"
+        }
+    }
+
+    private fun stopSpeechRecognition() {
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping SpeechRecognizer", e)
+        } finally {
+            isListening = false
+            updateMicUiState(false)
+        }
+    }
+
+    private fun updateMicUiState(active: Boolean) {
+        micButton?.let { btn ->
+            val bg = btn.background as? android.graphics.drawable.GradientDrawable
+            bg?.setColor(if (active) 0xFFEF4444.toInt() else 0xFF0284C7.toInt())
+        }
+        micWaveIndicator?.visibility = if (active) View.VISIBLE else View.GONE
+    }
+
+    private fun createSpeechListener() = object : RecognitionListener {
+        override fun onReadyForSpeech(params: Bundle?) {
+            isListening = true
+            updateMicUiState(true)
+            statusTextView?.text = "🎙️ Ready • Listening..."
+        }
+
+        override fun onBeginningOfSpeech() {
+            statusTextView?.text = "🎙️ Detecting speech..."
+        }
+
+        override fun onRmsChanged(rmsdB: Float) {
+            // Visualize audio level amplitude
+            val normalized = (rmsdB.coerceIn(-2f, 10f) + 2f) / 12f
+            val newHeight = (6 + (normalized * 18)).toInt()
+            micWaveIndicator?.layoutParams?.height = newHeight
+            micWaveIndicator?.requestLayout()
+        }
+
+        override fun onBufferReceived(buffer: ByteArray?) {}
+
+        override fun onEndOfSpeech() {
+            isListening = false
+            updateMicUiState(false)
+            statusTextView?.text = "Processing speech transcription..."
+        }
+
+        override fun onError(error: Int) {
+            isListening = false
+            updateMicUiState(false)
+            val errorMsg = when (error) {
+                SpeechRecognizer.ERROR_NO_MATCH -> "No speech matched. Tap mic to retry."
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout. Tap mic to retry."
+                SpeechRecognizer.ERROR_AUDIO -> "Audio recording error."
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required."
+                else -> "Voice input error ($error)."
+            }
+            statusTextView?.text = errorMsg
+        }
+
+        override fun onResults(results: Bundle?) {
+            isListening = false
+            updateMicUiState(false)
+            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            val recognizedText = matches?.firstOrNull()?.trim() ?: ""
+
+            if (recognizedText.isNotBlank()) {
+                liveTranscribeTextView?.text = "\"$recognizedText\""
+                processAssistantQuery(recognizedText, lastScreenContext)
+            } else {
+                statusTextView?.text = "No words recognized. Tap mic to speak again."
+            }
+        }
+
+        override fun onPartialResults(partialResults: Bundle?) {
+            val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            val partial = matches?.firstOrNull()?.trim() ?: ""
+            if (partial.isNotBlank()) {
+                liveTranscribeTextView?.text = "\"$partial...\""
+            }
+        }
+
+        override fun onEvent(eventType: Int, params: Bundle?) {}
+    }
+
     private fun processAssistantQuery(query: String, screenContext: String?) {
         sessionScope.launch {
             thoughtTextView?.visibility = View.VISIBLE
-            thoughtTextView?.text = "🧠 Autonomous reasoning: Ingesting device state and contextual parameters..."
+            thoughtTextView?.text = "🧠 Autonomous reasoning: Ingesting query \"$query\" into cognitive pipeline..."
+            responseTextView?.visibility = View.GONE
+            statusTextView?.text = "⚡ Evaluating through Gemini & Edge Silicon..."
 
             val fallbackModel = ModelSpec(
                 id = "tinyllama-1.1b-gguf",
@@ -204,8 +497,9 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
                 thoughtTextView?.visibility = View.GONE
             }
 
+            responseTextView?.visibility = View.VISIBLE
             responseTextView?.text = result.speechResponse
-            statusTextView?.text = "⚡ Executed via ${result.executedToolSummary ?: "Zero-Cloud Edge"}"
+            statusTextView?.text = "⚡ Executed via ${result.executedToolSummary ?: "Gemini & Edge Neural Kernel"}"
 
             voiceSpeechManager.speak(result.speechResponse, "assistant_${System.currentTimeMillis()}")
 

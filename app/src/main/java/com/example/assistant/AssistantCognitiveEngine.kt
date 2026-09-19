@@ -28,6 +28,26 @@ class AssistantCognitiveEngine(
         // 1. Check for system device control actions first
         var detectedAction: AssistantMobileAction? = null
 
+        // Check RikkaHub Agent command registry
+        val agentToolMatch = com.example.agent.AgentCommandParser.detectToolInvocation(trimmed)
+        if (agentToolMatch != null) {
+            val registry = com.example.agent.AgentToolRegistry(context)
+            val execRes = registry.executeTool(agentToolMatch.toolId, agentToolMatch.arguments)
+            val thought = "<think>\n1. Ingested user command: \"$trimmed\"\n2. Identified autonomous RikkaHub agent tool: [${agentToolMatch.toolId}]\n3. Executed autonomously on-device (${execRes.executionTimeMs}ms) with exit status: ${execRes.isSuccess}\n4. Output: ${execRes.output.take(120)}\n</think>"
+            val response = if (execRes.isSuccess) {
+                "${agentToolMatch.naturalExplanation} completed successfully.\n\n${execRes.output}"
+            } else {
+                "Attempted ${agentToolMatch.naturalExplanation}, but encountered an error: ${execRes.output}"
+            }
+            return AssistantExecutionResult(
+                speechResponse = response,
+                thoughtChain = thought,
+                actionTriggered = null,
+                executedToolSummary = "RikkaHub Tool: ${agentToolMatch.toolId} (${execRes.executionTimeMs}ms)",
+                confidenceScore = 0.99f
+            )
+        }
+
         if (lower.contains("battery") || lower.contains("charge") || lower.contains("power level")) {
             detectedAction = AssistantMobileAction.CheckBattery(device.batteryPercent)
             val chargingText = if (device.isCharging) "and currently charging" else "running on battery"
@@ -206,6 +226,7 @@ class AssistantCognitiveEngine(
             emptyList()
         }
 
+        var engineBackendUsed: String? = null
         val rawResult = try {
             val flow = inferenceEngine.generateStreamingResponse(
                 prompt = contextPrompt,
@@ -218,6 +239,7 @@ class AssistantCognitiveEngine(
             )
             var finalMsg = ""
             flow.collect { chunk ->
+                engineBackendUsed = chunk.backendUsed
                 if (chunk.isComplete) {
                     finalMsg = chunk.accumulatedText
                 }
@@ -234,14 +256,16 @@ class AssistantCognitiveEngine(
             match.groupValues[1].trim()
         } else {
             val memoryNote = if (recalledFacts.isNotEmpty()) "\n- Grounded via ${recalledFacts.size} Room semantic memories" else ""
-            "Analyzing prompt: \"$trimmed\"\nSynthesizing context on ${activeModel.name} with 0ms network latency.$memoryNote"
+            val backendLabel = engineBackendUsed ?: activeModel.name
+            "Analyzing prompt: \"$trimmed\"\nSynthesizing reasoning on $backendLabel.$memoryNote"
         }
         val cleanSpeech = rawResult.replace(thinkRegex, "").trim()
 
         val toolSummary = when {
+            engineBackendUsed?.contains("Gemini", ignoreCase = true) == true -> engineBackendUsed!!
             recalledFacts.isNotEmpty() -> "Room Vector Memory Grounded (${recalledFacts.size} facts)"
             screenContext != null -> "Screen Context Ingested"
-            else -> "Edge Neural Pipeline"
+            else -> engineBackendUsed ?: "Edge Neural Pipeline"
         }
 
         return AssistantExecutionResult(

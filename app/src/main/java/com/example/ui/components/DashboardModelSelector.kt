@@ -159,11 +159,7 @@ fun ModelSelectorChip(
     onSelect: () -> Unit
 ) {
     val activeBorderColor = MaterialTheme.colorScheme.primary
-    val formatBadgeColor = when (model.format) {
-        ModelFormat.GGUF -> Color(0xFF06B6D4)
-        ModelFormat.TFLITE -> Color(0xFFF59E0B)
-        ModelFormat.ONNX -> Color(0xFFA855F7)
-    }
+    val formatBadgeColor = Color(model.format.badgeColor)
 
     Surface(
         shape = RoundedCornerShape(12.dp),

@@ -29,15 +29,19 @@ import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CompareArrows
 import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -76,7 +80,10 @@ import com.example.ui.components.ModelDownloadProgressBanner
 import com.example.ui.components.ModelImportSheet
 import com.example.ui.components.ModelImportStatusBar
 import com.example.ui.components.ModelItemCard
+import com.example.ui.components.OnDeviceInferenceTechSpotlight
 import com.example.ui.components.QuantizationCalculatorSheet
+import com.example.ui.components.ModelArenaSheet
+import com.example.ui.components.SiliconGovernorSheet
 
 @Composable
 fun DeviceAndModelsScreen(
@@ -100,6 +107,8 @@ fun DeviceAndModelsScreen(
     var showImportSheet by remember { mutableStateOf(false) }
     var showDownloadCustomModelDialog by remember { mutableStateOf(false) }
     var showLiveDashboard by remember { mutableStateOf(false) }
+    var showArenaSheet by remember { mutableStateOf(false) }
+    var showGovernorSheet by remember { mutableStateOf(false) }
 
     val folderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -448,6 +457,17 @@ fun DeviceAndModelsScreen(
             }
         }
 
+        // On-Device Inference Technologies Spotlight (Android AICore, MediaPipe GenAI, Alibaba MNN)
+        item {
+            OnDeviceInferenceTechSpotlight(
+                onSelectFormatFilter = { format ->
+                    showOnlyImported = false
+                    showOnlyDownloaded = false
+                    selectedFormatFilter = format
+                }
+            )
+        }
+
         // Storage & Headroom Status Card
         item {
             Card(
@@ -626,6 +646,31 @@ fun DeviceAndModelsScreen(
                     }
 
                     OutlinedButton(
+                        onClick = { showArenaSheet = true },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("catalog_arena_battle_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CompareArrows,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Arena", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
                         onClick = { showBenchmarkSheet = true },
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
@@ -640,6 +685,24 @@ fun DeviceAndModelsScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Speed Test", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { showGovernorSheet = true },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("catalog_silicon_governor_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Thermostat,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Thermal Guard", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -704,6 +767,9 @@ fun DeviceAndModelsScreen(
             val allCount = models.size
             val downloadedCount = models.count { it.isDownloaded }
             val ggufCount = models.count { it.format == ModelFormat.GGUF }
+            val aicoreCount = models.count { it.format == ModelFormat.ANDROID_AICORE }
+            val mediaPipeCount = models.count { it.format == ModelFormat.MEDIAPIPE_TASK }
+            val mnnCount = models.count { it.format == ModelFormat.MNN_LLM }
             val tfliteCount = models.count { it.format == ModelFormat.TFLITE }
             val onnxCount = models.count { it.format == ModelFormat.ONNX }
             val importedCount = models.count { it.isImported }
@@ -815,6 +881,66 @@ fun DeviceAndModelsScreen(
                             },
                             label = { Text("ONNX ($onnxCount)", fontSize = 12.sp) },
                             modifier = Modifier.testTag("filter_onnx")
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = selectedFormatFilter == ModelFormat.ANDROID_AICORE && !showOnlyImported && !showOnlyDownloaded,
+                            onClick = {
+                                showOnlyImported = false
+                                showOnlyDownloaded = false
+                                selectedFormatFilter = if (selectedFormatFilter == ModelFormat.ANDROID_AICORE) null else ModelFormat.ANDROID_AICORE
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Security,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color(0xFF34A853)
+                                )
+                            },
+                            label = { Text("AICore ($aicoreCount)", fontSize = 12.sp) },
+                            modifier = Modifier.testTag("filter_aicore")
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = selectedFormatFilter == ModelFormat.MEDIAPIPE_TASK && !showOnlyImported && !showOnlyDownloaded,
+                            onClick = {
+                                showOnlyImported = false
+                                showOnlyDownloaded = false
+                                selectedFormatFilter = if (selectedFormatFilter == ModelFormat.MEDIAPIPE_TASK) null else ModelFormat.MEDIAPIPE_TASK
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.FlashOn,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color(0xFF4285F4)
+                                )
+                            },
+                            label = { Text("MediaPipe ($mediaPipeCount)", fontSize = 12.sp) },
+                            modifier = Modifier.testTag("filter_mediapipe")
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = selectedFormatFilter == ModelFormat.MNN_LLM && !showOnlyImported && !showOnlyDownloaded,
+                            onClick = {
+                                showOnlyImported = false
+                                showOnlyDownloaded = false
+                                selectedFormatFilter = if (selectedFormatFilter == ModelFormat.MNN_LLM) null else ModelFormat.MNN_LLM
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color(0xFFFF6A00)
+                                )
+                            },
+                            label = { Text("MNN ($mnnCount)", fontSize = 12.sp) },
+                            modifier = Modifier.testTag("filter_mnn")
                         )
                     }
                     item {
@@ -995,6 +1121,22 @@ fun DeviceAndModelsScreen(
         QuantizationCalculatorSheet(
             deviceHardware = hardware,
             onDismiss = { showQuantizationSheet = false }
+        )
+    }
+
+    // Model Arena Side-by-Side Evaluation Sheet
+    if (showArenaSheet) {
+        ModelArenaSheet(
+            viewModel = viewModel,
+            onDismiss = { showArenaSheet = false }
+        )
+    }
+
+    // Silicon Thermal Governor & Battery Power Sheet
+    if (showGovernorSheet) {
+        SiliconGovernorSheet(
+            viewModel = viewModel,
+            onDismiss = { showGovernorSheet = false }
         )
     }
 }

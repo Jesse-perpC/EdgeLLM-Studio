@@ -215,6 +215,87 @@ class ModelDownloadManager(
             sha256Checksum = "1a837c3905e921d2830f0fca1029c7d424b967d6c547841103f6984eec031802",
             isDownloaded = true,
             isActive = false
+        ),
+        ModelSpec(
+            id = "gemini-nano-aicore",
+            name = "Gemini Nano (Android AICore)",
+            parameterCount = "3.25 Billion",
+            format = ModelFormat.ANDROID_AICORE,
+            quantization = "System TPU INT4",
+            fileSizeBytes = 0L,
+            requiredRamBytes = 0L,
+            contextLength = 4096,
+            description = "Google's system foundation model built directly into Android OS via Android AICore. Zero APK overhead, hardware-isolated TPU/NPU acceleration, and 100% private.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://developer.android.com/blog/posts/build-intelligent-android-apps-on-device-inference",
+            sha256Checksum = "android-aicore-gemini-nano-system-hash",
+            isDownloaded = true,
+            isActive = false
+        ),
+        ModelSpec(
+            id = "gemma-2-2b-mediapipe",
+            name = "Gemma 2 2B (MediaPipe GenAI)",
+            parameterCount = "2.6 Billion",
+            format = ModelFormat.MEDIAPIPE_TASK,
+            quantization = "Dynamic GPU INT8",
+            fileSizeBytes = 1490L * 1024L * 1024L,
+            requiredRamBytes = 2150L * 1024L * 1024L,
+            contextLength = 8192,
+            description = "Google MediaPipe LLM Inference API bundle for Gemma 2. Features GPU OpenCL/Vulkan delegate acceleration, dynamic LoRA rank merging, and streaming token response.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm_inference/gemma2-2b-it-gpu-int8.bin",
+            sha256Checksum = "8c6b7f32a5ef1299c159e13a45c0882e391cb09f87e51c8901b2034988e00fc2",
+            isDownloaded = true,
+            isActive = false
+        ),
+        ModelSpec(
+            id = "qwen25-15b-mnn",
+            name = "Qwen 2.5 1.5B (Alibaba MNN)",
+            parameterCount = "1.5 Billion",
+            format = ModelFormat.MNN_LLM,
+            quantization = "MNN W4A16 + INT8 KV",
+            fileSizeBytes = 960L * 1024L * 1024L,
+            requiredRamBytes = 1380L * 1024L * 1024L,
+            contextLength = 8192,
+            description = "Alibaba's official Mobile Neural Network runtime for Qwen 2.5. Features high-speed prefill operator fusion, low memory footprint, and disk-backed prompt caching.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://huggingface.co/Alibaba-MNN/Qwen2.5-1.5B-Instruct-MNN/resolve/main/model.mnn",
+            sha256Checksum = "9c710bf91280b5facd517729215bb41fca9402a5585ee5f58356f9fa6da0be22",
+            isDownloaded = true,
+            isActive = false
+        ),
+        ModelSpec(
+            id = "qwen2-vl-mnn",
+            name = "Qwen2-VL 2B Multimodal (Alibaba MNN)",
+            parameterCount = "2.2 Billion",
+            format = ModelFormat.MNN_LLM,
+            quantization = "MNN W4A16 + ViT",
+            fileSizeBytes = 1450L * 1024L * 1024L,
+            requiredRamBytes = 2050L * 1024L * 1024L,
+            contextLength = 4096,
+            description = "Alibaba MNN vision-language model. Supports camera vision input, document scanning, and OCR visual grounding entirely on mobile device.",
+            category = ModelCategory.VISION_MULTIMODAL,
+            downloadUrl = "https://huggingface.co/Alibaba-MNN/Qwen2-VL-2B-Instruct-MNN/resolve/main/model.mnn",
+            sha256Checksum = "7d520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb62",
+            supportsVision = true,
+            isDownloaded = false,
+            isActive = false
+        ),
+        ModelSpec(
+            id = "phi2-mediapipe",
+            name = "Phi-2 2.7B (MediaPipe GenAI)",
+            parameterCount = "2.7 Billion",
+            format = ModelFormat.MEDIAPIPE_TASK,
+            quantization = "GPU INT4",
+            fileSizeBytes = 1680L * 1024L * 1024L,
+            requiredRamBytes = 2400L * 1024L * 1024L,
+            contextLength = 2048,
+            description = "Microsoft Phi-2 packaged for Google MediaPipe LLM Inference API on Android with GPU delegate and top-K sampling.",
+            category = ModelCategory.CODE_ANALYSIS,
+            downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm_inference/phi2-gpu-int4.bin",
+            sha256Checksum = "5c520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb73",
+            isDownloaded = false,
+            isActive = false
         )
     )
 
@@ -227,11 +308,7 @@ class ModelDownloadManager(
     init {
         // Ensure default models files and local file paths exist
         for (m in initialModels) {
-            val ext = when (m.format) {
-                ModelFormat.GGUF -> "gguf"
-                ModelFormat.ONNX -> "onnx"
-                ModelFormat.TFLITE -> "tflite"
-            }
+            val ext = formatToExtension(m.format)
             val targetFile = File(modelsDir, "${m.id}.$ext")
             if (m.isDownloaded && !targetFile.exists()) {
                 try {
@@ -245,11 +322,7 @@ class ModelDownloadManager(
             try {
                 if (repository.getModelCount() == 0) {
                     val populated = initialModels.map { m ->
-                        val ext = when (m.format) {
-                            ModelFormat.GGUF -> "gguf"
-                            ModelFormat.ONNX -> "onnx"
-                            ModelFormat.TFLITE -> "tflite"
-                        }
+                        val ext = formatToExtension(m.format)
                         m.copy(localFilePath = File(modelsDir, "${m.id}.$ext").absolutePath)
                     }
                     repository.insertAllModels(populated)
@@ -556,6 +629,9 @@ class ModelDownloadManager(
         return lower.endsWith(".gguf") ||
                 lower.endsWith(".tflite") ||
                 lower.endsWith(".onnx") ||
+                lower.endsWith(".task") ||
+                lower.endsWith(".mnn") ||
+                lower.endsWith(".aicore") ||
                 lower.endsWith(".bin") ||
                 lower.endsWith(".pt") ||
                 lower.endsWith(".safetensors")
@@ -573,6 +649,9 @@ class ModelDownloadManager(
             lower.endsWith(".gguf") -> ModelFormat.GGUF
             lower.endsWith(".tflite") -> ModelFormat.TFLITE
             lower.endsWith(".onnx") -> ModelFormat.ONNX
+            lower.endsWith(".task") -> ModelFormat.MEDIAPIPE_TASK
+            lower.endsWith(".mnn") -> ModelFormat.MNN_LLM
+            lower.endsWith(".aicore") -> ModelFormat.ANDROID_AICORE
             else -> ModelFormat.GGUF
         }
 
@@ -864,11 +943,7 @@ class ModelDownloadManager(
                 }
 
                 if (currentPercent % 20 == 0) {
-                    val ext = when (initialModel.format) {
-                        ModelFormat.GGUF -> "gguf"
-                        ModelFormat.ONNX -> "onnx"
-                        ModelFormat.TFLITE -> "tflite"
-                    }
+                    val ext = formatToExtension(initialModel.format)
                     val currentPath = File(modelsDir, "$modelId.$ext").absolutePath
                     repository.updateModelDownloadStatus(modelId, false, currentPercent, currentPath, totalBytes)
                 }
@@ -884,11 +959,7 @@ class ModelDownloadManager(
             }
             delay(300)
 
-            val ext = when (initialModel.format) {
-                ModelFormat.GGUF -> "gguf"
-                ModelFormat.ONNX -> "onnx"
-                ModelFormat.TFLITE -> "tflite"
-            }
+            val ext = formatToExtension(initialModel.format)
             val modelFile = File(modelsDir, "$modelId.$ext")
             if (!modelFile.exists()) {
                 try {
@@ -1041,11 +1112,7 @@ class ModelDownloadManager(
     ): ModelSpec {
         val sanitized = name.lowercase().replace(" ", "-").filter { it.isLetterOrDigit() || it == '-' }
         val id = "custom-$sanitized-${System.currentTimeMillis() % 10000}"
-        val ext = when (format) {
-            ModelFormat.GGUF -> "gguf"
-            ModelFormat.ONNX -> "onnx"
-            ModelFormat.TFLITE -> "tflite"
-        }
+        val ext = formatToExtension(format)
         val sizeBytes = fileSizeMb * 1024L * 1024L
         val ramRequired = (sizeBytes * 1.35).toLong()
         val localPath = File(modelsDir, "$id.$ext").absolutePath
@@ -1097,11 +1164,7 @@ class ModelDownloadManager(
                 onResult(false, "Model not found in library.")
                 return@launch
             }
-            val ext = when (model.format) {
-                ModelFormat.GGUF -> "gguf"
-                ModelFormat.ONNX -> "onnx"
-                ModelFormat.TFLITE -> "tflite"
-            }
+            val ext = formatToExtension(model.format)
             val candidateFiles = listOf(
                 File(model.localFilePath),
                 File(modelsDir, "${model.id}.$ext"),
@@ -1141,5 +1204,16 @@ class ModelDownloadManager(
 
     private fun updateModel(modelId: String, transform: (ModelSpec) -> ModelSpec) {
         _modelsState.value = _modelsState.value.map { if (it.id == modelId) transform(it) else it }
+    }
+
+    companion object {
+        fun formatToExtension(format: ModelFormat): String = when (format) {
+            ModelFormat.GGUF -> "gguf"
+            ModelFormat.ONNX -> "onnx"
+            ModelFormat.TFLITE -> "tflite"
+            ModelFormat.MEDIAPIPE_TASK -> "task"
+            ModelFormat.MNN_LLM -> "mnn"
+            ModelFormat.ANDROID_AICORE -> "aicore"
+        }
     }
 }

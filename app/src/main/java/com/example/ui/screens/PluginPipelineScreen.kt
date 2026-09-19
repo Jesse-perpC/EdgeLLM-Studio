@@ -68,6 +68,10 @@ import com.example.ui.MainViewModel
 import com.example.ui.components.CommunityMarketPluginCard
 import com.example.ui.components.InstalledPluginCard
 import com.example.ui.components.McpServerCard
+import com.example.ui.components.AgentToolCard
+import com.example.ui.components.LinuxWorkspaceCard
+import com.example.ui.components.TelegramBotCard
+import com.example.ui.components.SshRemoteCard
 
 @Composable
 fun PluginPipelineScreen(
@@ -81,8 +85,16 @@ fun PluginPipelineScreen(
     val lastResult by viewModel.lastPluginResult.collectAsState()
     val lastMcpResult by viewModel.lastMcpExecution.collectAsState()
 
+    val agentTools by viewModel.agentTools.collectAsState()
+    val lastAgentResult by viewModel.lastAgentToolResult.collectAsState()
+    val linuxOutput by viewModel.linuxShellOutput.collectAsState()
+    val telegramConfig by viewModel.agentTelegramConfig.collectAsState()
+    val telegramTestRes by viewModel.telegramTestResult.collectAsState()
+    val sshProfiles by viewModel.agentSshProfiles.collectAsState()
+    val sshPingRes by viewModel.sshPingResult.collectAsState()
+
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Installed Plugins", "Plugin Directory", "MCP Servers")
+    val tabs = listOf("Installed Plugins", "Plugin Directory", "MCP Servers", "RikkaHub Agent Hub")
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
@@ -205,7 +217,8 @@ fun PluginPipelineScreen(
                                     imageVector = when (index) {
                                         0 -> Icons.Default.Extension
                                         1 -> Icons.Default.Store
-                                        else -> Icons.Default.Hub
+                                        2 -> Icons.Default.Hub
+                                        else -> Icons.Default.Terminal
                                     },
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
@@ -513,6 +526,111 @@ fun PluginPipelineScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // TAB 3: RIKKAHUB AGENT HUB (Tools, Linux PRoot, Telegram, SSH)
+        if (selectedTabIndex == 3) {
+            item {
+                Text(
+                    text = "Linux Userland Workspace (PRoot)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            item {
+                LinuxWorkspaceCard(
+                    isInstalled = true,
+                    distro = "Debian 12 Bookworm (ARM64)",
+                    diskUsageMb = 84L,
+                    lastShellOutput = linuxOutput,
+                    onInstallMinimal = { viewModel.initializeLinuxWorkspace() },
+                    onExecuteCommand = { cmd -> viewModel.executeLinuxCommand(cmd) }
+                )
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Remote Automation Bridges",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+
+            item {
+                TelegramBotCard(
+                    config = telegramConfig,
+                    onSaveConfig = { viewModel.updateTelegramBotConfig(it) },
+                    onTestConnection = { viewModel.testTelegramBot(it) },
+                    testResultText = telegramTestRes
+                )
+            }
+
+            item {
+                SshRemoteCard(
+                    profiles = sshProfiles,
+                    onAddProfile = { viewModel.addSshProfile(it) },
+                    onDeleteProfile = { viewModel.removeSshProfile(it) },
+                    onPingProfile = { viewModel.pingSshServer(it) },
+                    pingResult = sshPingRes
+                )
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Autonomous Device Tools (${agentTools.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
+
+            if (lastAgentResult != null) {
+                item {
+                    val res = lastAgentResult!!
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (res.isSuccess) Color(0xFF10B981).copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, if (res.isSuccess) Color(0xFF10B981).copy(alpha = 0.4f) else MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                if (res.isSuccess) "✅ Tool Result (${res.executionTimeMs}ms)" else "❌ Execution Error",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = if (res.isSuccess) Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = res.output,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            }
+
+            items(agentTools, key = { it.id }) { tool ->
+                AgentToolCard(
+                    tool = tool,
+                    onExecute = { args ->
+                        viewModel.executeAgentTool(tool.id, args)
+                    }
+                )
             }
         }
 

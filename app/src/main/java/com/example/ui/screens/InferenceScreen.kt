@@ -113,7 +113,9 @@ import com.example.ui.components.ScreenContextInspectorSheet
 import com.example.ui.components.EdgeLiveVoiceSheet
 import com.example.ui.components.GrammarSelectorSheet
 import com.example.ui.components.ModelCapabilityInspectorSheet
+import com.example.ui.components.AgentToolsBottomSheet
 import com.example.ui.components.LoraAdapterSelectorSheet
+import com.example.ui.components.StructuredOutputSchemaSheet
 import com.example.engine.GrammarMode
 
 @Composable
@@ -169,7 +171,11 @@ fun InferenceScreen(
     var showMemorySheet by remember { mutableStateOf(false) }
     var showScreenContextSheet by remember { mutableStateOf(false) }
     var showLiveVoiceSheet by remember { mutableStateOf(false) }
+    var showAgentToolsSheet by remember { mutableStateOf(false) }
+    val agentTools by viewModel.agentTools.collectAsState()
+    val lastAgentToolResult by viewModel.lastAgentToolResult.collectAsState()
     var showGrammarSheet by remember { mutableStateOf(false) }
+    var showStructuredSchemaSheet by remember { mutableStateOf(false) }
     var showCapabilityInspectorSheet by remember { mutableStateOf(false) }
     var showLoraAdapterSheet by remember { mutableStateOf(false) }
     val activeLoraAdapter by viewModel.activeLoraAdapter.collectAsState()
@@ -647,6 +653,33 @@ fun InferenceScreen(
                         }
                     }
 
+                    // 🏷️ Guaranteed Structured JSON Schema Chip
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                Color(0xFF38BDF8).copy(alpha = 0.6f)
+                            ),
+                            modifier = Modifier
+                                .clickable { showStructuredSchemaSheet = true }
+                                .testTag("structured_json_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "{ } JSON Schema",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0284C7)
+                                )
+                            }
+                        }
+                    }
+
                     // 🧠 Deep Think (<think>) Reasoning Mode Chip
                     item {
                         val isThinkingActive = params.enableThinkingMode
@@ -767,9 +800,33 @@ fun InferenceScreen(
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))
                                 Text(
-                                    text = "Tools",
+                                    text = "Prompts",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    // RikkaHub Agent Autonomous Tools Chip
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .clickable { showAgentToolsSheet = true }
+                                .testTag("rikkahub_agent_tools_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⚡ Agent Tools (${agentTools.size})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981)
                                 )
                             }
                         }
@@ -1300,6 +1357,18 @@ fun InferenceScreen(
         )
     }
 
+    // RikkaHub Agent Autonomous Device Tools Bottom Sheet
+    if (showAgentToolsSheet) {
+        AgentToolsBottomSheet(
+            tools = agentTools,
+            lastExecutionResult = lastAgentToolResult,
+            onExecuteTool = { toolId, args ->
+                viewModel.executeAgentTool(toolId, args)
+            },
+            onDismiss = { showAgentToolsSheet = false }
+        )
+    }
+
     // Edge Live Duplex Voice Sheet (Gemini Live Inspired)
     if (showLiveVoiceSheet) {
         EdgeLiveVoiceSheet(
@@ -1323,6 +1392,20 @@ fun InferenceScreen(
                 viewModel.setGrammarMode(mode, regex)
             },
             onDismiss = { showGrammarSheet = false }
+        )
+    }
+
+    // Guaranteed Structured JSON Schema Bottom Sheet
+    if (showStructuredSchemaSheet) {
+        StructuredOutputSchemaSheet(
+            currentSchema = params.customRegexPattern,
+            onApplySchema = { schema, examplePrompt ->
+                viewModel.setGrammarMode(GrammarMode.JSON_STRICT, schema)
+                if (inputText.isBlank()) {
+                    inputText = "$examplePrompt\n\nRespond strictly with JSON adhering to schema:\n$schema"
+                }
+            },
+            onDismiss = { showStructuredSchemaSheet = false }
         )
     }
 

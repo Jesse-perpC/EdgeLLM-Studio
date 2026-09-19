@@ -5,7 +5,10 @@ import java.util.Locale
 enum class ModelFormat(val displayName: String, val badgeColor: Long) {
     GGUF("GGUF", 0xFF06B6D4),
     TFLITE("TensorFlow Lite", 0xFFF59E0B),
-    ONNX("ONNX Runtime", 0xFF8B5CF6)
+    ONNX("ONNX Runtime", 0xFF8B5CF6),
+    MEDIAPIPE_TASK("MediaPipe GenAI", 0xFF4285F4),
+    MNN_LLM("Alibaba MNN", 0xFFFF6A00),
+    ANDROID_AICORE("Android AICore / Gemini Nano", 0xFF34A853)
 }
 
 enum class CompatibilityRating(val label: String, val description: String, val color: Long) {

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
@@ -221,8 +222,14 @@ fun AssistantSetupBottomSheet(
 
                         InstructionStep(
                             stepNumber = "4",
+                            title = "Enable Voice Input & Gemini Pipeline",
+                            description = "In Voice Input settings, verify EdgeRecognitionService is active for system-wide STT."
+                        )
+
+                        InstructionStep(
+                            stepNumber = "5",
                             title = "Return to EdgeLLM",
-                            description = "Press the device Back button. The status badge will automatically turn green!"
+                            description = "Press Back. The status badge turns green, enabling hotkey voice triggers!"
                         )
                     }
                 }
@@ -272,6 +279,30 @@ fun AssistantSetupBottomSheet(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Open Default Apps Menu (Samsung / Xiaomi)",
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    // Voice Input / Speech Recognition Settings
+                    OutlinedButton(
+                        onClick = {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS)
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                viewModel.openSystemAssistantSettings(context)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("open_voice_input_settings_btn"),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Configure Voice Recognition & STT Service",
                             fontSize = 13.sp
                         )
                     }
