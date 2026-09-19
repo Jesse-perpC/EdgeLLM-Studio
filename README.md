@@ -228,6 +228,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - [x] **Dynamic KV-Cache Sizer** (Interactive context window token scaling)
 - [x] **Continuous Integration Pipeline** (Automated GitHub Actions APK builds on every push)
 - [x] **Full Android System Assistant Integration** (VoiceInteractionService, RecognitionService, Floating Overlay)
+- [x] **System-Wide Speech-to-Text Recognition Engine** (Android SpeechRecognizer API, live RMS audio metering, partial transcription)
+- [x] **Conversational Gemini & Edge Hybrid Cognitive Pipeline** (Voice-to-Gemini processing with autonomous thought chains and Text-to-Speech playback)
 - [x] **Multi-OEM Digital Assistant Setup Guide** (Pixel, Samsung Galaxy, Xiaomi, OnePlus)
 - [ ] **Speculative Decoding Accelerator** (Draft model pairing for 2x+ tokens/sec)
 - [ ] **Direct LoRA Adapter Hot-Swapping** (Runtime micro-fine-tune switching)
