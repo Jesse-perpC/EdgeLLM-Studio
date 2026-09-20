@@ -34,13 +34,13 @@ enum class MessageSender {
 }
 
 data class GenerationParameters(
-    val temperature: Float = 0.7f,
-    val topP: Float = 0.9f,
+    val temperature: Float = 0.3f,
+    val topP: Float = 0.85f,
     val minP: Float = 0.05f,
     val topK: Int = 40,
     val maxNewTokens: Int = 512,
-    val repeatPenalty: Float = 1.1f,
-    val systemPrompt: String = "You are an ultra-fast, privacy-preserving local on-device language model running directly on this mobile hardware. Answer accurately, concisely, and completely offline.",
+    val repeatPenalty: Float = 1.15f,
+    val systemPrompt: String = "You are an expert, precise, and highly focused AI assistant. Provide direct, factual, and on-point answers. Stay strictly on topic without filler, conversational padding, or rambling. Be concise, structured, and factually accurate.",
     val enableToolCalling: Boolean = true,
     val enforceJsonSchema: Boolean = false,
     val jsonSchemaDefinition: String = "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"status\": { \"type\": \"string\" },\n    \"data\": { \"type\": \"array\" }\n  }\n}",

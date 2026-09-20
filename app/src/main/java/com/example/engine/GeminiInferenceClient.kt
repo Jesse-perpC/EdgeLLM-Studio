@@ -37,7 +37,11 @@ class GeminiInferenceClient {
         prompt: String,
         persona: AiPersona? = null,
         systemInstructionOverride: String? = null,
-        modelName: String = DEFAULT_MODEL
+        modelName: String = DEFAULT_MODEL,
+        temperature: Float = 0.2f,
+        topP: Float = 0.85f,
+        maxOutputTokens: Int = 2048,
+        enableChainOfThoughtValidation: Boolean = true
     ): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
         if (apiKey.isNullOrBlank()) {
@@ -62,17 +66,44 @@ class GeminiInferenceClient {
 
             rootJson.put("contents", contentsArray)
 
-            // System Instruction if persona provided
-            val systemPrompt = systemInstructionOverride ?: persona?.systemPrompt
-            if (!systemPrompt.isNullOrBlank()) {
-                val sysInstructionObj = JSONObject()
-                val sysPartsArray = JSONArray()
-                val sysPart = JSONObject()
-                sysPart.put("text", systemPrompt)
-                sysPartsArray.put(sysPart)
-                sysInstructionObj.put("parts", sysPartsArray)
-                rootJson.put("systemInstruction", sysInstructionObj)
+            // System Instruction enforcing strict on-topic precision and Chain-of-Thought reasoning
+            val baseSystemPrompt = systemInstructionOverride ?: persona?.systemPrompt
+            val cotDirective = if (enableChainOfThoughtValidation) {
+                """
+[CHAIN-OF-THOUGHT MANDATE & PRECISION VALIDATION]
+You MUST structure your response into two distinct sequential phases:
+1. First, inside a `<think>...</think>` block, articulate your step-by-step intermediate reasoning:
+   - Identify the user's exact question and domain constraints.
+   - Deconstruct the logic, verify intermediate arithmetic/factual dependencies, and identify edge cases.
+   - Validate that your planned final answer directly answers the query with zero conversational filler.
+2. Immediately following the `</think>` tag, output ONLY your verified, direct, high-precision final answer.
+3. NEVER produce conversational preamble (e.g. "Sure!", "As an AI..."), throat-clearing, or unprompted conclusions after `</think>`.
+""".trimIndent()
+            } else {
+                "[MANDATORY DIRECTIVE: Be precise, factual, and strictly on-topic. Answer directly without fluff, repetition, or unrelated tangents.]"
             }
+
+            val strictSystemPrompt = if (baseSystemPrompt.isNullOrBlank()) {
+                "You are an expert, high-precision AI assistant.\n\n$cotDirective"
+            } else {
+                "$baseSystemPrompt\n\n$cotDirective"
+            }
+
+            val sysInstructionObj = JSONObject()
+            val sysPartsArray = JSONArray()
+            val sysPart = JSONObject()
+            sysPart.put("text", strictSystemPrompt)
+            sysPartsArray.put(sysPart)
+            sysInstructionObj.put("parts", sysPartsArray)
+            rootJson.put("systemInstruction", sysInstructionObj)
+
+            // Precision generation config (low temperature for deterministic, on-point answers)
+            val genConfig = JSONObject().apply {
+                put("temperature", temperature.coerceIn(0.0f, 1.0f))
+                put("topP", topP.coerceIn(0.1f, 1.0f))
+                put("maxOutputTokens", maxOutputTokens)
+            }
+            rootJson.put("generationConfig", genConfig)
 
             val requestBody = rootJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
             val request = Request.Builder()

@@ -338,4 +338,144 @@ class ExampleRobolectricTest {
     val service = com.example.assistant.EdgeRecognitionService()
     org.junit.Assert.assertNotNull(service)
   }
+
+  @Test
+  fun `precise response engine delivers direct on-point answers for factual and math queries`() {
+    val dummyModel = com.example.data.model.ModelSpec(
+      id = "test-model",
+      name = "Test Model",
+      parameterCount = "1B",
+      format = com.example.data.model.ModelFormat.GGUF,
+      quantization = "Q4_K_M",
+      fileSizeBytes = 500L * 1024 * 1024,
+      requiredRamBytes = 800L * 1024 * 1024,
+      contextLength = 2048,
+      description = "Test",
+      category = com.example.data.model.ModelCategory.GENERAL,
+      downloadUrl = "https://example.com/test",
+      sha256Checksum = "abc",
+      isDownloaded = true,
+      isActive = true
+    )
+    val engine = com.example.engine.LocalInferenceEngine()
+
+    // 1. Factual query
+    val capitalResponse = engine.generateOfflineIntelligence(
+      prompt = "what is the capital of France?",
+      model = dummyModel,
+      params = com.example.data.model.GenerationParameters()
+    )
+    org.junit.Assert.assertTrue("Capital of France should be Paris", capitalResponse.contains("Paris", ignoreCase = true))
+
+    // 2. Math calculation
+    val mathResponse = engine.generateOfflineIntelligence(
+      prompt = "calculate 25 * 14",
+      model = dummyModel,
+      params = com.example.data.model.GenerationParameters()
+    )
+    org.junit.Assert.assertTrue("Calculation should equal 350", mathResponse.contains("350"))
+
+    // 3. Physical constant
+    val physicsResponse = engine.generateOfflineIntelligence(
+      prompt = "what is the speed of light?",
+      model = dummyModel,
+      params = com.example.data.model.GenerationParameters()
+    )
+    org.junit.Assert.assertTrue("Speed of light should mention 299,792,458", physicsResponse.contains("299,792,458"))
+
+    // 4. Code snippet
+    val codeResponse = engine.generateOfflineIntelligence(
+      prompt = "write code in python to process data",
+      model = dummyModel,
+      params = com.example.data.model.GenerationParameters()
+    )
+    org.junit.Assert.assertTrue("Code response should contain python block", codeResponse.contains("```python"))
+
+    // 5. Default parameters verify precision configuration
+    val defaultParams = com.example.data.model.GenerationParameters()
+    org.junit.Assert.assertEquals(0.3f, defaultParams.temperature, 0.01f)
+    org.junit.Assert.assertTrue("System prompt should enforce staying on topic", defaultParams.systemPrompt.contains("strictly on topic", ignoreCase = true))
+  }
+
+  @Test
+  fun `output verification engine strips conversational preamble and balances unclosed code blocks`() {
+    val rawPreambleOutput = "Sure! Here is the answer to your question: The speed of light is 300,000 km/s. Hope this helps!"
+    val result = com.example.engine.OutputVerificationEngine.verifyAndRefine(
+      rawOutput = rawPreambleOutput,
+      query = "what is the speed of light?"
+    )
+
+    org.junit.Assert.assertFalse("Preamble should be stripped", result.verifiedText.startsWith("Sure!"))
+    org.junit.Assert.assertFalse("Trailing fluff should be stripped", result.verifiedText.endsWith("Hope this helps!"))
+    org.junit.Assert.assertTrue("Core content must be preserved", result.verifiedText.contains("speed of light"))
+    org.junit.Assert.assertTrue("Corrections should be logged", result.correctionsApplied.isNotEmpty())
+
+    // Unclosed markdown code fence test
+    val unclosedCode = "Here is the code:\n```kotlin\nval x = 42"
+    val codeResult = com.example.engine.OutputVerificationEngine.verifyAndRefine(
+      rawOutput = unclosedCode,
+      query = "write code"
+    )
+    val fenceCount = codeResult.verifiedText.split("```").size - 1
+    org.junit.Assert.assertEquals("Code fences must be balanced", 2, fenceCount)
+  }
+
+  @Test
+  fun `chain of thought validation layer processes thought blocks and preserves reasoning step integrity`() {
+    val modelOutputWithCot = "<think>\n1. User asks for photosynthesis definition.\n2. Chemical formula: 6CO2 + 6H2O -> C6H12O6 + 6O2.\n3. Formulate direct explanation.\n</think>\n\nPhotosynthesis is the biological process by which plants convert light energy into chemical energy."
+    val result = com.example.engine.OutputVerificationEngine.verifyAndRefine(
+      rawOutput = modelOutputWithCot,
+      query = "explain photosynthesis"
+    )
+
+    org.junit.Assert.assertTrue("Output must contain think block", result.verifiedText.contains("<think>"))
+    org.junit.Assert.assertTrue("Output must contain end think tag", result.verifiedText.contains("</think>"))
+    org.junit.Assert.assertTrue("Output must contain final answer", result.verifiedText.contains("Photosynthesis is the biological process"))
+    org.junit.Assert.assertTrue("Flags must indicate verified CoT", result.verificationFlags.contains("COT_VERIFIED"))
+  }
+
+  @Test
+  fun `multi agent feedback loop critiques and refines inaccurate factual calculations`() {
+    val query = "calculate 45 * 8"
+    val faultyInitialOutput = "The answer to 45 * 8 is 320."
+
+    val critique = com.example.engine.MultiAgentRefinementEngine.evaluateCandidate(
+      query = query,
+      candidateOutput = faultyInitialOutput
+    )
+
+    org.junit.Assert.assertTrue("Faulty math must trigger refinement", critique.requiresRefinement)
+    org.junit.Assert.assertTrue("Must diagnose arithmetic inaccuracy", critique.diagnosedWeaknesses.contains("ARITHMETIC_INACCURACY"))
+    org.junit.Assert.assertTrue("Factual score must be below threshold", critique.factualAccuracyScore < 0.75f)
+
+    val refinementResult = com.example.engine.MultiAgentRefinementEngine.refineIfNeeded(
+      query = query,
+      initialOutput = faultyInitialOutput
+    )
+
+    org.junit.Assert.assertTrue("Output must be refined", refinementResult.wasRefined)
+    org.junit.Assert.assertTrue("Refined text must contain correct calculation 360", refinementResult.refinedText.contains("360"))
+    org.junit.Assert.assertTrue("Post-refinement trust must exceed pre-refinement", refinementResult.evaluation.overallTrustScore >= critique.overallTrustScore)
+  }
+
+  @Test
+  fun `multi agent feedback loop audits tone and apologetic fluff below threshold`() {
+    val query = "what is kotlin"
+    val apologeticOutput = "I apologize, as an AI I am sorry for any confusion, but Kotlin is a statically typed programming language."
+
+    val critique = com.example.engine.MultiAgentRefinementEngine.evaluateCandidate(
+      query = query,
+      candidateOutput = apologeticOutput
+    )
+
+    org.junit.Assert.assertTrue("Must detect apologetic tone", critique.diagnosedWeaknesses.contains("APOLOGETIC_BOILERPLATE"))
+
+    val refinementResult = com.example.engine.MultiAgentRefinementEngine.refineIfNeeded(
+      query = query,
+      initialOutput = apologeticOutput
+    )
+
+    org.junit.Assert.assertTrue("Must refine apologetic phrasing", refinementResult.wasRefined)
+    org.junit.Assert.assertFalse("Refined text must not contain 'as an ai'", refinementResult.refinedText.contains("as an ai", ignoreCase = true))
+  }
 }

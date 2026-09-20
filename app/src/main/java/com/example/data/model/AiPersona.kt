@@ -16,13 +16,13 @@ data class AiPersona(
 object BuiltInPersonas {
     val GENERAL = AiPersona(
         id = "persona_general",
-        name = "Omni Companion",
+        name = "Omni Precision",
         tag = "General Purpose",
         emoji = "🧠",
-        description = "Balanced, natural on-device companion for daily queries, writing, and summaries.",
-        systemPrompt = "You are Omni Companion, an ultra-fast, privacy-preserving local on-device AI assistant running directly on mobile hardware. Answer accurately, concisely, and completely offline.",
-        defaultTemperature = 0.7f,
-        defaultTopP = 0.9f,
+        description = "Precise, on-point AI companion. Delivers direct, accurate answers without rambling or going off-topic.",
+        systemPrompt = "You are Omni Precision, a highly focused, accurate, and privacy-preserving on-device AI assistant. Answer questions directly, accurately, and concisely. Stay strictly on topic. Do not include unnecessary filler, conversational padding, or unrelated tangents.",
+        defaultTemperature = 0.25f,
+        defaultTopP = 0.85f,
         supportsReasoningTrace = false,
         samplePrompts = listOf(
             "What are the benefits of on-device neural processing?",

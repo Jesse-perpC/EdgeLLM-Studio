@@ -188,22 +188,22 @@ class AssistantCognitiveEngine(
             trimmed
         }
 
-        // 3. Conversational Human-like Generation with Internal Autonomous Thought
+        // 3. Conversational Generation with Strict Precision and On-Point Focus
         val assistantPersona = AiPersona(
             id = "assistant_core",
             name = "Edge Assistant",
             tag = "Mobile System Assistant",
             emoji = "✨",
-            systemPrompt = "You are an autonomous on-device AI mobile assistant. You speak like a warm, articulate, highly intelligent human companion. Think independently, anticipate user needs, speak naturally without robotic formulas, and provide concise, insightful answers.",
-            defaultTemperature = 0.7f,
-            defaultTopP = 0.9f,
+            systemPrompt = "You are a precise, highly focused on-device AI mobile assistant. Provide direct, factual, and on-point answers strictly addressing the user's question. Never wander off-topic, provide irrelevant filler, or give unasked-for commentary. Be crisp, clear, and accurate.",
+            defaultTemperature = 0.25f,
+            defaultTopP = 0.85f,
             supportsReasoningTrace = true,
-            description = "Conversational autonomous edge companion"
+            description = "High-precision on-device assistant"
         )
 
         val params = GenerationParameters(
-            temperature = 0.7f,
-            topP = 0.9f,
+            temperature = 0.25f,
+            topP = 0.85f,
             maxNewTokens = 350,
             systemPrompt = assistantPersona.systemPrompt
         )

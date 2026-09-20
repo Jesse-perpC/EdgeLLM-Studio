@@ -235,7 +235,10 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             val geminiRes = geminiClient.generateContent(
                 prompt = effectivePrompt,
                 persona = persona,
-                systemInstructionOverride = params.systemPrompt
+                systemInstructionOverride = params.systemPrompt,
+                temperature = params.temperature.coerceIn(0.1f, 1.0f),
+                topP = params.topP.coerceIn(0.1f, 1.0f),
+                maxOutputTokens = params.maxNewTokens.coerceAtLeast(256)
             )
             if (geminiRes.isSuccess) {
                 Pair(geminiRes.getOrThrow(), "Cloud Assist • Gemini 3.5 Flash")
@@ -256,7 +259,13 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             )
         }
 
-        val tokens = tokenizeResponse(responseText)
+        // Apply Post-Generation Verification & Quality Guardrails (Label Studio, CoVe, Preamble-stripping, Loop Detection)
+        val verification = OutputVerificationEngine.verifyAndRefine(
+            rawOutput = responseText,
+            query = prompt
+        )
+        val verifiedResponseText = verification.verifiedText
+        val tokens = tokenizeResponse(verifiedResponseText)
 
         val stringBuilder = StringBuilder()
         var tokenCount = 0

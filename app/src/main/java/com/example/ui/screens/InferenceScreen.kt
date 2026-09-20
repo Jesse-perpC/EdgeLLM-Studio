@@ -117,6 +117,7 @@ import com.example.ui.components.AgentToolsBottomSheet
 import com.example.ui.components.LoraAdapterSelectorSheet
 import com.example.ui.components.StructuredOutputSchemaSheet
 import com.example.engine.GrammarMode
+import com.example.engine.MultiAgentRefinementEngine
 
 @Composable
 fun InferenceScreen(
@@ -1878,6 +1879,75 @@ fun ChatMessageBubble(
                         }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Multi-Agent Critique & Self-Refinement Audit Badge / Banner
+                if (!isUser && finalAnswer.isNotBlank()) {
+                    val critiqueEval: MultiAgentRefinementEngine.CritiqueEvaluation = remember(finalAnswer) {
+                        MultiAgentRefinementEngine.evaluateCandidate(query = "", candidateOutput = finalAnswer)
+                    }
+                    var isAuditExpanded by remember { mutableStateOf(false) }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            0.8.dp,
+                            if (critiqueEval.requiresRefinement) MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+                            else MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                            .clickable { isAuditExpanded = !isAuditExpanded }
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = if (critiqueEval.requiresRefinement) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = "Multi-Agent Audit: ${(critiqueEval.overallTrustScore * 100).toInt()}% Trust (Factual: ${(critiqueEval.factualAccuracyScore * 100).toInt()}% • Tone: ${(critiqueEval.sentimentToneScore * 100).toInt()}%)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Icon(
+                                    imageVector = if (isAuditExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+
+                            if (isAuditExpanded) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (critiqueEval.requiresRefinement) {
+                                        "Critique Notes:\n" + critiqueEval.critiqueReasons.joinToString("\n") { "• $it" }
+                                    } else {
+                                        "✓ Passed dual-agent factual & tone accuracy thresholds (Factual ≥ 75%, Tone ≥ 70%). Output verified."
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 9.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    lineHeight = 13.sp
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Main Message Content

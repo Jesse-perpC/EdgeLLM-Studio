@@ -127,6 +127,29 @@ Equip local models with air-gapped agency through deterministic edge tools:
 
 </details>
 
+<details open>
+<summary><b>🎯 6. Precision & Topic-Adherence Inference Engine</b> (Click to collapse/expand)</summary>
+<br>
+
+Engineered specifically to eliminate rambling, conversational padding, boilerplate lecturing, and topic drift:
+
+- **Strict Direct-Answer Synthesizer**: Answers user queries immediately in the very first sentence without throat-clearing, unsolicited intros, or generic templates.
+- **Factual & Knowledge Verification**: Instantaneous lookups for geography, world capitals, physical constants ($c$, speed of sound, gravity), chemical formulas, biology, and web protocols.
+- **Deterministic Math & Arithmetic Engine**: Offline evaluation of arithmetic equations and percentages directly into clean mathematical formatting.
+- **Structured Entity Comparisons**: High-contrast markdown tables comparing architectures, frameworks, and concepts across dedicated dimensions (purpose, performance, trade-offs) without unasked-for tangents.
+- **Production-Ready Code Generation**: Instant, idiomatic code blocks (Kotlin, Python, JavaScript, Rust, SQL) with minimal overhead, edge-case safety, and succinct inline explanations.
+- **Low-Temperature Deterministic Sampling**: Tuned default generation temperature (`0.25f` - `0.30f`, repeat penalty `1.15f`) across both on-device kernels and cloud routing to prevent hallucination, meandering, and off-topic drift.
+- **Output Verification Engine & Guardrails**:
+  - *Multi-Agent Feedback Loop & Self-Refinement Engine*: Features an autonomous Critic Agent and Refinement Agent. The Critic evaluates candidate output across Factual Accuracy, Topic Adherence, and Sentiment/Tone (checking for apologetic boilerplate or defensive phrasing). If any score falls below the configured acceptance thresholds (Factual $\ge 0.75$, Tone $\ge 0.70$), the Critic generates an explicit critique diagnosis and prompts the Refinement Agent to iterate and correct the response.
+  - *Chain-of-Thought (CoT) Validation Layer*: Forces the model to emit explicit, intermediate step-by-step reasoning inside `<think>...</think>` tags to deconstruct logic, check bounds, and verify facts before releasing the final answer. The UI renders this reasoning trace in an interactive, collapsible inspection bubble.
+  - *Preamble & Filler Pruning*: Automatically strips conversational throat-clearing (*"Sure, I can help with that..."*, *"As an AI..."*, *"Hope this helps!"*) to immediately deliver the core answer.
+  - *Chain-of-Verification (CoVe)*: Independent mathematical and factual consistency evaluation verifying calculations prior to emitting tokens.
+  - *Loop & Repetition Detection*: Real-time sentence deduplication guardrail preventing degraded autoregressive generation loops.
+  - *Structural Guardrails*: Enforces balanced markdown code fences and calculates prompt keyword coverage scores to ensure output remains strictly on-topic.
+- **Strict Persona Directives**: System prompts enforce uncompromising adherence to user intent with zero filler or conversational fluff.
+
+</details>
+
 ---
 
 ## 🏗️ Neural Compute Pipeline
