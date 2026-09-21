@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Continuous CI/CD (Android APK & Windows Desktop)
 
 on:
   push:
@@ -15,8 +15,11 @@ permissions:
   contents: write
 
 jobs:
-  build-apk:
-    name: Build & Package APK
+  # ============================================================================
+  # Job 1: Build Android APK (Linux / Ubuntu)
+  # ============================================================================
+  build-android-apk:
+    name: Build Android APK (Ubuntu)
     runs-on: ubuntu-latest
 
     steps:
@@ -57,6 +60,9 @@ jobs:
 
           chmod +x gradlew
 
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
@@ -70,19 +76,126 @@ jobs:
             exit 1
           fi
 
-      - name: Upload Debug APK Artifact
+      - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EdgeLLM-Studio-Debug-APK
+          name: EdgeLLM-Studio-Android-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+  # ============================================================================
+  # Job 2: Build & Package Windows Desktop Bundle (Windows Server / Windows 11)
+  # ============================================================================
+  build-windows-desktop:
+    name: Build Windows Desktop Bundle (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Prepare Windows Environment & Keystore
+        shell: pwsh
+        run: |
+          Write-Host "Preparing Windows build environment..."
+          if (-not (Test-Path ".env") -and (Test-Path ".env.example")) {
+            Copy-Item ".env.example" ".env"
+            Write-Host ".env created from .env.example"
+          }
+
+          if (Test-Path "debug.keystore.base64") {
+            $bytes = [System.Convert]::FromBase64String((Get-Content "debug.keystore.base64" -Raw))
+            [System.IO.File]::WriteAllBytes("debug.keystore", $bytes)
+            Write-Host "Decoded debug.keystore from base64 on Windows"
+          } elseif (-not (Test-Path "debug.keystore")) {
+            & keytool -genkey -v -keystore debug.keystore `
+              -storepass android -alias androiddebugkey -keypass android `
+              -keyalg RSA -keysize 2048 -validity 10000 `
+              -dname "CN=Android Debug,O=Android,C=US"
+            Write-Host "Generated fallback debug.keystore on Windows"
+          }
+
+      - name: Run Unit Tests on Windows
+        shell: cmd
+        run: gradlew.bat testDebugUnitTest --no-daemon
+
+      - name: Build APK on Windows
+        shell: cmd
+        run: gradlew.bat assembleDebug --no-daemon --stacktrace
+
+      - name: Assemble Windows Desktop Distribution Package
+        shell: pwsh
+        run: |
+          $distDir = "dist-windows"
+          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+          
+          # Copy compiled APK
+          $apk = Get-ChildItem -Path "app/build/outputs/apk/debug" -Filter "*.apk" | Select-Object -First 1
+          if (-not $apk) {
+            Write-Error "No APK was found to package into Windows bundle!"
+            exit 1
+          }
+          Copy-Item $apk.FullName -Destination "$distDir/EdgeLLM-Studio.apk"
+          
+          # Copy Windows 1-Click Launchers and Scripts
+          Copy-Item "scripts/windows/Install-EdgeLLM-Windows.ps1" -Destination $distDir
+          Copy-Item "scripts/windows/Install-WSA-EdgeLLM.bat" -Destination $distDir
+          Copy-Item "scripts/windows/README-Windows.md" -Destination $distDir
+          
+          # Compress into distribution zip
+          Compress-Archive -Path "$distDir/*" -DestinationPath "EdgeLLM-Studio-Windows-Desktop.zip" -Force
+          Write-Host "Windows Desktop bundle successfully created: EdgeLLM-Studio-Windows-Desktop.zip"
+
+      - name: Upload Windows Desktop Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdgeLLM-Studio-Windows-Desktop-Bundle
+          path: EdgeLLM-Studio-Windows-Desktop.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  # ============================================================================
+  # Job 3: Publish GitHub Release (on tag v*)
+  # ============================================================================
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-android-apk, build-windows-desktop]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Android APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeLLM-Studio-Android-APK
+          path: release-artifacts/apk
+
+      - name: Download Windows Desktop Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: EdgeLLM-Studio-Windows-Desktop-Bundle
+          path: release-artifacts/windows
+
+      - name: Publish GitHub Release Assets
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            release-artifacts/apk/*.apk
+            release-artifacts/windows/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

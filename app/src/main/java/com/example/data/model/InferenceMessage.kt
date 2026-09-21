@@ -24,7 +24,15 @@ data class InferenceMessage(
     val isTurboBoost: Boolean = false,
     val isPrefixCacheHit: Boolean = false,
     val grammarModeUsed: GrammarMode = GrammarMode.NONE,
-    val samplerUsed: String = "Min-P (0.05)"
+    val samplerUsed: String = "Min-P (0.05)",
+    val trustScore: Float = 0f,
+    val factualAccuracyScore: Float = 0f,
+    val sentimentToneScore: Float = 0f,
+    val topicAdherenceScore: Float = 0f,
+    val wasRefined: Boolean = false,
+    val critiqueSummary: String? = null,
+    val userRating: Int = 0,
+    val userFeedbackNotes: String? = null
 )
 
 enum class MessageSender {

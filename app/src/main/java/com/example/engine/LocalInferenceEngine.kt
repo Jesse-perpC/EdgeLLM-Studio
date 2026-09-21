@@ -26,7 +26,14 @@ data class StreamTokenChunk(
     val isPrefixCacheHit: Boolean = false,
     val isTurboBoost: Boolean = true,
     val samplerName: String = "Min-P (0.05)",
-    val grammarModeUsed: GrammarMode = GrammarMode.NONE
+    val grammarModeUsed: GrammarMode = GrammarMode.NONE,
+    val trustScore: Float = 0.95f,
+    val factualAccuracyScore: Float = 0.95f,
+    val sentimentToneScore: Float = 0.95f,
+    val topicAdherenceScore: Float = 0.95f,
+    val wasMultiAgentRefined: Boolean = false,
+    val critiqueSummary: String? = null,
+    val critiqueReasons: List<String> = emptyList()
 )
 
 class LocalInferenceEngine(private val context: android.content.Context? = null) {
@@ -322,7 +329,14 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 isPrefixCacheHit = isPrefixHit,
                 isTurboBoost = isTurbo,
                 samplerName = "Min-P (${params.minP})",
-                grammarModeUsed = params.grammarMode
+                grammarModeUsed = params.grammarMode,
+                trustScore = verification.trustScore,
+                factualAccuracyScore = verification.factualAccuracyScore,
+                sentimentToneScore = verification.sentimentToneScore,
+                topicAdherenceScore = verification.topicAdherenceScore,
+                wasMultiAgentRefined = verification.wasMultiAgentRefined,
+                critiqueSummary = verification.multiAgentCritiqueSummary ?: if (verification.correctionsApplied.isNotEmpty()) verification.correctionsApplied.joinToString("; ") else null,
+                critiqueReasons = verification.correctionsApplied + verification.verificationFlags
             )
         )
     }

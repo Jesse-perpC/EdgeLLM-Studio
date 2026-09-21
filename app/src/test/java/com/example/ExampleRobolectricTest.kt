@@ -478,4 +478,98 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertTrue("Must refine apologetic phrasing", refinementResult.wasRefined)
     org.junit.Assert.assertFalse("Refined text must not contain 'as an ai'", refinementResult.refinedText.contains("as an ai", ignoreCase = true))
   }
+
+  @Test
+  fun `agent feedback dao persists and retrieves feedback logs correctly`() {
+    kotlinx.coroutines.runBlocking {
+      val context = ApplicationProvider.getApplicationContext<Context>()
+      val db = androidx.room.Room.inMemoryDatabaseBuilder(
+        context,
+        com.example.data.local.AppDatabase::class.java
+      ).allowMainThreadQueries().build()
+
+      val dao = db.agentFeedbackDao()
+
+      val feedbackLog = com.example.data.local.entity.AgentFeedbackLogEntity(
+        id = "fb_test_101",
+        messageId = "msg_test_101",
+        sessionId = "session_default",
+        originalPrompt = "What is 15 * 12?",
+        modelResponse = "15 * 12 is 180.",
+        factualAccuracyScore = 0.98f,
+        sentimentToneScore = 0.95f,
+        topicAdherenceScore = 0.96f,
+        trustScore = 0.96f,
+        wasRefined = true,
+        critiqueSummary = "Refined arithmetic error",
+        userRating = 1,
+        userNotes = "Accurate calculation",
+        createdAt = System.currentTimeMillis()
+      )
+
+      dao.insertFeedback(feedbackLog)
+
+      val retrieved = dao.getFeedbackForMessage("msg_test_101")
+      org.junit.Assert.assertNotNull(retrieved)
+      assertEquals("fb_test_101", retrieved?.id)
+      assertEquals(1, retrieved?.userRating)
+      org.junit.Assert.assertTrue(retrieved?.wasRefined == true)
+      assertEquals(0.98f, retrieved?.factualAccuracyScore ?: 0f, 0.001f)
+
+      // Test rating update
+      dao.updateUserRating("fb_test_101", -1, "Found error")
+      val updated = dao.getFeedbackForMessage("msg_test_101")
+      assertEquals(-1, updated?.userRating)
+      assertEquals("Found error", updated?.userNotes)
+
+      // Test deletion
+      dao.deleteFeedback("fb_test_101")
+      org.junit.Assert.assertNull(dao.getFeedbackForMessage("msg_test_101"))
+
+      db.close()
+    }
+  }
+
+  @Test
+  fun `chat message dao correctly stores and loads audit trust scores`() {
+    kotlinx.coroutines.runBlocking {
+      val context = ApplicationProvider.getApplicationContext<Context>()
+      val db = androidx.room.Room.inMemoryDatabaseBuilder(
+        context,
+        com.example.data.local.AppDatabase::class.java
+      ).allowMainThreadQueries().build()
+
+      val chatDao = db.chatDao()
+
+      val messageEntity = com.example.data.local.entity.ChatMessageEntity(
+        id = "msg_audit_test",
+        sender = "ASSISTANT",
+        text = "Verified response",
+        timestamp = System.currentTimeMillis(),
+        tokensGenerated = 42,
+        tokensPerSecond = 24.5f,
+        timeToFirstTokenMs = 120,
+        executionBackend = "NNAPI",
+        modelId = "test-model",
+        trustScore = 0.94f,
+        factualAccuracyScore = 0.97f,
+        sentimentToneScore = 0.91f,
+        wasRefined = true,
+        critiqueSummary = "Self-refinement applied",
+        userRating = 1,
+        userFeedbackNotes = "Helpful"
+      )
+
+      chatDao.insertMessage(messageEntity)
+
+      val retrieved = chatDao.getMessageById("msg_audit_test")
+      org.junit.Assert.assertNotNull(retrieved)
+      assertEquals(0.94f, retrieved?.trustScore ?: 0f, 0.001f)
+      assertEquals(0.97f, retrieved?.factualAccuracyScore ?: 0f, 0.001f)
+      org.junit.Assert.assertTrue(retrieved?.wasRefined == true)
+      assertEquals(1, retrieved?.userRating)
+
+      db.close()
+    }
+  }
 }

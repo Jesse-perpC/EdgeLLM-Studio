@@ -53,6 +53,8 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
@@ -114,6 +116,7 @@ import com.example.ui.components.EdgeLiveVoiceSheet
 import com.example.ui.components.GrammarSelectorSheet
 import com.example.ui.components.ModelCapabilityInspectorSheet
 import com.example.ui.components.AgentToolsBottomSheet
+import com.example.ui.components.AgentFeedbackLogsBottomSheet
 import com.example.ui.components.LoraAdapterSelectorSheet
 import com.example.ui.components.StructuredOutputSchemaSheet
 import com.example.engine.GrammarMode
@@ -180,6 +183,8 @@ fun InferenceScreen(
     var showCapabilityInspectorSheet by remember { mutableStateOf(false) }
     var showLoraAdapterSheet by remember { mutableStateOf(false) }
     val activeLoraAdapter by viewModel.activeLoraAdapter.collectAsState()
+    val agentFeedbackLogs by viewModel.agentFeedbackLogs.collectAsState()
+    var showFeedbackLogsSheet by remember { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -832,6 +837,37 @@ fun InferenceScreen(
                             }
                         }
                     }
+
+                    // Multi-Agent Quality Audit Logs Chip
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .clickable { showFeedbackLogsSheet = true }
+                                .testTag("open_agent_audit_logs_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Audit Logs (${agentFeedbackLogs.size})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
             }
@@ -1054,7 +1090,10 @@ fun InferenceScreen(
                     } else null,
                     onEditPrompt = if (msg.sender == MessageSender.USER) {
                         { inputText = msg.text }
-                    } else null
+                    } else null,
+                    onRateFeedback = { rating ->
+                        viewModel.rateMessageFeedback(msg.id, rating)
+                    }
                 )
             }
 
@@ -1440,6 +1479,16 @@ fun InferenceScreen(
         )
     }
 
+    // Agent Feedback & Multi-Agent Quality Audit Logs Bottom Sheet
+    if (showFeedbackLogsSheet) {
+        AgentFeedbackLogsBottomSheet(
+            feedbackLogs = agentFeedbackLogs,
+            onDeleteLog = { id -> viewModel.deleteFeedbackLog(id) },
+            onClearAllLogs = { viewModel.clearAllFeedbackLogs() },
+            onDismiss = { showFeedbackLogsSheet = false }
+        )
+    }
+
     // Hyperparameters Dialog
     if (showParamsDialog) {
         var tempValue by remember { mutableFloatStateOf(params.temperature) }
@@ -1720,7 +1769,8 @@ fun ChatMessageBubble(
     onExportEncrypted: () -> Unit,
     onDelete: () -> Unit = {},
     onRegenerate: (() -> Unit)? = null,
-    onEditPrompt: (() -> Unit)? = null
+    onEditPrompt: (() -> Unit)? = null,
+    onRateFeedback: ((Int) -> Unit)? = null
 ) {
     val isUser = message.sender == MessageSender.USER
 
@@ -1883,17 +1933,32 @@ fun ChatMessageBubble(
 
                 // Multi-Agent Critique & Self-Refinement Audit Badge / Banner
                 if (!isUser && finalAnswer.isNotBlank()) {
-                    val critiqueEval: MultiAgentRefinementEngine.CritiqueEvaluation = remember(finalAnswer) {
-                        MultiAgentRefinementEngine.evaluateCandidate(query = "", candidateOutput = finalAnswer)
+                    val hasStoredAudit = message.trustScore > 0f
+                    val critiqueEval: MultiAgentRefinementEngine.CritiqueEvaluation = remember(finalAnswer, message.trustScore) {
+                        if (hasStoredAudit) {
+                            MultiAgentRefinementEngine.CritiqueEvaluation(
+                                factualAccuracyScore = message.factualAccuracyScore,
+                                sentimentToneScore = message.sentimentToneScore,
+                                topicAdherenceScore = message.topicAdherenceScore,
+                                overallTrustScore = message.trustScore,
+                                requiresRefinement = message.wasRefined,
+                                critiqueReasons = message.critiqueSummary?.split("\n")?.filter { it.isNotBlank() } ?: emptyList(),
+                                diagnosedWeaknesses = emptyList()
+                            )
+                        } else {
+                            MultiAgentRefinementEngine.evaluateCandidate(query = "", candidateOutput = finalAnswer)
+                        }
                     }
                     var isAuditExpanded by remember { mutableStateOf(false) }
 
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                        color = if (message.wasRefined) Color(0xFF10B981).copy(alpha = 0.12f)
+                                else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
                         border = androidx.compose.foundation.BorderStroke(
                             0.8.dp,
-                            if (critiqueEval.requiresRefinement) MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
+                            if (message.wasRefined) Color(0xFF10B981).copy(alpha = 0.5f)
+                            else if (critiqueEval.requiresRefinement) MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
                             else MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
                         ),
                         modifier = Modifier
@@ -1911,14 +1976,20 @@ fun ChatMessageBubble(
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = null,
-                                        tint = if (critiqueEval.requiresRefinement) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                                        tint = if (message.wasRefined) Color(0xFF10B981)
+                                               else if (critiqueEval.requiresRefinement) MaterialTheme.colorScheme.error
+                                               else MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = "Multi-Agent Audit: ${(critiqueEval.overallTrustScore * 100).toInt()}% Trust (Factual: ${(critiqueEval.factualAccuracyScore * 100).toInt()}% • Tone: ${(critiqueEval.sentimentToneScore * 100).toInt()}%)",
+                                        text = if (message.wasRefined) {
+                                            "✨ Critic-Refined: ${(critiqueEval.overallTrustScore * 100).toInt()}% Trust (Factual: ${(critiqueEval.factualAccuracyScore * 100).toInt()}% • Tone: ${(critiqueEval.sentimentToneScore * 100).toInt()}%)"
+                                        } else {
+                                            "Multi-Agent Audit: ${(critiqueEval.overallTrustScore * 100).toInt()}% Trust (Factual: ${(critiqueEval.factualAccuracyScore * 100).toInt()}% • Tone: ${(critiqueEval.sentimentToneScore * 100).toInt()}%)"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        color = if (message.wasRefined) Color(0xFF10B981) else MaterialTheme.colorScheme.onSecondaryContainer,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -1926,7 +1997,7 @@ fun ChatMessageBubble(
                                 Icon(
                                     imageVector = if (isAuditExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
+                                    tint = if (message.wasRefined) Color(0xFF10B981) else MaterialTheme.colorScheme.secondary,
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
@@ -1934,7 +2005,7 @@ fun ChatMessageBubble(
                             if (isAuditExpanded) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = if (critiqueEval.requiresRefinement) {
+                                    text = if (critiqueEval.critiqueReasons.isNotEmpty()) {
                                         "Critique Notes:\n" + critiqueEval.critiqueReasons.joinToString("\n") { "• $it" }
                                     } else {
                                         "✓ Passed dual-agent factual & tone accuracy thresholds (Factual ≥ 75%, Tone ≥ 70%). Output verified."
@@ -2051,6 +2122,37 @@ fun ChatMessageBubble(
                                     contentDescription = "Regenerate Response",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+
+                        // User Quality Feedback Ratings (Thumbs Up / Down)
+                        if (!isUser && onRateFeedback != null) {
+                            IconButton(
+                                onClick = { onRateFeedback(if (message.userRating == 1) 0 else 1) },
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("rate_thumb_up_${message.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ThumbUp,
+                                    contentDescription = "Helpful",
+                                    tint = if (message.userRating == 1) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { onRateFeedback(if (message.userRating == -1) 0 else -1) },
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("rate_thumb_down_${message.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ThumbDown,
+                                    contentDescription = "Unhelpful",
+                                    tint = if (message.userRating == -1) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }

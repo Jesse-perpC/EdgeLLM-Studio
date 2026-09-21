@@ -21,7 +21,14 @@ data class ChatMessageEntity(
     val conversationalContext: String? = null,
     val embeddingVectorJson: String? = null,
     val importanceScore: Float = 0.5f,
-    val semanticTags: String? = null
+    val semanticTags: String? = null,
+    val trustScore: Float = 0f,
+    val factualAccuracyScore: Float = 0f,
+    val sentimentToneScore: Float = 0f,
+    val wasRefined: Boolean = false,
+    val critiqueSummary: String? = null,
+    val userRating: Int = 0,
+    val userFeedbackNotes: String? = null
 )
 
 @Entity(tableName = "conversation_sessions")
@@ -86,3 +93,23 @@ data class EncryptedExportEntity(
     val isUploaded: Boolean,
     val createdAt: Long
 )
+
+@Entity(tableName = "agent_feedback_logs")
+data class AgentFeedbackLogEntity(
+    @PrimaryKey val id: String,
+    val messageId: String,
+    val sessionId: String = "default_session",
+    val prompt: String,
+    val candidateResponse: String,
+    val factualAccuracyScore: Float,
+    val sentimentToneScore: Float,
+    val topicAdherenceScore: Float,
+    val overallTrustScore: Float,
+    val requiresRefinement: Boolean,
+    val wasRefined: Boolean,
+    val critiqueReasonsJson: String,
+    val userRating: Int = 0,
+    val userFeedbackText: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+

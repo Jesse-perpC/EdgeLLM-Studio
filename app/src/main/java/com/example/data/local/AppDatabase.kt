@@ -4,12 +4,14 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.example.data.local.dao.AgentFeedbackDao
 import com.example.data.local.dao.BackgroundJobDao
 import com.example.data.local.dao.ChatDao
 import com.example.data.local.dao.ConversationSessionDao
 import com.example.data.local.dao.ExportDao
 import com.example.data.local.dao.LocalModelDao
 import com.example.data.local.dao.SemanticMemoryDao
+import com.example.data.local.entity.AgentFeedbackLogEntity
 import com.example.data.local.entity.BackgroundJobEntity
 import com.example.data.local.entity.ChatMessageEntity
 import com.example.data.local.entity.ConversationSessionEntity
@@ -24,9 +26,10 @@ import com.example.data.local.entity.SemanticMemoryEntity
         EncryptedExportEntity::class,
         LocalModelEntity::class,
         ConversationSessionEntity::class,
-        SemanticMemoryEntity::class
+        SemanticMemoryEntity::class,
+        AgentFeedbackLogEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -36,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun localModelDao(): LocalModelDao
     abstract fun semanticMemoryDao(): SemanticMemoryDao
     abstract fun conversationSessionDao(): ConversationSessionDao
+    abstract fun agentFeedbackDao(): AgentFeedbackDao
 
     companion object {
         @Volatile

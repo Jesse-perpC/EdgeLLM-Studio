@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.local.AppDatabase
+import com.example.data.local.entity.AgentFeedbackLogEntity
 import com.example.data.local.entity.BackgroundJobEntity
 import com.example.data.local.entity.ChatMessageEntity
 import com.example.data.local.entity.ConversationSessionEntity
@@ -8,6 +9,7 @@ import com.example.data.local.entity.EncryptedExportEntity
 import com.example.data.local.entity.LocalModelEntity
 import com.example.data.local.entity.SemanticMemoryEntity
 import com.example.data.memory.VectorEmbeddingEngine
+import com.example.data.model.AgentFeedbackLog
 import com.example.data.model.BackgroundJob
 import com.example.data.model.CloudStorageTarget
 import com.example.data.model.ConversationSession
@@ -27,6 +29,31 @@ import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 class EdgeLLMRepository(private val database: AppDatabase) {
+
+    val agentFeedbackLogs: Flow<List<AgentFeedbackLog>> = database.agentFeedbackDao().getAllFeedbackLogs().map { entities ->
+        entities.map { entity ->
+            val reasonsList = if (entity.critiqueReasonsJson.isBlank()) emptyList() else {
+                entity.critiqueReasonsJson.split("\n").filter { it.isNotBlank() }
+            }
+            AgentFeedbackLog(
+                id = entity.id,
+                messageId = entity.messageId,
+                sessionId = entity.sessionId,
+                prompt = entity.prompt,
+                candidateResponse = entity.candidateResponse,
+                factualAccuracyScore = entity.factualAccuracyScore,
+                sentimentToneScore = entity.sentimentToneScore,
+                topicAdherenceScore = entity.topicAdherenceScore,
+                overallTrustScore = entity.overallTrustScore,
+                requiresRefinement = entity.requiresRefinement,
+                wasRefined = entity.wasRefined,
+                critiqueReasons = reasonsList,
+                userRating = entity.userRating,
+                userFeedbackText = entity.userFeedbackText,
+                timestamp = entity.timestamp
+            )
+        }
+    }
 
     val localModels: Flow<List<ModelSpec>> = database.localModelDao().getAllModels().map { entities ->
         entities.map { entityToModelSpec(it) }
@@ -51,7 +78,14 @@ class EdgeLLMRepository(private val database: AppDatabase) {
                 conversationalContext = entity.conversationalContext,
                 embeddingVector = VectorEmbeddingEngine.stringToVector(entity.embeddingVectorJson),
                 importanceScore = entity.importanceScore,
-                semanticTags = entity.semanticTags
+                semanticTags = entity.semanticTags,
+                trustScore = entity.trustScore,
+                factualAccuracyScore = entity.factualAccuracyScore,
+                sentimentToneScore = entity.sentimentToneScore,
+                wasRefined = entity.wasRefined,
+                critiqueSummary = entity.critiqueSummary,
+                userRating = entity.userRating,
+                userFeedbackNotes = entity.userFeedbackNotes
             )
         }
     }
@@ -156,7 +190,14 @@ class EdgeLLMRepository(private val database: AppDatabase) {
                 conversationalContext = message.conversationalContext,
                 embeddingVectorJson = VectorEmbeddingEngine.vectorToString(vector),
                 importanceScore = message.importanceScore,
-                semanticTags = message.semanticTags
+                semanticTags = message.semanticTags,
+                trustScore = message.trustScore,
+                factualAccuracyScore = message.factualAccuracyScore,
+                sentimentToneScore = message.sentimentToneScore,
+                wasRefined = message.wasRefined,
+                critiqueSummary = message.critiqueSummary,
+                userRating = message.userRating,
+                userFeedbackNotes = message.userFeedbackNotes
             )
         )
 
@@ -335,6 +376,45 @@ class EdgeLLMRepository(private val database: AppDatabase) {
                 lastActive = now
             )
         }
+    }
+
+    suspend fun updateMessageRating(id: String, rating: Int, feedbackNotes: String? = null) {
+        database.chatDao().updateMessageRating(id, rating, feedbackNotes)
+    }
+
+    suspend fun insertFeedbackLog(feedback: AgentFeedbackLog) {
+        database.agentFeedbackDao().insertFeedback(
+            AgentFeedbackLogEntity(
+                id = feedback.id,
+                messageId = feedback.messageId,
+                sessionId = feedback.sessionId,
+                prompt = feedback.prompt,
+                candidateResponse = feedback.candidateResponse,
+                factualAccuracyScore = feedback.factualAccuracyScore,
+                sentimentToneScore = feedback.sentimentToneScore,
+                topicAdherenceScore = feedback.topicAdherenceScore,
+                overallTrustScore = feedback.overallTrustScore,
+                requiresRefinement = feedback.requiresRefinement,
+                wasRefined = feedback.wasRefined,
+                critiqueReasonsJson = feedback.critiqueReasons.joinToString("\n"),
+                userRating = feedback.userRating,
+                userFeedbackText = feedback.userFeedbackText,
+                timestamp = feedback.timestamp
+            )
+        )
+    }
+
+    suspend fun updateUserFeedback(messageId: String, rating: Int, feedbackText: String? = null) {
+        database.agentFeedbackDao().updateUserRating(messageId, rating, feedbackText)
+        database.chatDao().updateMessageRating(messageId, rating, feedbackText)
+    }
+
+    suspend fun deleteFeedbackLog(id: String) {
+        database.agentFeedbackDao().deleteFeedback(id)
+    }
+
+    suspend fun clearAllFeedbackLogs() {
+        database.agentFeedbackDao().clearAllFeedback()
     }
 
     suspend fun deleteChatMessage(id: String) {

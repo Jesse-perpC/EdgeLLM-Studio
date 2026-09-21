@@ -388,11 +388,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Active generation coroutine job
     private var activeInferenceJob: Job? = null
 
-    // UI Theme state
-    private val _themeMode = MutableStateFlow(AppThemeMode.SYSTEM)
+    // UI Theme state with persistent storage
+    private val themePrefs = application.getSharedPreferences("edgellm_theme_prefs", android.content.Context.MODE_PRIVATE)
+
+    private val _themeMode = MutableStateFlow(
+        try {
+            val saved = themePrefs.getString("theme_mode", AppThemeMode.SYSTEM.name)
+            AppThemeMode.valueOf(saved ?: AppThemeMode.SYSTEM.name)
+        } catch (_: Exception) {
+            AppThemeMode.SYSTEM
+        }
+    )
     val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
 
-    private val _accentPalette = MutableStateFlow(AccentPalette.CYBER_CYAN)
+    private val _accentPalette = MutableStateFlow(
+        try {
+            val saved = themePrefs.getString("accent_palette", AccentPalette.CYBER_CYAN.name)
+            AccentPalette.valueOf(saved ?: AccentPalette.CYBER_CYAN.name)
+        } catch (_: Exception) {
+            AccentPalette.CYBER_CYAN
+        }
+    )
     val accentPalette: StateFlow<AccentPalette> = _accentPalette.asStateFlow()
 
     // Hardware Telemetry
@@ -508,6 +524,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    val agentFeedbackLogs: StateFlow<List<com.example.data.model.AgentFeedbackLog>> = repository.agentFeedbackLogs.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    fun rateMessageFeedback(messageId: String, rating: Int, feedbackText: String? = null) {
+        viewModelScope.launch {
+            repository.updateUserFeedback(messageId, rating, feedbackText)
+        }
+    }
+
+    fun deleteFeedbackLog(id: String) {
+        viewModelScope.launch {
+            repository.deleteFeedbackLog(id)
+        }
+    }
+
+    fun clearAllFeedbackLogs() {
+        viewModelScope.launch {
+            repository.clearAllFeedbackLogs()
+        }
+    }
 
     fun refreshHardware() {
         _hardwareInfo.value = hardwareDetector.detectHardware()
@@ -718,9 +758,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 tokensPerSecond = chunk.tokensPerSecond,
                                 timeToFirstTokenMs = chunk.timeToFirstTokenMs,
                                 executionBackend = chunk.backendUsed,
-                                modelId = activeModel.name
+                                modelId = activeModel.name,
+                                sessionId = _activeSessionId.value,
+                                trustScore = chunk.trustScore,
+                                factualAccuracyScore = chunk.factualAccuracyScore,
+                                sentimentToneScore = chunk.sentimentToneScore,
+                                topicAdherenceScore = chunk.topicAdherenceScore,
+                                wasRefined = chunk.wasMultiAgentRefined,
+                                critiqueSummary = chunk.critiqueSummary
                             )
                             repository.insertMessage(assistantMessage)
+                            val feedbackLog = com.example.data.model.AgentFeedbackLog(
+                                id = UUID.randomUUID().toString(),
+                                messageId = assistantMessage.id,
+                                sessionId = _activeSessionId.value,
+                                prompt = promptText,
+                                candidateResponse = chunk.accumulatedText,
+                                factualAccuracyScore = chunk.factualAccuracyScore,
+                                sentimentToneScore = chunk.sentimentToneScore,
+                                topicAdherenceScore = chunk.topicAdherenceScore,
+                                overallTrustScore = chunk.trustScore,
+                                requiresRefinement = chunk.wasMultiAgentRefined || chunk.critiqueReasons.isNotEmpty(),
+                                wasRefined = chunk.wasMultiAgentRefined,
+                                critiqueReasons = chunk.critiqueReasons,
+                                userRating = 0,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            repository.insertFeedbackLog(feedbackLog)
                             billingRepository.recordAllocationUsage(chunk.tokenCount)
                             _streamingChunk.value = null
                             _isGenerating.value = false
@@ -839,9 +903,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 isTurboBoost = chunk.isTurboBoost,
                                 isPrefixCacheHit = chunk.isPrefixCacheHit,
                                 grammarModeUsed = chunk.grammarModeUsed,
-                                samplerUsed = chunk.samplerName
+                                samplerUsed = chunk.samplerName,
+                                trustScore = chunk.trustScore,
+                                factualAccuracyScore = chunk.factualAccuracyScore,
+                                sentimentToneScore = chunk.sentimentToneScore,
+                                topicAdherenceScore = chunk.topicAdherenceScore,
+                                wasRefined = chunk.wasMultiAgentRefined,
+                                critiqueSummary = chunk.critiqueSummary
                             )
                             repository.insertMessage(assistantMessage)
+                            val feedbackLog = com.example.data.model.AgentFeedbackLog(
+                                id = UUID.randomUUID().toString(),
+                                messageId = assistantMessage.id,
+                                sessionId = currentSessionId,
+                                prompt = userText,
+                                candidateResponse = chunk.accumulatedText,
+                                factualAccuracyScore = chunk.factualAccuracyScore,
+                                sentimentToneScore = chunk.sentimentToneScore,
+                                topicAdherenceScore = chunk.topicAdherenceScore,
+                                overallTrustScore = chunk.trustScore,
+                                requiresRefinement = chunk.wasMultiAgentRefined || chunk.critiqueReasons.isNotEmpty(),
+                                wasRefined = chunk.wasMultiAgentRefined,
+                                critiqueReasons = chunk.critiqueReasons,
+                                userRating = 0,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            repository.insertFeedbackLog(feedbackLog)
                             repository.createOrUpdateSession(
                                 id = currentSessionId,
                                 title = "Session ${currentSessionId.takeLast(4)}",
@@ -1097,10 +1184,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setThemeMode(mode: AppThemeMode) {
         _themeMode.value = mode
+        try {
+            themePrefs.edit().putString("theme_mode", mode.name).apply()
+        } catch (_: Exception) {}
     }
 
     fun setAccentPalette(palette: AccentPalette) {
         _accentPalette.value = palette
+        try {
+            themePrefs.edit().putString("accent_palette", palette.name).apply()
+        } catch (_: Exception) {}
     }
 
     fun clearDecryptedPreview() {

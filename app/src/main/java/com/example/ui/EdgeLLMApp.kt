@@ -25,7 +25,10 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -201,6 +204,28 @@ fun EdgeLLMApp(
                                         color = planColor
                                     )
                                 }
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    val nextMode = when (themeMode) {
+                                        com.example.ui.theme.AppThemeMode.DARK -> com.example.ui.theme.AppThemeMode.LIGHT
+                                        com.example.ui.theme.AppThemeMode.LIGHT -> com.example.ui.theme.AppThemeMode.SYSTEM
+                                        com.example.ui.theme.AppThemeMode.SYSTEM -> com.example.ui.theme.AppThemeMode.DARK
+                                    }
+                                    viewModel.setThemeMode(nextMode)
+                                },
+                                modifier = Modifier.testTag("quick_theme_toggle_btn")
+                            ) {
+                                Icon(
+                                    imageVector = when (themeMode) {
+                                        com.example.ui.theme.AppThemeMode.DARK -> Icons.Default.DarkMode
+                                        com.example.ui.theme.AppThemeMode.LIGHT -> Icons.Default.LightMode
+                                        com.example.ui.theme.AppThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                                    },
+                                    contentDescription = "Quick Theme Switcher (${themeMode.title})",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
 
                             IconButton(

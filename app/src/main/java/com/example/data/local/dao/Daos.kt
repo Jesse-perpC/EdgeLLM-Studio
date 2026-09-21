@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.example.data.local.entity.AgentFeedbackLogEntity
 import com.example.data.local.entity.BackgroundJobEntity
 import com.example.data.local.entity.ChatMessageEntity
 import com.example.data.local.entity.ConversationSessionEntity
@@ -30,6 +31,9 @@ interface ChatDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: ChatMessageEntity)
+
+    @Query("UPDATE chat_messages SET userRating = :rating, userFeedbackNotes = :feedbackNotes WHERE id = :messageId")
+    suspend fun updateMessageRating(messageId: String, rating: Int, feedbackNotes: String? = null)
 
     @Query("DELETE FROM chat_messages WHERE id = :id")
     suspend fun deleteMessage(id: String)
@@ -132,3 +136,28 @@ interface ExportDao {
     @Query("DELETE FROM encrypted_exports WHERE id = :id")
     suspend fun deleteExport(id: String)
 }
+
+@Dao
+interface AgentFeedbackDao {
+    @Query("SELECT * FROM agent_feedback_logs ORDER BY timestamp DESC")
+    fun getAllFeedbackLogs(): Flow<List<AgentFeedbackLogEntity>>
+
+    @Query("SELECT * FROM agent_feedback_logs WHERE messageId = :messageId LIMIT 1")
+    suspend fun getFeedbackForMessage(messageId: String): AgentFeedbackLogEntity?
+
+    @Query("SELECT * FROM agent_feedback_logs WHERE sessionId = :sessionId ORDER BY timestamp DESC")
+    fun getFeedbackBySession(sessionId: String): Flow<List<AgentFeedbackLogEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFeedback(feedback: AgentFeedbackLogEntity)
+
+    @Query("UPDATE agent_feedback_logs SET userRating = :rating, userFeedbackText = :feedbackText WHERE messageId = :messageId")
+    suspend fun updateUserRating(messageId: String, rating: Int, feedbackText: String?)
+
+    @Query("DELETE FROM agent_feedback_logs WHERE id = :id")
+    suspend fun deleteFeedback(id: String)
+
+    @Query("DELETE FROM agent_feedback_logs")
+    suspend fun clearAllFeedback()
+}
+
