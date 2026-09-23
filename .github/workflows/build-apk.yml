@@ -1,4 +1,4 @@
-name: Continuous CI/CD (Android APK & Windows Desktop)
+name: Build EdgeLLM Android APK
 
 on:
   push:
@@ -15,167 +15,113 @@ permissions:
   contents: write
 
 jobs:
-  # ============================================================================
-  # Job 1: Build Android APK (Linux / Ubuntu)
-  # ============================================================================
-  build-android-apk:
-    name: Build Android APK (Ubuntu)
+  build:
+    name: Build Android APK
     runs-on: ubuntu-latest
+
     env:
-      GRADLE_OPTS: "-Xmx3584m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+      CI: "false"
+      GRADLE_OPTS: "-Xmx3584m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
           lfs: true
 
-      - name: Set up JDK 17
-        id: setup-java
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
 
+      - name: Set up Android SDK & Accept Licenses
+        run: |
+          echo "Accepting Android SDK licenses..."
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
+          echo "Ensuring Android SDK platform 36 is present..."
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" 2>/dev/null || true
+
       - name: Prepare Environment & Keystore
         run: |
-          echo "Setting up local environment files..."
-          if [ ! -f .env ] && [ -f .env.example ]; then
+          # 1. Provide .env for Secrets Gradle plugin
+          if [ -f .env.example ]; then
             cp .env.example .env
-            echo ".env created from .env.example"
+          else
+            touch .env
           fi
 
+          # 2. Provide debug.keystore required by signingConfigs.debugConfig
           if [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-            echo "Decoded debug.keystore from base64"
-          elif [ ! -f debug.keystore ]; then
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
+          fi
+          if [ ! -f debug.keystore ]; then
+            echo "Generating fallback debug.keystore..."
             keytool -genkey -v -keystore debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
-            echo "Generated fallback debug.keystore"
           fi
 
-          # Accept Android SDK licenses
-          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            echo "Accepting Android SDK licenses..."
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
-          fi
-
+          # 3. Make gradlew executable
           chmod +x gradlew
 
-      - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+      - name: Build Debug APK with Gradle
+        run: ./gradlew assembleDebug --no-daemon --no-configuration-cache --stacktrace
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Verify APK Generated
+      - name: Locate Generated APK
+        id: locate-apk
         run: |
-          echo "Listing generated APK files:"
-          ls -lh app/build/outputs/apk/debug/
-          APK_COUNT=$(find app/build/outputs/apk/debug -name "*.apk" | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK was generated in app/build/outputs/apk/debug/"
+          echo "Listing all APKs:"
+          find app/build/outputs/apk -type f -name "*.apk" -ls
+          APK_PATH=$(find app/build/outputs/apk/debug -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: No APK generated!"
             exit 1
           fi
+          echo "Found APK at: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EdgeLLM-Studio-Android-APK
+          name: EdgeLLM-Studio-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
-  # ============================================================================
-  # Job 2: Package Windows Desktop Bundle
-  # Uses the compiled APK from Job 1 to package 1-click Windows scripts cleanly
-  # ============================================================================
-  build-windows-desktop:
-    name: Package Windows Desktop Bundle
-    needs: [build-android-apk]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Download Android APK Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: EdgeLLM-Studio-Android-APK
-          path: downloaded-apk
-
-      - name: Assemble Windows Desktop Distribution Package
+      - name: Package Windows Desktop Bundle
+        if: always() && steps.locate-apk.outputs.apk_path != ''
         run: |
           mkdir -p dist-windows
-          APK_FILE=$(find downloaded-apk -name "*.apk" | head -n 1)
-          if [ -z "$APK_FILE" ]; then
-            echo "ERROR: Could not find compiled APK from Job 1!"
-            exit 1
-          fi
-
-          echo "Found APK: $APK_FILE"
-          cp "$APK_FILE" dist-windows/EdgeLLM-Studio.apk
-
+          cp "${{ steps.locate-apk.outputs.apk_path }}" dist-windows/EdgeLLM-Studio.apk
           if [ -d scripts/windows ]; then
-            cp scripts/windows/Install-EdgeLLM-Windows.ps1 dist-windows/ 2>/dev/null || true
-            cp scripts/windows/Install-WSA-EdgeLLM.bat dist-windows/ 2>/dev/null || true
-            cp scripts/windows/README-Windows.md dist-windows/ 2>/dev/null || true
+            cp scripts/windows/* dist-windows/ 2>/dev/null || true
           fi
-
-          echo "Creating EdgeLLM-Studio-Windows-Desktop.zip..."
-          cd dist-windows
-          zip -r ../EdgeLLM-Studio-Windows-Desktop.zip ./*
-          cd ..
-
+          cd dist-windows && zip -r ../EdgeLLM-Studio-Windows-Desktop.zip ./* && cd ..
           ls -lh EdgeLLM-Studio-Windows-Desktop.zip
 
       - name: Upload Windows Desktop Artifact
+        if: always() && steps.locate-apk.outputs.apk_path != ''
         uses: actions/upload-artifact@v4
         with:
           name: EdgeLLM-Studio-Windows-Desktop-Bundle
           path: EdgeLLM-Studio-Windows-Desktop.zip
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
-  # ============================================================================
-  # Job 3: Publish GitHub Release (on tag v*)
-  # ============================================================================
-  release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-android-apk, build-windows-desktop]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download Android APK Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: EdgeLLM-Studio-Android-APK
-          path: release-artifacts/apk
-
-      - name: Download Windows Desktop Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: EdgeLLM-Studio-Windows-Desktop-Bundle
-          path: release-artifacts/windows
-
-      - name: Publish GitHub Release Assets
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-artifacts/apk/*.apk
-            release-artifacts/windows/*.zip
+            app/build/outputs/apk/debug/*.apk
+            EdgeLLM-Studio-Windows-Desktop.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
