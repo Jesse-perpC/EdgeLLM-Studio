@@ -75,7 +75,7 @@ object MultiAgentRefinementEngine {
 
         // 2a. Arithmetic / Mathematical Consistency Evaluation
         val mathRegex = Regex("(?:what is|calculate|evaluate|solve)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*([\\+\\-\\*/×÷])\\s*([0-9]+(?:\\.[0-9]+)?)", RegexOption.IGNORE_CASE)
-        val mathMatch = mathRegex.find(cleanQuery)
+        val mathMatch = mathRegex.find(query.lowercase())
         if (mathMatch != null) {
             val a = mathMatch.groupValues[1].toDoubleOrNull()
             val op = mathMatch.groupValues[2]

@@ -393,10 +393,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _themeMode = MutableStateFlow(
         try {
-            val saved = themePrefs.getString("theme_mode", AppThemeMode.SYSTEM.name)
-            AppThemeMode.valueOf(saved ?: AppThemeMode.SYSTEM.name)
+            val saved = themePrefs.getString("theme_mode", AppThemeMode.DARK.name)
+            AppThemeMode.valueOf(saved ?: AppThemeMode.DARK.name)
         } catch (_: Exception) {
-            AppThemeMode.SYSTEM
+            AppThemeMode.DARK
         }
     )
     val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()

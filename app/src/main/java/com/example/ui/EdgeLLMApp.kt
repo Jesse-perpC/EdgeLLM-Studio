@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.BillingAndAllocationsSheet
+import com.example.ui.components.ThemeStudioBottomSheet
 import com.example.ui.screens.ApiServerScreen
 import com.example.ui.screens.BackgroundTasksScreen
 import com.example.ui.screens.DashboardScreen
@@ -93,6 +95,7 @@ fun EdgeLLMApp(
     var currentDestination by remember { mutableStateOf(AppDestination.DASHBOARD) }
     var isInSettings by remember { mutableStateOf(false) }
     var showBillingSheet by remember { mutableStateOf(false) }
+    var showThemeStudioSheet by remember { mutableStateOf(false) }
     var prefilledExportText by remember { mutableStateOf("") }
 
     MyApplicationTheme(
@@ -202,6 +205,26 @@ fun EdgeLLMApp(
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = planColor
+                                    )
+                                }
+                            }
+
+                            // Theme & Visual Aesthetic Studio Launcher (Anytime Access)
+                            IconButton(
+                                onClick = { showThemeStudioSheet = true },
+                                modifier = Modifier.testTag("open_theme_studio_top_btn")
+                            ) {
+                                Box(contentAlignment = Alignment.TopEnd) {
+                                    Icon(
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = "Futuristic Theme Studio (${accentPalette.title})",
+                                        tint = accentPalette.primaryPreview
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(accentPalette.accentGlow)
                                     )
                                 }
                             }
@@ -341,6 +364,12 @@ fun EdgeLLMApp(
                 BillingAndAllocationsSheet(
                     viewModel = viewModel,
                     onDismiss = { showBillingSheet = false }
+                )
+            }
+            if (showThemeStudioSheet) {
+                ThemeStudioBottomSheet(
+                    viewModel = viewModel,
+                    onDismiss = { showThemeStudioSheet = false }
                 )
             }
         }

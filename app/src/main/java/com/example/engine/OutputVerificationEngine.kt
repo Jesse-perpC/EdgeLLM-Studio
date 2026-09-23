@@ -118,18 +118,16 @@ object OutputVerificationEngine {
         }
 
         // 2. Trailing conversational fluff cleanup
-        val trailingFluff = listOf(
-            "\n\nHope this helps!",
-            "\nHope this helps!",
-            "\n\nLet me know if you have any questions!",
-            "\nLet me know if you have any questions!",
-            "\n\nFeel free to ask if you need further clarification.",
-            "\nFeel free to ask if you need further clarification."
+        val trailingFluffPatterns = listOf(
+            Regex("""[\s\n.]*(?:hope this helps|hope that helps|let me know if you need anything else|let me know if you have any questions|feel free to ask if you need further clarification)[!,.]*\s*$""", RegexOption.IGNORE_CASE)
         )
-        for (fluff in trailingFluff) {
-            if (text.endsWith(fluff, ignoreCase = true)) {
-                text = text.substring(0, text.length - fluff.length).trim()
-                corrections.add("Removed trailing conversational fluff")
+        for (pattern in trailingFluffPatterns) {
+            if (pattern.containsMatchIn(text)) {
+                val replaced = text.replace(pattern, "").trim()
+                if (replaced.isNotBlank()) {
+                    text = replaced
+                    corrections.add("Removed trailing conversational fluff")
+                }
             }
         }
 

@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,6 +67,8 @@ import com.example.ui.components.SiliconDiagnosticsSheet
 import com.example.ui.components.SystemAboutSheet
 import com.example.ui.components.LoraAdapterSelectorSheet
 import com.example.ui.components.AssistantSetupBottomSheet
+import com.example.ui.components.ThemeStudioBottomSheet
+import androidx.compose.material.icons.filled.Palette
 import android.widget.Toast
 import android.content.Intent
 import androidx.compose.runtime.DisposableEffect
@@ -91,6 +95,7 @@ fun SettingsScreen(
     var showAboutSheet by remember { mutableStateOf(false) }
     var showLoraSheet by remember { mutableStateOf(false) }
     var showAssistantSetupSheet by remember { mutableStateOf(false) }
+    var showThemeStudioSheet by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -136,25 +141,60 @@ fun SettingsScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.ColorLens,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Theme & Visual Styling",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.ColorLens,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Theme & Visual Styling",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { showThemeStudioSheet = true }
+                                .testTag("launch_theme_studio_settings_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Palette,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Studio",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Theme Mode",
+                        text = "Display Mode",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -166,70 +206,101 @@ fun SettingsScreen(
                     ) {
                         AppThemeMode.entries.forEach { mode ->
                             val isSelected = themeMode == mode
-                            OutlinedButton(
-                                onClick = { viewModel.setThemeMode(mode) },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f)
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                border = BorderStroke(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { viewModel.setThemeMode(mode) }
+                                    .testTag("settings_theme_mode_${mode.name.lowercase()}")
                             ) {
-                                Text(
-                                    text = mode.title,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Column(
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = mode.title,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Accent Color Palette",
+                        text = "Futuristic Accent Palettes (${AccentPalette.entries.size} Presets)",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        AccentPalette.entries.forEach { palette ->
-                            val isSelected = accentPalette == palette
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { viewModel.setAccentPalette(palette) }
+                    // 2 rows of 3 palettes each
+                    val rows = AccentPalette.entries.chunked(3)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rows.forEach { rowPalettes ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(palette.primaryPreview)
-                                        .border(
-                                            width = if (isSelected) 3.dp else 1.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
-                                            shape = CircleShape
+                                rowPalettes.forEach { palette ->
+                                    val isSelected = accentPalette == palette
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) palette.primaryPreview.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                        border = BorderStroke(
+                                            width = if (isSelected) 1.5.dp else 1.dp,
+                                            color = if (isSelected) palette.primaryPreview else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
                                         ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = androidx.compose.ui.graphics.Color.Black,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { viewModel.setAccentPalette(palette) }
+                                            .testTag("settings_accent_palette_${palette.name.lowercase()}")
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(28.dp)
+                                                    .clip(CircleShape)
+                                                    .background(palette.primaryPreview)
+                                                    .border(
+                                                        width = if (isSelected) 2.dp else 1.dp,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                                                        shape = CircleShape
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (isSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = Color.Black,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = palette.title,
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1
+                                            )
+                                        }
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = palette.title,
-                                    fontSize = 10.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
                             }
                         }
                     }
@@ -617,6 +688,14 @@ fun SettingsScreen(
             viewModel = viewModel,
             isDefaultAssistant = isDefaultAssistant,
             onDismiss = { showAssistantSetupSheet = false }
+        )
+    }
+
+    // Theme & Visual Aesthetic Studio Sheet
+    if (showThemeStudioSheet) {
+        ThemeStudioBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showThemeStudioSheet = false }
         )
     }
 }

@@ -283,6 +283,52 @@ class ExampleRobolectricTest {
       val tagsBody = tagsConn.inputStream.bufferedReader().readText()
       org.junit.Assert.assertTrue(tagsBody.contains("test-llama"))
       tagsConn.disconnect()
+
+      // Test POST /api/generate (Takes prompt, gives response)
+      val genUrl = java.net.URL("http://127.0.0.1:$testPort/api/generate")
+      val genConn = genUrl.openConnection() as java.net.HttpURLConnection
+      genConn.connectTimeout = 5000
+      genConn.readTimeout = 5000
+      genConn.requestMethod = "POST"
+      genConn.doOutput = true
+      genConn.setRequestProperty("Content-Type", "application/json")
+      val genPayload = """{"model":"test-llama","prompt":"what are objects in java?","stream":false}"""
+      genConn.outputStream.use { it.write(genPayload.toByteArray(java.nio.charset.StandardCharsets.UTF_8)) }
+      assertEquals(200, genConn.responseCode)
+      val genBody = genConn.inputStream.bufferedReader().readText()
+      org.junit.Assert.assertTrue("Response should contain model name", genBody.contains("test-llama"))
+      org.junit.Assert.assertTrue("Response should contain response field", genBody.contains("\"response\""))
+      genConn.disconnect()
+
+      // Test POST /api/chat (Takes conversation history, gives assistant message)
+      val chatUrl = java.net.URL("http://127.0.0.1:$testPort/api/chat")
+      val chatConn = chatUrl.openConnection() as java.net.HttpURLConnection
+      chatConn.connectTimeout = 5000
+      chatConn.readTimeout = 5000
+      chatConn.requestMethod = "POST"
+      chatConn.doOutput = true
+      chatConn.setRequestProperty("Content-Type", "application/json")
+      val chatPayload = """{"model":"test-llama","messages":[{"role":"user","content":"Hello"}],"stream":false}"""
+      chatConn.outputStream.use { it.write(chatPayload.toByteArray(java.nio.charset.StandardCharsets.UTF_8)) }
+      assertEquals(200, chatConn.responseCode)
+      val chatBody = chatConn.inputStream.bufferedReader().readText()
+      org.junit.Assert.assertTrue("Chat response should contain assistant role", chatBody.contains("\"role\":\"assistant\"") || chatBody.contains("\"assistant\""))
+      chatConn.disconnect()
+
+      // Test POST /v1/chat/completions (OpenAI Compatible)
+      val oaiUrl = java.net.URL("http://127.0.0.1:$testPort/v1/chat/completions")
+      val oaiConn = oaiUrl.openConnection() as java.net.HttpURLConnection
+      oaiConn.connectTimeout = 5000
+      oaiConn.readTimeout = 5000
+      oaiConn.requestMethod = "POST"
+      oaiConn.doOutput = true
+      oaiConn.setRequestProperty("Content-Type", "application/json")
+      val oaiPayload = """{"model":"test-llama","messages":[{"role":"user","content":"Say hi"}],"stream":false}"""
+      oaiConn.outputStream.use { it.write(oaiPayload.toByteArray(java.nio.charset.StandardCharsets.UTF_8)) }
+      assertEquals(200, oaiConn.responseCode)
+      val oaiBody = oaiConn.inputStream.bufferedReader().readText()
+      org.junit.Assert.assertTrue("OpenAI response should contain choices", oaiBody.contains("\"choices\""))
+      oaiConn.disconnect()
     } finally {
       server.stop()
       org.junit.Assert.assertFalse("Server should be stopped", server.serverStats.value.isRunning)
@@ -351,7 +397,7 @@ class ExampleRobolectricTest {
       requiredRamBytes = 800L * 1024 * 1024,
       contextLength = 2048,
       description = "Test",
-      category = com.example.data.model.ModelCategory.GENERAL,
+      category = com.example.data.model.ModelCategory.CHAT_REASONING,
       downloadUrl = "https://example.com/test",
       sha256Checksum = "abc",
       isDownloaded = true,
@@ -494,17 +540,18 @@ class ExampleRobolectricTest {
         id = "fb_test_101",
         messageId = "msg_test_101",
         sessionId = "session_default",
-        originalPrompt = "What is 15 * 12?",
-        modelResponse = "15 * 12 is 180.",
+        prompt = "What is 15 * 12?",
+        candidateResponse = "15 * 12 is 180.",
         factualAccuracyScore = 0.98f,
         sentimentToneScore = 0.95f,
         topicAdherenceScore = 0.96f,
-        trustScore = 0.96f,
+        overallTrustScore = 0.96f,
+        requiresRefinement = false,
         wasRefined = true,
-        critiqueSummary = "Refined arithmetic error",
+        critiqueReasonsJson = "[\"Verified arithmetic computation\"]",
         userRating = 1,
-        userNotes = "Accurate calculation",
-        createdAt = System.currentTimeMillis()
+        userFeedbackText = "Accurate calculation",
+        timestamp = System.currentTimeMillis()
       )
 
       dao.insertFeedback(feedbackLog)
@@ -517,10 +564,10 @@ class ExampleRobolectricTest {
       assertEquals(0.98f, retrieved?.factualAccuracyScore ?: 0f, 0.001f)
 
       // Test rating update
-      dao.updateUserRating("fb_test_101", -1, "Found error")
+      dao.updateUserRating("msg_test_101", -1, "Found error")
       val updated = dao.getFeedbackForMessage("msg_test_101")
       assertEquals(-1, updated?.userRating)
-      assertEquals("Found error", updated?.userNotes)
+      assertEquals("Found error", updated?.userFeedbackText)
 
       // Test deletion
       dao.deleteFeedback("fb_test_101")
@@ -562,7 +609,8 @@ class ExampleRobolectricTest {
 
       chatDao.insertMessage(messageEntity)
 
-      val retrieved = chatDao.getMessageById("msg_audit_test")
+      val messages = chatDao.getAllMessagesSnapshot()
+      val retrieved = messages.firstOrNull { it.id == "msg_audit_test" }
       org.junit.Assert.assertNotNull(retrieved)
       assertEquals(0.94f, retrieved?.trustScore ?: 0f, 0.001f)
       assertEquals(0.97f, retrieved?.factualAccuracyScore ?: 0f, 0.001f)
