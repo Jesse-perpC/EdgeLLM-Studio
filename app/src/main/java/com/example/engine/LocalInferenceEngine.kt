@@ -269,7 +269,8 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         // Apply Post-Generation Verification & Quality Guardrails (Label Studio, CoVe, Preamble-stripping, Loop Detection)
         val verification = OutputVerificationEngine.verifyAndRefine(
             rawOutput = responseText,
-            query = prompt
+            query = prompt,
+            enableThinkingMode = params.enableThinkingMode
         )
         val verifiedResponseText = verification.verifiedText
         val tokens = tokenizeResponse(verifiedResponseText)
@@ -477,8 +478,8 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                     "All facts above were retrieved entirely offline from your local document buffer. No content was sent outside this device."
         }
 
-        // 2. If Deep Reasoner or reasoning model or thinking mode is selected, prepend an interactive chain-of-thought block:
-        val includeCoT = params.enableThinkingMode || persona?.supportsReasoningTrace == true || model.name.lowercase().contains("r1") || model.name.lowercase().contains("reason") || params.grammarMode == GrammarMode.STEP_BY_STEP_REASONING
+        // 2. Thinking Mode (Chain-of-Thought): Strictly opt-in when enabled by user toggle
+        val includeCoT = params.enableThinkingMode
 
         val memoryThought = if (recalledMemories.isNotEmpty()) {
             "• Memory Anchor: Recalled ${recalledMemories.size} semantic node(s) via 128-D vector cosine similarity.\n"
@@ -486,11 +487,10 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
 
         val reasoningTrace = if (includeCoT) {
             "<think>\n" +
-                    "1. Problem Decomposition: User asked: \"$prompt\"\n" +
-                    "2. Parsing Constraints: Running locally under ${model.quantization} precision on ${model.name}. Context window limit = ${model.contextLength} tokens.\n" +
+                    "Deconstructing query intent: \"$prompt\"\n" +
+                    "Context: ${model.name} (${model.quantization}) | Precision: Deterministic\n" +
                     memoryThought +
-                    "3. Step-by-step Evaluation: Verify premise, cross-check against offline tensor weights and persistent memories.\n" +
-                    "4. Synthesis: Structure response with high information density, clean formatting, and clear technical rigor.\n" +
+                    "Verifying premise and formulating decisive answer.\n" +
                     "</think>\n\n"
         } else ""
 

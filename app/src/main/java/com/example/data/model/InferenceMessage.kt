@@ -53,7 +53,7 @@ data class GenerationParameters(
     val enforceJsonSchema: Boolean = false,
     val jsonSchemaDefinition: String = "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"status\": { \"type\": \"string\" },\n    \"data\": { \"type\": \"array\" }\n  }\n}",
     val isTurboBoost: Boolean = true,
-    val enableThinkingMode: Boolean = true,
+    val enableThinkingMode: Boolean = false,
     val thinkingBudgetTokens: Int = 1024,
     val grammarMode: GrammarMode = GrammarMode.NONE,
     val customRegexPattern: String = "",

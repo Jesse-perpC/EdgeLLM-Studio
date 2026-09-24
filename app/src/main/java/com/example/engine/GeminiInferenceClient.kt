@@ -41,7 +41,7 @@ class GeminiInferenceClient {
         temperature: Float = 0.2f,
         topP: Float = 0.85f,
         maxOutputTokens: Int = 2048,
-        enableChainOfThoughtValidation: Boolean = true
+        enableChainOfThoughtValidation: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
         if (apiKey.isNullOrBlank()) {
@@ -66,25 +66,21 @@ class GeminiInferenceClient {
 
             rootJson.put("contents", contentsArray)
 
-            // System Instruction enforcing strict on-topic precision and Chain-of-Thought reasoning
+            // System Instruction enforcing strict on-topic precision and decisive straight-to-the-point answers
             val baseSystemPrompt = systemInstructionOverride ?: persona?.systemPrompt
             val cotDirective = if (enableChainOfThoughtValidation) {
                 """
 [CHAIN-OF-THOUGHT MANDATE & PRECISION VALIDATION]
-You MUST structure your response into two distinct sequential phases:
-1. First, inside a `<think>...</think>` block, articulate your step-by-step intermediate reasoning:
-   - Identify the user's exact question and domain constraints.
-   - Deconstruct the logic, verify intermediate arithmetic/factual dependencies, and identify edge cases.
-   - Validate that your planned final answer directly answers the query with zero conversational filler.
-2. Immediately following the `</think>` tag, output ONLY your verified, direct, high-precision final answer.
-3. NEVER produce conversational preamble (e.g. "Sure!", "As an AI..."), throat-clearing, or unprompted conclusions after `</think>`.
+Structure your response into two sequential phases:
+1. Inside a `<think>...</think>` block, articulate step-by-step intermediate reasoning.
+2. Immediately following `</think>`, output ONLY the verified, direct, high-precision final answer without preamble.
 """.trimIndent()
             } else {
-                "[MANDATORY DIRECTIVE: Be precise, factual, and strictly on-topic. Answer directly without fluff, repetition, or unrelated tangents.]"
+                "[MANDATORY DIRECTIVE: Be decisive, authoritative, and straight to the point. Reply strictly to what the user asks without preamble, conversational fluff, or template repetition.]"
             }
 
             val strictSystemPrompt = if (baseSystemPrompt.isNullOrBlank()) {
-                "You are an expert, high-precision AI assistant.\n\n$cotDirective"
+                "You are an on-device, high-precision, straight-to-the-point AI assistant.\n\n$cotDirective"
             } else {
                 "$baseSystemPrompt\n\n$cotDirective"
             }

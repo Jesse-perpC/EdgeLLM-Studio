@@ -40,14 +40,15 @@ object OutputVerificationEngine {
     fun verifyAndRefine(
         rawOutput: String,
         query: String,
-        enforceStrictFormatting: Boolean = true
+        enforceStrictFormatting: Boolean = true,
+        enableThinkingMode: Boolean = false
     ): VerificationResult {
         var text = rawOutput.trim()
         val corrections = mutableListOf<String>()
         val flags = mutableListOf<String>()
         var trustScore = 0.95f
 
-        // 0. Chain-of-Thought (CoT) Validation & Normalization Layer
+        // 0. Chain-of-Thought (CoT) Handling: Validate explicit reasoning blocks when present
         val thinkRegex = Regex("<think>([\\s\\S]*?)</think>", RegexOption.DOT_MATCHES_ALL)
         val hasThinkBlock = thinkRegex.containsMatchIn(text)
 
@@ -64,7 +65,6 @@ object OutputVerificationEngine {
                 flags.add("COT_VERIFIED")
             }
 
-            // Prune preamble strictly from the final answer section
             var cleanFinal = finalPart
             for (pattern in PREAMBLE_PATTERNS) {
                 if (pattern.containsMatchIn(cleanFinal)) {
@@ -76,34 +76,12 @@ object OutputVerificationEngine {
                 }
             }
 
-            // If the model produced only a think block without final answer, synthesize clear answer
             if (cleanFinal.isBlank()) {
                 cleanFinal = rawThought.lines().lastOrNull { it.isNotBlank() } ?: "Direct answer evaluated successfully."
                 corrections.add("Synthesized final answer from CoT conclusion")
             }
 
-            // Reconstruct verified structure
             text = "<think>\n$rawThought\n</think>\n\n$cleanFinal"
-        } else {
-            // If the model did not generate an explicit <think> block, enforce CoT synthesis layer for complex/math/code queries
-            val isComplexQuery = query.length > 35 ||
-                    query.contains("calculate", ignoreCase = true) ||
-                    query.contains("why", ignoreCase = true) ||
-                    query.contains("how to", ignoreCase = true) ||
-                    query.contains("vs", ignoreCase = true) ||
-                    query.contains("explain", ignoreCase = true) ||
-                    query.contains("code", ignoreCase = true)
-
-            if (isComplexQuery && !text.startsWith("<think>")) {
-                val synthesizedReasoning = buildString {
-                    append("1. Analyzed query intent and factual boundaries: \"").append(query.take(60)).append("\"\n")
-                    append("2. Verified factual constraints and precision parameters.\n")
-                    append("3. Formulated direct, grounded answer with zero conversational padding.")
-                }
-                text = "<think>\n$synthesizedReasoning\n</think>\n\n$text"
-                corrections.add("Injected Chain-of-Thought validation layer")
-                flags.add("COT_SYNTHESIZED_LAYER")
-            }
         }
 
         // 1. Preamble & Filler Pruning (Stripping throat-clearing for direct response)

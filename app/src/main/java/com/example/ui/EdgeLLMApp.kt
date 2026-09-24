@@ -4,11 +4,13 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -67,14 +69,41 @@ import com.example.ui.screens.EncryptedVaultScreen
 import com.example.ui.screens.InferenceScreen
 import com.example.ui.screens.PluginPipelineScreen
 import com.example.ui.screens.SettingsScreen
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Public
+import com.example.ui.components.AppNavigationMenuSheet
+import com.example.ui.components.BillingAndAllocationsSheet
+import com.example.ui.components.QuantizationCalculatorSheet
+import com.example.ui.components.SiliconGovernorSheet
+import com.example.ui.components.ThemeStudioBottomSheet
+import com.example.ui.screens.ApiServerScreen
+import com.example.ui.screens.BackgroundTasksScreen
+import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.DeviceAndModelsScreen
+import com.example.ui.screens.EncryptedVaultScreen
+import com.example.ui.screens.HfExplorerScreen
+import com.example.ui.screens.ImageTaskScreen
+import com.example.ui.screens.InferenceScreen
+import com.example.ui.screens.ModelArenaScreen
+import com.example.ui.screens.PluginPipelineScreen
+import com.example.ui.screens.RagDebugScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
 import androidx.compose.material.icons.filled.Hub
 
 enum class AppDestination(val label: String, val icon: ImageVector) {
-    DASHBOARD("Dashboard", Icons.Default.Dashboard),
+    DASHBOARD("Home", Icons.Default.Dashboard),
     MODELS("Models", Icons.Default.Memory),
+    HF_EXPLORER("HF Hub", Icons.Default.Public),
     CHAT("Inference", Icons.Default.Chat),
-    API("API", Icons.Default.Hub),
+    IMAGE_STUDIO("Image AI", Icons.Default.AutoAwesome),
+    RAG_DEBUG("RAG Debug", Icons.Default.Analytics),
+    API("Server", Icons.Default.Hub),
+    BENCHMARK("Arena", Icons.Default.CompareArrows),
     QUEUE("Queue", Icons.Default.Schedule),
     PLUGINS("Plugins", Icons.Default.Extension),
     VAULT("Vault", Icons.Default.Lock)
@@ -91,11 +120,15 @@ fun EdgeLLMApp(
     val apiStats by viewModel.apiServerStats.collectAsState()
     val isAirGapped by viewModel.isAirGappedMode.collectAsState()
     val userProfile by viewModel.userSubscriptionProfile.collectAsState()
+    val hardware by viewModel.hardwareInfo.collectAsState()
 
     var currentDestination by remember { mutableStateOf(AppDestination.DASHBOARD) }
     var isInSettings by remember { mutableStateOf(false) }
+    var showNavMenuSheet by remember { mutableStateOf(false) }
     var showBillingSheet by remember { mutableStateOf(false) }
     var showThemeStudioSheet by remember { mutableStateOf(false) }
+    var showSiliconGovernorSheet by remember { mutableStateOf(false) }
+    var showQuantCalcSheet by remember { mutableStateOf(false) }
     var prefilledExportText by remember { mutableStateOf("") }
 
     MyApplicationTheme(
@@ -176,39 +209,6 @@ fun EdgeLLMApp(
                                 }
                             }
 
-                            // Pro Creator / Billing Pill Button (Properly sized & comfortable, non-squeezed)
-                            val planColor = if (userProfile.isPro) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.primary
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = planColor.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, planColor.copy(alpha = 0.35f)),
-                                modifier = Modifier
-                                    .padding(end = 4.dp)
-                                    .height(38.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .clickable { showBillingSheet = true }
-                                    .testTag("open_billing_action_btn")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = if (userProfile.isPro) Icons.Default.AutoAwesome else Icons.Default.CreditCard,
-                                        contentDescription = "Billing & Plan",
-                                        tint = planColor,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(7.dp))
-                                    Text(
-                                        text = if (userProfile.isPro) "PRO" else "${userProfile.usedAllocations / 1000}k/${userProfile.maxAllocations / 1000}k",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = planColor
-                                    )
-                                }
-                            }
-
                             // Theme & Visual Aesthetic Studio Launcher (Anytime Access)
                             IconButton(
                                 onClick = { showThemeStudioSheet = true },
@@ -261,6 +261,18 @@ fun EdgeLLMApp(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
+                            // 3-Lines Hamburger Menu Button in the top right corner
+                            IconButton(
+                                onClick = { showNavMenuSheet = true },
+                                modifier = Modifier.testTag("top_hamburger_menu_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Menu,
+                                    contentDescription = "Main App Menu",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -270,36 +282,67 @@ fun EdgeLLMApp(
             },
             bottomBar = {
                 if (!isInSettings) {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface
+                    val essentialDestinations = listOf(
+                        AppDestination.DASHBOARD,
+                        AppDestination.CHAT,
+                        AppDestination.MODELS,
+                        AppDestination.BENCHMARK,
+                        AppDestination.IMAGE_STUDIO
+                    )
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 6.dp,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        AppDestination.entries.forEach { destination ->
-                            val selected = currentDestination == destination
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = { currentDestination = destination },
-                                icon = {
-                                    Icon(
-                                        imageVector = destination.icon,
-                                        contentDescription = destination.label,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                },
-                                label = {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceAround,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            essentialDestinations.forEach { destination ->
+                                val selected = currentDestination == destination
+                                val activeColor = MaterialTheme.colorScheme.primary
+
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { currentDestination = destination }
+                                        .padding(vertical = 4.dp)
+                                        .testTag("nav_${destination.name.lowercase()}")
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = if (selected) activeColor.copy(alpha = 0.16f) else Color.Transparent,
+                                        modifier = Modifier
+                                            .height(32.dp)
+                                            .width(52.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = destination.icon,
+                                                contentDescription = destination.label,
+                                                tint = if (selected) activeColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = destination.label,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 9.5.sp,
-                                            letterSpacing = (-0.3).sp
-                                        ),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.sp,
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis
+                                        color = if (selected) activeColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
                                     )
-                                },
-                                modifier = Modifier.testTag("nav_${destination.name.lowercase()}")
-                            )
+                                }
+                            }
                         }
                     }
                 }
@@ -322,9 +365,16 @@ fun EdgeLLMApp(
                                 viewModel = viewModel,
                                 onNavigateToChat = { currentDestination = AppDestination.CHAT },
                                 onNavigateToModels = { currentDestination = AppDestination.MODELS },
-                                onNavigateToApi = { currentDestination = AppDestination.API }
+                                onNavigateToApi = { currentDestination = AppDestination.API },
+                                onNavigateToImageStudio = { currentDestination = AppDestination.IMAGE_STUDIO },
+                                onNavigateToRagDebug = { currentDestination = AppDestination.RAG_DEBUG },
+                                onNavigateToArena = { currentDestination = AppDestination.BENCHMARK }
                             )
                             AppDestination.MODELS -> DeviceAndModelsScreen(
+                                viewModel = viewModel,
+                                onNavigateToChat = { currentDestination = AppDestination.CHAT }
+                            )
+                            AppDestination.HF_EXPLORER -> HfExplorerScreen(
                                 viewModel = viewModel,
                                 onNavigateToChat = { currentDestination = AppDestination.CHAT }
                             )
@@ -335,8 +385,18 @@ fun EdgeLLMApp(
                                     currentDestination = AppDestination.VAULT
                                 }
                             )
+                            AppDestination.IMAGE_STUDIO -> ImageTaskScreen(
+                                viewModel = viewModel
+                            )
+                            AppDestination.RAG_DEBUG -> RagDebugScreen(
+                                viewModel = viewModel
+                            )
                             AppDestination.API -> ApiServerScreen(
                                 viewModel = viewModel
+                            )
+                            AppDestination.BENCHMARK -> ModelArenaScreen(
+                                viewModel = viewModel,
+                                onNavigateToChat = { currentDestination = AppDestination.CHAT }
                             )
                             AppDestination.QUEUE -> BackgroundTasksScreen(
                                 viewModel = viewModel,
@@ -359,6 +419,33 @@ fun EdgeLLMApp(
                         }
                     }
                 }
+            }
+            if (showNavMenuSheet) {
+                AppNavigationMenuSheet(
+                    viewModel = viewModel,
+                    currentDestination = currentDestination,
+                    onSelectDestination = { dest ->
+                        currentDestination = dest
+                        isInSettings = false
+                    },
+                    onOpenSettings = { isInSettings = true },
+                    onOpenThemeStudio = { showThemeStudioSheet = true },
+                    onOpenSiliconGovernor = { showSiliconGovernorSheet = true },
+                    onOpenQuantCalc = { showQuantCalcSheet = true },
+                    onDismiss = { showNavMenuSheet = false }
+                )
+            }
+            if (showSiliconGovernorSheet) {
+                SiliconGovernorSheet(
+                    viewModel = viewModel,
+                    onDismiss = { showSiliconGovernorSheet = false }
+                )
+            }
+            if (showQuantCalcSheet) {
+                QuantizationCalculatorSheet(
+                    deviceHardware = hardware,
+                    onDismiss = { showQuantCalcSheet = false }
+                )
             }
             if (showBillingSheet) {
                 BillingAndAllocationsSheet(

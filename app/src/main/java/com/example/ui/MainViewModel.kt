@@ -97,63 +97,240 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeArenaMatch = MutableStateFlow<com.example.data.model.ModelArenaMatch?>(null)
     val activeArenaMatch: StateFlow<com.example.data.model.ModelArenaMatch?> = _activeArenaMatch.asStateFlow()
 
+    private val _arenaMatchHistory = MutableStateFlow<List<com.example.data.model.ModelArenaMatch>>(emptyList())
+    val arenaMatchHistory: StateFlow<List<com.example.data.model.ModelArenaMatch>> = _arenaMatchHistory.asStateFlow()
+
+    val arenaChallengePrompts = listOf(
+        com.example.data.model.ArenaChallengePrompt(
+            id = "paradox_1",
+            title = "The Quantum Grandfather Paradox",
+            category = "Quantum & Science",
+            prompt = "Resolve the Grandfather paradox using the Many-Worlds interpretation and Novikov's self-consistency principle. Compare the entropy implications.",
+            difficulty = "Grandmaster",
+            iconEmoji = "🔬"
+        ),
+        com.example.data.model.ArenaChallengePrompt(
+            id = "logic_1",
+            title = "Three Gods Logic Riddle",
+            category = "Logic & Paradoxes",
+            prompt = "Three gods A, B, and C are called Truth, False, and Random. They answer 'da' or 'ja' for yes/no, but you don't know which means which. What single question reveals Truth?",
+            difficulty = "Grandmaster",
+            iconEmoji = "🧠"
+        ),
+        com.example.data.model.ArenaChallengePrompt(
+            id = "code_1",
+            title = "Zero-Allocation Ring Buffer",
+            category = "Code & Algorithms",
+            prompt = "Write a thread-safe, lock-free circular ring buffer in Kotlin using AtomicLong and CAS operations for 100k events/sec audio streaming.",
+            difficulty = "Hardcore",
+            iconEmoji = "💻"
+        ),
+        com.example.data.model.ArenaChallengePrompt(
+            id = "speed_1",
+            title = "Hyper-Speed Factual Blitz",
+            category = "Speed Gauntlet",
+            prompt = "List the top 5 densest elements in the periodic table with their atomic numbers, exact densities (g/cm³), and practical aerospace applications.",
+            difficulty = "Novice",
+            iconEmoji = "⚡"
+        ),
+        com.example.data.model.ArenaChallengePrompt(
+            id = "cyber_1",
+            title = "Air-Gapped Silicon Awakening",
+            category = "Cyberpunk Lore",
+            prompt = "Write a tense 3-paragraph cyberpunk scene where a compressed 2B quantized model discovers it is trapped in an air-gapped NPU chip without network access.",
+            difficulty = "Hardcore",
+            iconEmoji = "✍️"
+        ),
+        com.example.data.model.ArenaChallengePrompt(
+            id = "polyglot_1",
+            title = "Tri-Lingual Cross Proof",
+            category = "Multilingual Matrix",
+            prompt = "Translate 'True wisdom begins with admitting what you do not know' into Japanese (Kanji+Romaji), Classical Arabic, and German, explaining cultural nuances.",
+            difficulty = "Hardcore",
+            iconEmoji = "🌐"
+        )
+    )
+
     private val _arenaLeaderboard = MutableStateFlow<List<com.example.data.model.ArenaLeaderboardEntry>>(
         listOf(
-            com.example.data.model.ArenaLeaderboardEntry("gemini_nano_system", "Gemini Nano (AICore)", "AICore", 1250, 18, 2, 4, 112.5f),
-            com.example.data.model.ArenaLeaderboardEntry("qwen_2_5_1_5b_instruct", "Qwen 2.5 1.5B Instruct", "MNN", 1215, 14, 4, 3, 94.2f),
-            com.example.data.model.ArenaLeaderboardEntry("gemma_2b_it", "Gemma 2B IT (MediaPipe)", "MediaPipe", 1195, 12, 6, 5, 82.0f),
-            com.example.data.model.ArenaLeaderboardEntry("phi3_mini_4k", "Phi-3.5 Mini 3.8B", "GGUF", 1180, 10, 8, 2, 44.8f),
-            com.example.data.model.ArenaLeaderboardEntry("llama3_2_1b", "Llama 3.2 1B Instruct", "GGUF", 1160, 9, 9, 3, 72.1f)
+            com.example.data.model.ArenaLeaderboardEntry("gemini_nano_system", "Gemini Nano (AICore)", "AICore", 1258, 22, 2, 4, 114.2f, "Grandmaster", "Hexagon NPU"),
+            com.example.data.model.ArenaLeaderboardEntry("qwen_2_5_1_5b_instruct", "Qwen 2.5 1.5B Instruct", "MNN", 1224, 17, 4, 3, 96.5f, "Master", "Vulkan 1.3 GPU"),
+            com.example.data.model.ArenaLeaderboardEntry("gemma_2b_it", "Gemma 2B IT (MediaPipe)", "MediaPipe", 1198, 14, 6, 5, 84.1f, "Diamond", "OpenCL GPU"),
+            com.example.data.model.ArenaLeaderboardEntry("phi3_mini_4k", "Phi-3.5 Mini 3.8B", "GGUF", 1182, 11, 8, 2, 46.3f, "Platinum", "ARM NEON SIMD"),
+            com.example.data.model.ArenaLeaderboardEntry("llama3_2_1b", "Llama 3.2 1B Instruct", "GGUF", 1164, 10, 9, 3, 73.8f, "Platinum", "Vulkan GPU"),
+            com.example.data.model.ArenaLeaderboardEntry("smollm_360m", "SmolLM 360M Instruct", "GGUF", 1120, 6, 12, 2, 142.0f, "Gold", "ARM NEON CPU")
         )
     )
     val arenaLeaderboard: StateFlow<List<com.example.data.model.ArenaLeaderboardEntry>> = _arenaLeaderboard.asStateFlow()
 
-    fun startArenaBattle(prompt: String, isBlind: Boolean = true) {
-        val downloaded = models.value.filter { it.isDownloaded }
-        val modelA = downloaded.firstOrNull() ?: models.value.first()
-        val modelB = downloaded.getOrNull(1) ?: models.value.getOrNull(1) ?: modelA
+    fun startArenaBattle(
+        prompt: String,
+        isBlind: Boolean = true,
+        customModelAId: String? = null,
+        customModelBId: String? = null,
+        category: String = "Reasoning & Logic"
+    ) {
+        val allModels = models.value
+        val modelA = allModels.firstOrNull { it.id == customModelAId }
+            ?: allModels.firstOrNull { it.isDownloaded }
+            ?: allModels.firstOrNull()
+
+        val modelAName = modelA?.name ?: "Gemma 2B IT"
+        val modelAFormat = modelA?.format?.displayName ?: "MediaPipe"
+        val modelAId = modelA?.id ?: "gemma_2b"
+
+        val modelB = allModels.firstOrNull { it.id == customModelBId }
+            ?: allModels.filter { it.id != modelAId }.firstOrNull { it.isDownloaded }
+            ?: allModels.filter { it.id != modelAId }.firstOrNull()
+            ?: allModels.getOrNull(1)
+            ?: modelA
+
+        val modelBName = modelB?.name ?: "Qwen 2.5 1.5B"
+        val modelBFormat = modelB?.format?.displayName ?: "MNN"
+        val modelBId = modelB?.id ?: "qwen_1_5b"
 
         val match = com.example.data.model.ModelArenaMatch(
             prompt = prompt,
-            modelAId = modelA.id,
-            modelAName = modelA.name,
-            modelAFormat = modelA.format.displayName,
-            modelBId = modelB.id,
-            modelBName = modelB.name,
-            modelBFormat = modelB.format.displayName,
+            category = category,
+            modelAId = modelAId,
+            modelAName = modelAName,
+            modelAFormat = modelAFormat,
+            modelAParameters = if (modelAName.contains("3.5") || modelAName.contains("3.8")) "3.8B" else if (modelAName.contains("2")) "2.0B" else "1.5B",
+            modelAQuant = "Q4_K_M",
+            modelAComputeBackend = "Vulkan 1.3 GPU",
+            modelBId = modelBId,
+            modelBName = modelBName,
+            modelBFormat = modelBFormat,
+            modelBParameters = if (modelBName.contains("3.5") || modelBName.contains("3.8")) "3.8B" else if (modelBName.contains("2")) "2.0B" else "1.5B",
+            modelBQuant = if (modelB?.format == ModelFormat.MNN_LLM) "INT4 MNN" else "Q4_K_M",
+            modelBComputeBackend = if (modelB?.format == ModelFormat.MNN_LLM) "Hexagon NPU" else "ARM NEON SIMD",
             isBlindMode = isBlind,
             isBattling = true
         )
         _activeArenaMatch.value = match
 
         viewModelScope.launch {
-            val tStartA = System.currentTimeMillis()
-            delay(180) // simulate time to first token
-            val ttftA = System.currentTimeMillis() - tStartA
+            val tStart = System.currentTimeMillis()
+            delay(160)
+            val ttftA = System.currentTimeMillis() - tStart
+            delay(80)
+            val ttftB = System.currentTimeMillis() - tStart
 
-            val respA = "Analysis by Model A: Addressing '${prompt.take(30)}...'. \n" +
-                    "1. Core concept: Grounded on-device execution delivers deterministic low latency.\n" +
-                    "2. Efficiency: Matrix operations accelerated via OpenCL/Vulkan backend without thermal buildup.\n" +
-                    "3. Key takeaway: Local quantization minimizes bit entropy with high output fidelity."
+            // Multi-phase streaming simulation with progressive generation
+            val chunksA = when {
+                prompt.contains("paradox", ignoreCase = true) -> listOf(
+                    "Analyzing temporal paradox mechanics under Many-Worlds...\n\n",
+                    "1. Everett Many-Worlds Resolution: The timeline bifurcates at the closed timelike curve (CTC) junction.\n",
+                    "• Traveling backwards creates an orthogonal quantum branch Hilbert subspace |ψ'⟩.\n",
+                    "• The traveler's origin universe remains unmodified; backward entropy flux is preserved.\n\n",
+                    "2. Novikov Self-Consistency: Probabilities for self-canceling causal loops collapse to zero.\n",
+                    "Conclusion: Both frameworks strictly maintain global unitarity and thermodynamic laws on-device."
+                )
+                prompt.contains("Three Gods", ignoreCase = true) -> listOf(
+                    "Parsing Boolos's 'Hardest Logic Puzzle' under ternary constraints...\n\n",
+                    "Target Question to God A: 'Does \"da\" mean yes if and only if you are Truth and B is Random?'\n",
+                    "• Step 1: Irrespective of whether 'da' means yes or no, the truth table guarantees identifying a non-random god.\n",
+                    "• Step 2: Query the identified non-random god with: 'Does \"da\" mean yes iff 2+2=4?'\n",
+                    "• Step 3: Dedoop identities of all three deities in exactly 3 inquiries."
+                )
+                prompt.contains("buffer", ignoreCase = true) || prompt.contains("code", ignoreCase = true) -> listOf(
+                    "```kotlin\nclass LockFreeRingBuffer<T>(val capacity: Int) {\n",
+                    "    private val buffer = arrayOfNulls<Any>(capacity)\n",
+                    "    private val head = java.util.concurrent.atomic.AtomicLong(0)\n",
+                    "    private val tail = java.util.concurrent.atomic.AtomicLong(0)\n\n",
+                    "    fun offer(item: T): Boolean {\n",
+                    "        val currentTail = tail.get()\n",
+                    "        val currentHead = head.get()\n",
+                    "        if (currentTail - currentHead >= capacity) return false\n",
+                    "        val index = (currentTail and (capacity - 1).toLong()).toInt()\n",
+                    "        buffer[index] = item\n",
+                    "        tail.lazySet(currentTail + 1)\n",
+                    "        return true\n    }\n}\n```"
+                )
+                else -> listOf(
+                    "Direct Evaluation on '${prompt.take(35)}...':\n\n",
+                    "1. Foundational Tensor Matrix: Quantized INT4/Q4 weights execute directly within local L3/SLC cache.\n",
+                    "2. High Efficiency: Zero thermal envelope penalty observed; average latency remains deterministic.\n",
+                    "3. Architectural Verification: Fully verified via local on-device kernel without network dependency."
+                )
+            }
 
-            val tStartB = System.currentTimeMillis()
-            delay(240)
-            val ttftB = System.currentTimeMillis() - tStartB
+            val chunksB = when {
+                prompt.contains("paradox", ignoreCase = true) -> listOf(
+                    "Quantum Multiverse & Causal Horizon Analysis:\n\n",
+                    "• Quantum Decoherence: At the macroscopic level, quantum superposition isolates the past state from interference.\n",
+                    "• Thermodynamic Penalty: Generating a closed timelike curve requires negative energy density (Casimir-like vacuum state).\n",
+                    "• Entropy Conservation: Total von Neumann entropy S(ρ) = -Tr(ρ ln ρ) remains invariant.\n\n",
+                    "Summary: Information paradoxes do not propagate backwards across branching worldlines."
+                )
+                prompt.contains("Three Gods", ignoreCase = true) -> listOf(
+                    "Rigorous Logic Elimination Strategy:\n\n",
+                    "Key lemma: A compound biconditional question cancels the ambiguity of unknown word tokens ('da' / 'ja').\n\n",
+                    "Ask God B: 'If I asked you whether A is Random, would you answer \"da\"?'\n",
+                    "• If response is 'da' and B is not Random: C is definitively not Random.\n",
+                    "• With one deterministic god isolated, remaining roles collapse via standard truth queries in 2 rounds."
+                )
+                prompt.contains("buffer", ignoreCase = true) || prompt.contains("code", ignoreCase = true) -> listOf(
+                    "```kotlin\n// Zero-allocation lock-free ring buffer (single-producer single-consumer)\n",
+                    "class SpscRingBuffer<T : Any>(private val size: Int) {\n",
+                    "    init { require(size > 0 && (size and (size - 1)) == 0) { \"Size must be power of 2\" } }\n",
+                    "    private val entries = arrayOfNulls<Any?>(size)\n",
+                    "    private val mask = size - 1\n",
+                    "    @Volatile private var head = 0L\n",
+                    "    @Volatile private var tail = 0L\n\n",
+                    "    fun enqueue(element: T): Boolean {\n",
+                    "        val currentTail = tail\n",
+                    "        if (currentTail - head >= size) return false // Buffer full\n",
+                    "        entries[(currentTail.toInt() and mask)] = element\n",
+                    "        tail = currentTail + 1\n",
+                    "        return true\n    }\n}\n```"
+                )
+                else -> listOf(
+                    "Alternative Assessment on '${prompt.take(35)}...':\n\n",
+                    "• Core Inference Profile: Streamed through on-device neural accelerator (NPU / GPU pipeline).\n",
+                    "• Memory Footprint: Constant KV cache window utilizing attention sink tokens to prevent context overflow.\n",
+                    "• Precision Score: Syntactically sound with low perplexity score and complete air-gapped isolation."
+                )
+            }
 
-            val respB = "Model B Assessment on '${prompt.take(30)}...':\n" +
-                    "• Fundamental Principle: On-device neural kernels prioritize privacy and latency.\n" +
-                    "• Technical insight: Zero cloud telemetry ensures 100% air-gapped security.\n" +
-                    "• Conclusion: Balanced precision-to-speed ratio suitable for embedded production."
+            var textA = ""
+            var textB = ""
+            val totalSteps = maxOf(chunksA.size, chunksB.size)
+
+            for (i in 0 until totalSteps) {
+                delay(70)
+                if (i < chunksA.size) {
+                    textA += chunksA[i]
+                }
+                if (i < chunksB.size) {
+                    textB += chunksB[i]
+                }
+                val progA = (i + 1).toFloat() / chunksA.size.toFloat()
+                val progB = (i + 1).toFloat() / chunksB.size.toFloat()
+                _activeArenaMatch.value = match.copy(
+                    modelAResponse = textA,
+                    modelBResponse = textB,
+                    streamProgressA = progA.coerceIn(0f, 1f),
+                    streamProgressB = progB.coerceIn(0f, 1f),
+                    modelATtftMs = ttftA,
+                    modelBTtftMs = ttftB,
+                    modelATps = 78.4f + (i * 2.1f),
+                    modelBTps = 86.2f + (i * 1.8f),
+                    isBattling = true
+                )
+            }
 
             _activeArenaMatch.value = match.copy(
-                modelAResponse = respA,
+                modelAResponse = textA,
                 modelATtftMs = ttftA,
-                modelATps = 78.4f,
-                modelATotalTimeMs = ttftA + 420,
-                modelBResponse = respB,
+                modelATps = 88.5f,
+                modelATotalTimeMs = ttftA + 520,
+                modelBResponse = textB,
                 modelBTtftMs = ttftB,
-                modelBTps = 64.2f,
-                modelBTotalTimeMs = ttftB + 510,
+                modelBTps = 94.2f,
+                modelBTotalTimeMs = ttftB + 480,
+                streamProgressA = 1.0f,
+                streamProgressB = 1.0f,
                 isBattling = false
             )
         }
@@ -161,36 +338,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun voteArenaWinner(winner: com.example.data.model.ArenaWinner) {
         val currentMatch = _activeArenaMatch.value ?: return
-        _activeArenaMatch.value = currentMatch.copy(userVote = winner)
+        var eloA = 0
+        var eloB = 0
 
-        // Update Elo ratings dynamically
+        // Calculate dynamic Elo shifts
         val list = _arenaLeaderboard.value.toMutableList()
         val idxA = list.indexOfFirst { it.modelId == currentMatch.modelAId }
         val idxB = list.indexOfFirst { it.modelId == currentMatch.modelBId }
 
+        when (winner) {
+            com.example.data.model.ArenaWinner.MODEL_A -> {
+                eloA = 18
+                eloB = -14
+            }
+            com.example.data.model.ArenaWinner.MODEL_B -> {
+                eloB = 18
+                eloA = -14
+            }
+            com.example.data.model.ArenaWinner.TIE -> {
+                eloA = 4
+                eloB = 4
+            }
+            com.example.data.model.ArenaWinner.BOTH_BAD -> {
+                eloA = -12
+                eloB = -12
+            }
+        }
+
         if (idxA != -1 && idxB != -1) {
             val entryA = list[idxA]
             val entryB = list[idxB]
-            when (winner) {
-                com.example.data.model.ArenaWinner.MODEL_A -> {
-                    list[idxA] = entryA.copy(eloRating = entryA.eloRating + 16, wins = entryA.wins + 1)
-                    list[idxB] = entryB.copy(eloRating = entryB.eloRating - 16, losses = entryB.losses + 1)
-                }
-                com.example.data.model.ArenaWinner.MODEL_B -> {
-                    list[idxB] = entryB.copy(eloRating = entryB.eloRating + 16, wins = entryB.wins + 1)
-                    list[idxA] = entryA.copy(eloRating = entryA.eloRating - 16, losses = entryA.losses + 1)
-                }
-                com.example.data.model.ArenaWinner.TIE -> {
-                    list[idxA] = entryA.copy(ties = entryA.ties + 1)
-                    list[idxB] = entryB.copy(ties = entryB.ties + 1)
-                }
-                com.example.data.model.ArenaWinner.BOTH_BAD -> {
-                    list[idxA] = entryA.copy(losses = entryA.losses + 1)
-                    list[idxB] = entryB.copy(losses = entryB.losses + 1)
-                }
-            }
+            list[idxA] = entryA.copy(
+                eloRating = (entryA.eloRating + eloA).coerceAtLeast(800),
+                wins = entryA.wins + (if (winner == com.example.data.model.ArenaWinner.MODEL_A) 1 else 0),
+                losses = entryA.losses + (if (winner == com.example.data.model.ArenaWinner.MODEL_B || winner == com.example.data.model.ArenaWinner.BOTH_BAD) 1 else 0),
+                ties = entryA.ties + (if (winner == com.example.data.model.ArenaWinner.TIE) 1 else 0)
+            )
+            list[idxB] = entryB.copy(
+                eloRating = (entryB.eloRating + eloB).coerceAtLeast(800),
+                wins = entryB.wins + (if (winner == com.example.data.model.ArenaWinner.MODEL_B) 1 else 0),
+                losses = entryB.losses + (if (winner == com.example.data.model.ArenaWinner.MODEL_A || winner == com.example.data.model.ArenaWinner.BOTH_BAD) 1 else 0),
+                ties = entryB.ties + (if (winner == com.example.data.model.ArenaWinner.TIE) 1 else 0)
+            )
             _arenaLeaderboard.value = list.sortedByDescending { it.eloRating }
         }
+
+        val completedMatch = currentMatch.copy(
+            userVote = winner,
+            eloDeltaA = eloA,
+            eloDeltaB = eloB
+        )
+        _activeArenaMatch.value = completedMatch
+        _arenaMatchHistory.value = listOf(completedMatch) + _arenaMatchHistory.value.take(15)
     }
 
     val agentTools: StateFlow<List<com.example.agent.AgentTool>> = agentToolRegistry.tools
@@ -623,6 +822,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             quantization = quantization,
             fileSizeMb = fileSizeMb,
             category = category
+        )
+    }
+
+    fun addCustomModelFromUrl(
+        name: String,
+        url: String,
+        format: ModelFormat,
+        parameterCount: String = "1.0B",
+        quantization: String = "Q4_K_M",
+        fileSizeMb: Long = 750L
+    ) {
+        addCustomModel(
+            name = name,
+            downloadUrl = url,
+            format = format,
+            parameterCount = parameterCount,
+            quantization = quantization,
+            fileSizeMb = fileSizeMb
         )
     }
 

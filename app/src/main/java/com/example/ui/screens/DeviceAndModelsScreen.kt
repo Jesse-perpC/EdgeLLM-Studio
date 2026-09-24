@@ -152,13 +152,45 @@ fun DeviceAndModelsScreen(
         }
     }
 
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("device_models_screen"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    var activeMainTab by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        androidx.compose.material3.TabRow(
+            selectedTabIndex = activeMainTab,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+        ) {
+            androidx.compose.material3.Tab(
+                selected = activeMainTab == 0,
+                onClick = { activeMainTab = 0 },
+                text = { Text("Device Models (${models.size})", fontWeight = if (activeMainTab == 0) FontWeight.Bold else FontWeight.Medium) },
+                modifier = Modifier.testTag("tab_device_models")
+            )
+            androidx.compose.material3.Tab(
+                selected = activeMainTab == 1,
+                onClick = { activeMainTab = 1 },
+                text = { Text("🤗 HF Hub Explorer", fontWeight = if (activeMainTab == 1) FontWeight.Bold else FontWeight.Medium) },
+                modifier = Modifier.testTag("tab_hf_explorer")
+            )
+        }
+
+        if (activeMainTab == 1) {
+            HfExplorerScreen(
+                viewModel = viewModel,
+                onNavigateToChat = onNavigateToChat
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("device_models_screen"),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
         // Hardware Silicon Card
         item {
             HardwareHeaderCard(
@@ -1073,6 +1105,8 @@ fun DeviceAndModelsScreen(
         item {
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+    }
     }
 
     // Benchmark Bottom Sheet Dialog
