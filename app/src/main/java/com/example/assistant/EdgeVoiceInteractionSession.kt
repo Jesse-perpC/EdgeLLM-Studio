@@ -19,6 +19,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.example.data.model.HardwareAccelerationSettings
 import com.example.data.model.ModelCategory
 import com.example.data.model.ModelFormat
@@ -77,20 +79,28 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
     }
 
     override fun onCreateContentView(): View {
+        val density = context.resources.displayMetrics.density
+        val sideMarginPx = (16 * density).toInt()
+        val defaultBottomMarginPx = (44 * density).toInt()
+
         val container = FrameLayout(context).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
+            fitsSystemWindows = false
         }
 
         val cardLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(40, 36, 40, 36)
+            val padH = (20 * density).toInt()
+            val padTop = (18 * density).toInt()
+            val padBottom = (22 * density).toInt()
+            setPadding(padH, padTop, padH, padBottom)
             val bgDrawable = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xF0131722.toInt()) // Deep slate modern glass container
-                cornerRadius = 32f
-                setStroke(2, 0xFF38BDF8.toInt())
+                setColor(0xF40F172A.toInt()) // Deep slate modern glass container
+                cornerRadius = 28f * density
+                setStroke((1.5f * density).toInt(), 0xFF38BDF8.toInt())
             }
             background = bgDrawable
             val lp = FrameLayout.LayoutParams(
@@ -98,9 +108,25 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                setMargins(20, 20, 20, 48)
+                setMargins(sideMarginPx, (12 * density).toInt(), sideMarginPx, defaultBottomMarginPx)
             }
             layoutParams = lp
+        }
+
+        // Dynamically track navigation bar insets and keyboard (IME) so the assistant never gets obscured
+        ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
+            val navOrImeInsets = insets.getInsets(
+                WindowInsetsCompat.Type.navigationBars() or WindowInsetsCompat.Type.ime()
+            )
+            val lp = cardLayout.layoutParams as? FrameLayout.LayoutParams
+            if (lp != null) {
+                val elevatedBottomMargin = navOrImeInsets.bottom + (28 * density).toInt()
+                if (lp.bottomMargin != elevatedBottomMargin) {
+                    lp.bottomMargin = elevatedBottomMargin
+                    cardLayout.layoutParams = lp
+                }
+            }
+            insets
         }
 
         // Top Header Row
@@ -205,24 +231,26 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
         val inputControlsLayout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 8, 0, 0)
+            setPadding(0, (10 * density).toInt(), 0, (6 * density).toInt())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
 
-        // Microphone Button
+        // Microphone Button (Voice)
         micButton = ImageButton(context).apply {
             setImageResource(android.R.drawable.ic_btn_speak_now)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "Voice Dictation"
             val micBg = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(0xFF0284C7.toInt())
             }
             background = micBg
-            val p = LinearLayout.LayoutParams(88, 88).apply {
-                setMargins(0, 0, 12, 0)
+            val micSize = (48 * density).toInt()
+            val p = LinearLayout.LayoutParams(micSize, micSize).apply {
+                setMargins(0, 0, (10 * density).toInt(), 0)
             }
             layoutParams = p
             setOnClickListener {
@@ -235,20 +263,23 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
         }
         inputControlsLayout.addView(micButton)
 
-        // Text input field
+        // Text input field (Message Box)
         inputQueryEditText = EditText(context).apply {
-            hint = "Or type query..."
-            textSize = 13f
+            hint = "Ask or type query..."
+            textSize = 14f
             setTextColor(0xFFF1F5F9.toInt())
-            setHintTextColor(0xFF64748B.toInt())
+            setHintTextColor(0xFF94A3B8.toInt())
             val editBg = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x20FFFFFF.toInt())
-                cornerRadius = 24f
-                setStroke(1, 0x40FFFFFF.toInt())
+                setColor(0x351E293B.toInt())
+                cornerRadius = 24f * density
+                setStroke((1.2f * density).toInt(), 0x5038BDF8.toInt())
             }
             background = editBg
-            setPadding(24, 14, 24, 14)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            val padH = (16 * density).toInt()
+            val padV = (10 * density).toInt()
+            setPadding(padH, padV, padH, padV)
+            val inputHeight = (48 * density).toInt()
+            layoutParams = LinearLayout.LayoutParams(0, inputHeight, 1f)
             maxLines = 2
         }
         inputControlsLayout.addView(inputQueryEditText)
@@ -256,20 +287,25 @@ class EdgeVoiceInteractionSession(context: Context) : VoiceInteractionSession(co
         // Send Button
         val sendBtn = TextView(context).apply {
             text = "Send"
-            textSize = 13f
+            textSize = 13.5f
             setTextColor(0xFFFFFFFF.toInt())
             setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            contentDescription = "Send Query"
             val sendBg = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0xFF38BDF8.toInt())
-                cornerRadius = 24f
+                cornerRadius = 24f * density
             }
             background = sendBg
-            setPadding(28, 14, 28, 14)
+            val padH = (20 * density).toInt()
+            val padV = (10 * density).toInt()
+            setPadding(padH, padV, padH, padV)
+            val btnHeight = (48 * density).toInt()
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
+                btnHeight
             ).apply {
-                setMargins(12, 0, 0, 0)
+                setMargins((10 * density).toInt(), 0, 0, 0)
             }
             layoutParams = lp
             setOnClickListener {

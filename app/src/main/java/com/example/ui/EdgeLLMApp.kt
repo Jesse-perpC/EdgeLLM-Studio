@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -99,7 +100,7 @@ enum class AppDestination(val label: String, val icon: ImageVector) {
     DASHBOARD("Home", Icons.Default.Dashboard),
     MODELS("Models", Icons.Default.Memory),
     HF_EXPLORER("HF Hub", Icons.Default.Public),
-    CHAT("Inference", Icons.Default.Chat),
+    CHAT("Chat", Icons.Default.Chat),
     IMAGE_STUDIO("Image AI", Icons.Default.AutoAwesome),
     RAG_DEBUG("RAG Debug", Icons.Default.Analytics),
     API("Server", Icons.Default.Hub),
@@ -299,6 +300,7 @@ fun EdgeLLMApp(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .navigationBarsPadding()
                                 .padding(horizontal = 6.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceAround,
                             verticalAlignment = Alignment.CenterVertically

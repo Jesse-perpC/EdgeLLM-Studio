@@ -1,9 +1,15 @@
 package com.example.assistant
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +20,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,6 +75,7 @@ class AssistantOverlayActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         voiceSpeechManager = VoiceSpeechManager(application)
         cognitiveEngine = AssistantCognitiveEngine(this, inferenceEngine)
 
@@ -155,6 +164,20 @@ fun AssistantOverlayContent(
         }
     }
 
+    val speechRecognizerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenText = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spokenText.isNullOrBlank()) {
+                userQuery = spokenText
+                runQuery(spokenText)
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (initialQuery.isNotBlank()) {
             runQuery(initialQuery)
@@ -173,12 +196,15 @@ fun AssistantOverlayContent(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
                 .clickable(enabled = false) {} // Prevent click-through dismissal
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 18.dp, bottom = 24.dp)
             ) {
                 // Drag handle / Header
                 Row(
@@ -269,22 +295,52 @@ fun AssistantOverlayContent(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Input Bar
+                // Input Bar (Voice Mic + Text Input + Send Button)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Voice Mic Button
+                    IconButton(
+                        onClick = {
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to your assistant...")
+                            }
+                            try {
+                                speechRecognizerLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Voice input not supported", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF0284C7).copy(alpha = 0.15f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Voice Dictation",
+                            tint = Color(0xFF0284C7),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     OutlinedTextField(
                         value = userQuery,
                         onValueChange = { userQuery = it },
-                        placeholder = { Text("Ask your device assistant anything...", fontSize = 13.sp) },
+                        placeholder = { Text("Ask your assistant anything...", fontSize = 13.sp) },
                         shape = RoundedCornerShape(24.dp),
                         modifier = Modifier.weight(1f),
                         maxLines = 3
                     )
+
                     Spacer(modifier = Modifier.width(8.dp))
+
                     IconButton(
                         onClick = {
                             val q = userQuery
@@ -307,8 +363,6 @@ fun AssistantOverlayContent(
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
             }
         }
     }

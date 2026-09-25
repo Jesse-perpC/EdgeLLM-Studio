@@ -80,6 +80,9 @@ Following community feedback and user requests, EdgeLLM Studio features an uncro
    - Tapping the clean 3-line hamburger menu opens the comprehensive **`AppNavigationMenuSheet`** granting instant 1-tap access to all 11 studios and power tools (Hugging Face Hub Explorer, OpenAI/Ollama HTTP Server, RAG Knowledge Debugger, Background Queue, Sandboxed Plugins, Zero-Knowledge Vault, Silicon Governor, Quantization Calculator, and Theme Studio).
 3. **Unencumbered Top Bar**:
    - Removed billing/purchase buttons for a clean, distraction-free interface focused purely on on-device neural execution.
+4. **Android System Inset & Safe Navigation Bar Architecture**:
+   - Native Edge-to-Edge with dynamic `navigationBarsPadding()` and `imePadding()` ensures Android system navigation buttons (3-button navigation or gesture pill) never overlap the bottom menu tabs or prompt input controls.
+   - The System Voice Assistant Session (`EdgeVoiceInteractionSession`) and Assistant Overlay (`AssistantOverlayActivity`) observe window insets (`navigationBars` + `ime`) and apply dynamic margins so the voice mic button, message box, and send button remain elevated, unobstructed, and easily reachable on all physical Android devices.
 
 ---
 
