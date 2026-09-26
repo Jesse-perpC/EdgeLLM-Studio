@@ -707,6 +707,15 @@ class ExampleRobolectricTest {
   }
 
   @Test
+  fun `offline knowledge engine getFormattedSystemPrompt isolates formatting instructions`() {
+    val prompt = com.example.engine.OfflineKnowledgeEngine.getFormattedSystemPrompt("What is an object in Java?")
+    org.junit.Assert.assertTrue(prompt.contains("You are a basic, direct factual Q&A engine."))
+    org.junit.Assert.assertTrue(prompt.contains("Answer in one simple, plain sentence."))
+    org.junit.Assert.assertTrue(prompt.contains("User Question: What is an object in Java?"))
+    org.junit.Assert.assertTrue(prompt.contains("Direct Answer:"))
+  }
+
+  @Test
   fun `grammar constraint engine validates GBNF_STRICT_FACTUAL mode`() {
     val sample = """
       {

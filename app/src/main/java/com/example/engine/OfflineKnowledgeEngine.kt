@@ -24,6 +24,21 @@ object OfflineKnowledgeEngine {
     }
 
     /**
+     * Isolates formatting instructions from user space explicitly using strict markdown markers.
+     */
+    fun getFormattedSystemPrompt(userQuery: String): String {
+        return """
+        You are a basic, direct factual Q&A engine. 
+        Your ONLY job is to answer the user request directly. 
+        Do NOT discuss system architecture, constraints, or execution flows.
+        Answer in one simple, plain sentence.
+
+        User Question: $userQuery
+        Direct Answer:
+        """.trimIndent()
+    }
+
+    /**
      * Answers queries with high accuracy and domain-specific depth when operating offline or air-gapped.
      */
     fun answerQuery(
