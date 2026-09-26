@@ -89,6 +89,39 @@ class OutputVerificationEngine {
         }
 
         /**
+         * Fallback verification and sanitization for GBNF JSON structured outputs.
+         * If a tiny model (like a 1B parameter checkpoint) experiences a decoding loop
+         * or truncation failure despite grammar rules, this verification fallback
+         * provides the ultimate protection before data leaves the system loop.
+         */
+        fun verifyAndSanitize(rawJsonOutput: String): String {
+            return try {
+                val trimmed = rawJsonOutput.trim()
+                val jsonCandidate = when {
+                    trimmed.startsWith("{") && trimmed.endsWith("}") -> trimmed
+                    trimmed.contains("```json") -> trimmed.substringAfter("```json").substringBefore("```").trim()
+                    trimmed.contains("{") && trimmed.contains("}") -> {
+                        trimmed.substring(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1)
+                    }
+                    else -> trimmed
+                }
+                // Because GBNF guarantees structural JSON shapes, parse it immediately
+                val parsedObj = org.json.JSONObject(jsonCandidate)
+
+                val isOnTopic = parsedObj.optBoolean("is_on_topic", false)
+                if (!isOnTopic) {
+                    return "{\"is_on_topic\": false, \"answer\": \"Query out of application scope.\", \"confidence_score\": 0.0}"
+                }
+
+                // Clean up text formatting if needed and return valid payload
+                jsonCandidate
+            } catch (e: Exception) {
+                // Hard fallback if structural parsing fails due to runtime truncation
+                "{\"is_on_topic\": false, \"answer\": \"Factual decoding validation failed.\", \"confidence_score\": 0.0}"
+            }
+        }
+
+        /**
          * Implement basic n-gram repetition tracking to prevent model spinning
          */
         fun hasTokenLoop(text: String): Boolean {
@@ -300,6 +333,7 @@ class OutputVerificationEngine {
 
     fun hasTokenLoop(text: String): Boolean = Companion.hasTokenLoop(text)
     fun stripPreamble(text: String): String = Companion.stripPreamble(text)
+    fun verifyAndSanitize(rawJsonOutput: String): String = Companion.verifyAndSanitize(rawJsonOutput)
     fun verifyAndRefine(
         rawOutput: String,
         query: String,

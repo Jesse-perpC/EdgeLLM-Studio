@@ -42,6 +42,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
     val aiCoreEngine by lazy { AndroidAICoreEngine(context) }
     val mediaPipeEngine by lazy { MediaPipeInferenceEngine(context) }
     val alibabaMnnEngine by lazy { AlibabaMnnEngine(context) }
+    val llamaCppEngine by lazy { LlamaCppEngine(context) }
 
     fun generateStreamingResponse(
         prompt: String,
@@ -210,6 +211,20 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                         grammarModeUsed = GrammarMode.NONE
                     )
                 )
+            }
+            return@flow
+        }
+
+        // 4. llama.cpp Native GBNF Grammar Constrained Routing
+        if (params.grammarMode == GrammarMode.GBNF_STRICT_FACTUAL) {
+            llamaCppEngine.streamLlamaCppResponse(
+                prompt = effectivePrompt,
+                model = model,
+                settings = settings,
+                params = params,
+                useGbnfGrammar = true
+            ).collect { chunk ->
+                emit(chunk)
             }
             return@flow
         }
@@ -544,6 +559,10 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             GrammarMode.REGEX_PATTERN -> {
                 if (params.customRegexPattern.isNotBlank()) "2026-09-15" else rawBody
             }
+            GrammarMode.GBNF_STRICT_FACTUAL -> {
+                val factual = llamaCppEngine.generateStrictFactualResponse(prompt, model)
+                factual.toJsonString()
+            }
             else -> rawBody
         }
 
@@ -556,5 +575,43 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
 
     fun clearPrefixCache() {
         PrefixKVCacheManager.clearCache()
+    }
+
+    /**
+     * Builds command-line execution parameters for starting a local llama.cpp llama-server instance.
+     * Automatically enforces factual optimization with temperature 0.0 and optionally hooks in GBNF grammar files.
+     */
+    fun buildLlamaServerCommandArgs(
+        modelPath: String,
+        grammarPath: String? = null,
+        port: Int = 8080
+    ): List<String> {
+        return mutableListOf<String>().apply {
+            add("./llama-server")
+            add("-m")
+            add(modelPath)
+            add("--port")
+            add(port.toString())
+            add("--temp")
+            add("0.0") // Force factual optimization automatically
+            
+            // If a grammar constraint is provided, hook it straight into the process builder
+            grammarPath?.let {
+                add("--grammar-file")
+                add(it)
+            }
+        }
+    }
+
+    /**
+     * Starts or configures the local engine process builder for llama-server.
+     */
+    fun startLocalEngineInstance(
+        modelPath: String,
+        grammarPath: String? = null,
+        port: Int = 8080
+    ): ProcessBuilder {
+        val commandArgs = buildLlamaServerCommandArgs(modelPath, grammarPath, port)
+        return ProcessBuilder(commandArgs)
     }
 }

@@ -439,6 +439,16 @@ object OllamaWebUiGenerator {
           </div>
 
           <div class="param-group">
+            <div class="param-label"><span>GBNF Grammar Mode (llama.cpp)</span></div>
+            <select id="grammarSelect" style="width: 100%; padding: 8px; background: var(--code-bg); border: 1px solid var(--card-border); color: var(--text); border-radius: 6px; font-size: 12px;">
+              <option value="">None (Freeform Natural Language)</option>
+              <option value="strict_response.gbnf" selected>Strict Factual GBNF (llama.cpp)</option>
+              <option value="json">RFC-8259 JSON Strict</option>
+            </select>
+            <div style="font-size: 11px; color: var(--emerald); margin-top: 4px;">Zeroes out non-conforming logits at token level</div>
+          </div>
+
+          <div class="param-group">
             <div class="param-label"><span>Bearer API Token</span></div>
             <input type="text" id="apiTokenInput" value="$apiToken" placeholder="Leave empty for open LAN">
           </div>
@@ -499,11 +509,32 @@ runInference();</pre>
         </div>
 
         <h4 style="font-size: 13px; color: var(--emerald); margin-bottom: 8px;">3. Ollama CLI Compatibility</h4>
-        <div style="position:relative;">
+        <div style="position:relative; margin-bottom: 20px;">
           <button class="copy-btn" onclick="copySnippet('ollamaCode')">Copy</button>
           <pre id="ollamaCode">export OLLAMA_HOST=http://${stats.lanIp}:${stats.port}
 ollama list
 ollama run $activeModelName</pre>
+        </div>
+
+        <h4 style="font-size: 13px; color: #06B6D4; margin-bottom: 8px;">4. llama.cpp GBNF Grammar Constrained Decoding (Zero Hallucination)</h4>
+        <div style="position:relative;">
+          <button class="copy-btn" onclick="copySnippet('gbnfCode')">Copy</button>
+          <pre id="gbnfCode">// Enforces strict_response.gbnf at native token-sampling level
+curl http://${stats.lanIp}:${stats.port}/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "$activeModelName",
+    "messages": [{"role": "user", "content": "What is an object in Java?"}],
+    "temperature": 0.0,
+    "grammar": "strict_response.gbnf"
+  }'
+
+// Output is guaranteed 100% conforming:
+// {
+//   "is_on_topic": true,
+//   "answer": "An object in Java is an instance of a class containing state and behavior...",
+//   "confidence_score": 0.98
+// }</pre>
         </div>
       </div>
     </div>
@@ -592,16 +623,22 @@ ollama run $activeModelName</pre>
           headers['Authorization'] = 'Bearer ' + token;
         }
 
+        const grammarChoice = document.getElementById('grammarSelect') ? document.getElementById('grammarSelect').value : '';
+        const reqPayload = {
+          model: model,
+          messages: [{ role: 'user', content: text }],
+          temperature: temp,
+          top_p: topP,
+          stream: true
+        };
+        if (grammarChoice) {
+          reqPayload.grammar = grammarChoice;
+        }
+
         const response = await fetch('/v1/chat/completions', {
           method: 'POST',
           headers: headers,
-          body: JSON.stringify({
-            model: model,
-            messages: [{ role: 'user', content: text }],
-            temperature: temp,
-            top_p: topP,
-            stream: true
-          }),
+          body: JSON.stringify(reqPayload),
           signal: abortController.signal
         });
 

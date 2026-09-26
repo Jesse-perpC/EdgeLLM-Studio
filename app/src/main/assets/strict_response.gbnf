@@ -1,0 +1,13 @@
+# Root JSON structure layout
+root ::= "{\n" "  \"is_on_topic\": " boolean ",\n" "  \"answer\": " string ",\n" "  \"confidence_score\": " number "\n" "}"
+
+# Force boolean to be exactly true or false (no quotes)
+boolean ::= "true" | "false"
+
+# Force confidence score to be a valid fractional float between 0.0 and 1.0
+number ::= "0." [0-9] [0-9]? | "1.0"
+
+# String wrapper that handles escaped characters inside the answer text
+string ::= "\"" string-content "\""
+string-content ::= [^"\\]* (escape-sequence [^"\\]*)*
+escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]

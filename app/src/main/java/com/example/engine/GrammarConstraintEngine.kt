@@ -9,7 +9,8 @@ enum class GrammarMode(val displayName: String, val shortName: String, val descr
     PYTHON_CODE("Python Code Block", "Python", "Enforces ```python executable script structure"),
     SQL_QUERY("SQL Query", "SQL", "Enforces ANSI SQL SELECT/INSERT/UPDATE query syntax"),
     REGEX_PATTERN("Regex Pattern", "Regex", "Constrains token sequence to a custom regular expression"),
-    STEP_BY_STEP_REASONING("Deep CoT Thinking", "CoT", "Enforces <think> reasoning scratchpad before solution")
+    STEP_BY_STEP_REASONING("Deep CoT Thinking", "CoT", "Enforces <think> reasoning scratchpad before solution"),
+    GBNF_STRICT_FACTUAL("GBNF Strict Fact (llama.cpp)", "GBNF", "Native llama.cpp GBNF grammar: is_on_topic, answer, confidence_score")
 }
 
 data class GrammarValidationResult(
@@ -95,6 +96,25 @@ object GrammarConstraintEngine {
             description = "Constrains output to YYYY-MM-DD format strictly",
             mode = GrammarMode.REGEX_PATTERN,
             schemaOrTemplate = "^\\d{4}-\\d{2}-\\d{2}$"
+        ),
+        GrammarPreset(
+            id = "strict_response_gbnf",
+            title = "Strict Factual GBNF (llama.cpp)",
+            description = "Native GBNF automaton: forces {\"is_on_topic\", \"answer\", \"confidence_score\"}",
+            mode = GrammarMode.GBNF_STRICT_FACTUAL,
+            schemaOrTemplate = """# Root JSON structure layout
+root ::= "{\n" "  \"is_on_topic\": " boolean ",\n" "  \"answer\": " string ",\n" "  \"confidence_score\": " number "\n" "}"
+
+# Force boolean to be exactly true or false (no quotes)
+boolean ::= "true" | "false"
+
+# Force confidence score to be a valid fractional float between 0.0 and 1.0
+number ::= "0." [0-9] [0-9]? | "1.0"
+
+# String wrapper that handles escaped characters inside the answer text
+string ::= "\"" string-content "\""
+string-content ::= [^"\\]* (escape-sequence [^"\\]*)*
+escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]"""
         )
     )
 
@@ -182,6 +202,49 @@ object GrammarConstraintEngine {
                     GrammarValidationResult(isValid = false, mode = mode, message = "Incomplete reasoning trace markers.", syntaxErrorsFound = 1)
                 }
             }
+            GrammarMode.GBNF_STRICT_FACTUAL -> {
+                val jsonCandidate = when {
+                    trimmed.startsWith("{") && trimmed.endsWith("}") -> trimmed
+                    trimmed.contains("{") && trimmed.contains("}") -> {
+                        trimmed.substring(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1)
+                    }
+                    else -> trimmed
+                }
+                try {
+                    val json = JSONObject(jsonCandidate)
+                    if (json.has("is_on_topic") && json.has("answer") && json.has("confidence_score")) {
+                        val conf = json.optDouble("confidence_score", -1.0)
+                        if (conf in 0.0..1.0) {
+                            GrammarValidationResult(
+                                isValid = true,
+                                mode = mode,
+                                message = "GBNF strict response conforming: is_on_topic=${json.optBoolean("is_on_topic")}, confidence=$conf"
+                            )
+                        } else {
+                            GrammarValidationResult(
+                                isValid = false,
+                                mode = mode,
+                                message = "GBNF confidence_score must be between 0.0 and 1.0 (found $conf)",
+                                syntaxErrorsFound = 1
+                            )
+                        }
+                    } else {
+                        GrammarValidationResult(
+                            isValid = false,
+                            mode = mode,
+                            message = "GBNF schema missing required fields (is_on_topic, answer, confidence_score)",
+                            syntaxErrorsFound = 1
+                        )
+                    }
+                } catch (e: Throwable) {
+                    GrammarValidationResult(
+                        isValid = false,
+                        mode = mode,
+                        message = "GBNF JSON Syntax Error: ${e.message}",
+                        syntaxErrorsFound = 1
+                    )
+                }
+            }
             GrammarMode.NONE -> GrammarValidationResult(isValid = true, mode = mode, message = "Valid.")
         }
     }
@@ -203,6 +266,9 @@ object GrammarConstraintEngine {
             }
             GrammarMode.STEP_BY_STEP_REASONING -> {
                 "$systemPrompt\n\nCRITICAL CONSTRAINED DECODING RULE:\nYou MUST structure your entire thought process inside <think> and </think> tags before providing the final concise solution."
+            }
+            GrammarMode.GBNF_STRICT_FACTUAL -> {
+                "$systemPrompt\n\nCRITICAL CONSTRAINED DECODING RULE (llama.cpp GBNF):\nYou MUST output strictly in the format:\n{\n  \"is_on_topic\": <true|false>,\n  \"answer\": \"<direct factual answer without conversational pleasantries>\",\n  \"confidence_score\": <0.0 to 1.0>\n}"
             }
         }
     }

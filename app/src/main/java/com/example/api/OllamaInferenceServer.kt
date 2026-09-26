@@ -343,8 +343,16 @@ class OllamaInferenceServer(
         val activeModel = resolveModel(modelName)
 
         val settings = accelerationSettingsProvider()
+        val formatVal = json.optString("format", "")
+        val grammarVal = json.optString("grammar", "").ifEmpty { json.optJSONObject("options")?.optString("grammar", "") ?: "" }
+        val reqGrammarMode = when {
+            grammarVal.isNotBlank() -> com.example.engine.GrammarMode.GBNF_STRICT_FACTUAL
+            formatVal == "json" || json.optJSONObject("format") != null -> com.example.engine.GrammarMode.JSON_STRICT
+            else -> com.example.engine.GrammarMode.NONE
+        }
         val params = GenerationParameters(
-            temperature = json.optJSONObject("options")?.optDouble("temperature", 0.7)?.toFloat() ?: 0.7f
+            temperature = json.optJSONObject("options")?.optDouble("temperature", 0.7)?.toFloat() ?: 0.7f,
+            grammarMode = reqGrammarMode
         )
 
         var totalTokens = 0
@@ -441,7 +449,17 @@ class OllamaInferenceServer(
         val fullPrompt = promptBuilder.toString()
         val activeModel = resolveModel(modelName)
         val settings = accelerationSettingsProvider()
-        val params = GenerationParameters()
+        val chatFormatVal = json.optString("format", "")
+        val chatGrammarVal = json.optString("grammar", "").ifEmpty { json.optJSONObject("options")?.optString("grammar", "") ?: "" }
+        val chatGrammarMode = when {
+            chatGrammarVal.isNotBlank() -> com.example.engine.GrammarMode.GBNF_STRICT_FACTUAL
+            chatFormatVal == "json" || json.optJSONObject("format") != null -> com.example.engine.GrammarMode.JSON_STRICT
+            else -> com.example.engine.GrammarMode.NONE
+        }
+        val params = GenerationParameters(
+            temperature = json.optJSONObject("options")?.optDouble("temperature", 0.7)?.toFloat() ?: 0.7f,
+            grammarMode = chatGrammarMode
+        )
 
         var totalTokens = 0
         val startTime = System.currentTimeMillis()
@@ -543,7 +561,17 @@ class OllamaInferenceServer(
         val fullPrompt = promptBuilder.toString()
         val activeModel = resolveModel(modelName)
         val settings = accelerationSettingsProvider()
-        val params = GenerationParameters()
+        val responseFormat = json.optJSONObject("response_format")
+        val oaiGrammarVal = json.optString("grammar", "").ifEmpty { json.optJSONObject("options")?.optString("grammar", "") ?: "" }
+        val oaiGrammarMode = when {
+            oaiGrammarVal.isNotBlank() -> com.example.engine.GrammarMode.GBNF_STRICT_FACTUAL
+            responseFormat?.optString("type") == "json_object" || responseFormat?.optString("type") == "json_schema" -> com.example.engine.GrammarMode.JSON_STRICT
+            else -> com.example.engine.GrammarMode.NONE
+        }
+        val params = GenerationParameters(
+            temperature = json.optDouble("temperature", 0.7).toFloat(),
+            grammarMode = oaiGrammarMode
+        )
 
         val reqId = "chatcmpl-" + UUID.randomUUID().toString().substring(0, 12)
         val createdTimestamp = System.currentTimeMillis() / 1000

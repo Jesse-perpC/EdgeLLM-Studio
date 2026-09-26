@@ -143,6 +143,13 @@ fun GrammarSelectorSheet(
                     color = Color(0xFF10B981)
                 ),
                 GrammarOption(
+                    mode = GrammarMode.GBNF_STRICT_FACTUAL,
+                    title = "Strict Factual GBNF (llama.cpp)",
+                    subtitle = "Zeroes non-conforming token logits: {\"is_on_topic\", \"answer\", \"confidence_score\"}",
+                    icon = Icons.Default.CheckCircle,
+                    color = Color(0xFF06B6D4)
+                ),
+                GrammarOption(
                     mode = GrammarMode.STEP_BY_STEP_REASONING,
                     title = "Deep CoT Reasoning (<think>)",
                     subtitle = "Enforces step-by-step thinking scratchpad before final solution",

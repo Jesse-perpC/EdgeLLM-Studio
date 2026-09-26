@@ -620,4 +620,156 @@ class ExampleRobolectricTest {
       db.close()
     }
   }
+
+  @Test
+  fun `llama cpp engine loads strict_response gbnf asset and validates rules`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val engine = com.example.engine.LlamaCppEngine(context)
+
+    val grammar = engine.loadStrictResponseGbnf()
+    org.junit.Assert.assertTrue("Grammar should contain root rule", grammar.contains("root ::="))
+    org.junit.Assert.assertTrue("Grammar should contain is_on_topic", grammar.contains("is_on_topic"))
+    org.junit.Assert.assertTrue("Grammar should contain confidence_score", grammar.contains("confidence_score"))
+
+    // Test valid conforming JSON
+    val validJson = """
+      {
+        "is_on_topic": true,
+        "answer": "An object in Java is an instance of a class containing state and behavior.",
+        "confidence_score": 0.98
+      }
+    """.trimIndent()
+    val validResult = engine.validateStrictGbnfResponse(validJson)
+    org.junit.Assert.assertTrue("Valid JSON should pass GBNF validation", validResult.isValid)
+    assertEquals(true, validResult.parsedResponse?.isOnTopic)
+    assertEquals(0.98f, validResult.parsedResponse?.confidenceScore ?: 0f, 0.01f)
+
+    // Test non-conforming JSON (missing confidence_score)
+    val invalidJson = """
+      {
+        "is_on_topic": true,
+        "answer": "Missing confidence score key."
+      }
+    """.trimIndent()
+    val invalidResult = engine.validateStrictGbnfResponse(invalidJson)
+    org.junit.Assert.assertFalse("Invalid schema should fail validation", invalidResult.isValid)
+
+    // Test non-JSON conversational output (which GBNF prevents at the token level)
+    val conversationalFluff = "Sure! Here is the answer you requested: Objects are instances."
+    val fluffResult = engine.validateStrictGbnfResponse(conversationalFluff)
+    org.junit.Assert.assertFalse("Conversational fluff must be rejected by GBNF", fluffResult.isValid)
+  }
+
+  @Test
+  fun `llama cpp engine generates deterministic strict factual response`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val engine = com.example.engine.LlamaCppEngine(context)
+
+    val model = com.example.data.model.ModelSpec(
+      id = "test-llama-3b",
+      name = "Llama 3.2 3B Instruct",
+      parameterCount = "3.2B",
+      format = com.example.data.model.ModelFormat.GGUF,
+      quantization = "Q4_K_M",
+      fileSizeBytes = 2_000_000_000L,
+      requiredRamBytes = 2_400_000_000L,
+      contextLength = 4096,
+      description = "Test Llama model",
+      category = com.example.data.model.ModelCategory.CHAT_REASONING,
+      downloadUrl = "https://example.com/llama3.gguf",
+      sha256Checksum = "dummy"
+    )
+
+    // On-topic factual question
+    val response = engine.generateStrictFactualResponse("what are objects in java?", model)
+    org.junit.Assert.assertTrue(response.isOnTopic)
+    org.junit.Assert.assertTrue("Direct answer should not be empty", response.answer.isNotBlank())
+    org.junit.Assert.assertTrue(response.confidenceScore in 0.8f..1.0f)
+
+    // Verify serialization matches strict_response.gbnf layout
+    val jsonStr = response.toJsonString()
+    val validation = engine.validateStrictGbnfResponse(jsonStr)
+    org.junit.Assert.assertTrue("Generated output must pass GBNF validation", validation.isValid)
+
+    // Off-topic / conversational drift question
+    val offTopic = engine.generateStrictFactualResponse("write a fictional fairy tale about dragons", model)
+    org.junit.Assert.assertFalse("Creative writing must be marked off-topic", offTopic.isOnTopic)
+    assertEquals(0.0f, offTopic.confidenceScore, 0.001f)
+  }
+
+  @Test
+  fun `offline knowledge engine wraps strict prompt with boundary markers`() {
+    val wrapped = com.example.engine.OfflineKnowledgeEngine.wrapStrictPrompt("What is encapsulation?")
+    org.junit.Assert.assertTrue(wrapped.contains("[SYSTEM_INSTRUCTION]"))
+    org.junit.Assert.assertTrue(wrapped.contains("You are a highly constrained, local hardware-based fact engine."))
+    org.junit.Assert.assertTrue(wrapped.contains("[USER_QUERY]"))
+    org.junit.Assert.assertTrue(wrapped.contains("What is encapsulation?"))
+  }
+
+  @Test
+  fun `grammar constraint engine validates GBNF_STRICT_FACTUAL mode`() {
+    val sample = """
+      {
+        "is_on_topic": true,
+        "answer": "Clean verified fact.",
+        "confidence_score": 0.95
+      }
+    """.trimIndent()
+
+    val res = com.example.engine.GrammarConstraintEngine.validateOutput(
+      text = sample,
+      mode = com.example.engine.GrammarMode.GBNF_STRICT_FACTUAL
+    )
+    org.junit.Assert.assertTrue(res.isValid)
+
+    val badSample = "Not a json"
+    val badRes = com.example.engine.GrammarConstraintEngine.validateOutput(
+      text = badSample,
+      mode = com.example.engine.GrammarMode.GBNF_STRICT_FACTUAL
+    )
+    org.junit.Assert.assertFalse(badRes.isValid)
+  }
+
+  @Test
+  fun `output verification engine verifyAndSanitize handles valid, out of scope, and malformed json`() {
+    val validJson = """{"is_on_topic": true, "answer": "Objects represent real-world entities.", "confidence_score": 0.95}"""
+    val sanitizedValid = com.example.engine.OutputVerificationEngine.verifyAndSanitize(validJson)
+    val parsedValid = org.json.JSONObject(sanitizedValid)
+    assertEquals(true, parsedValid.getBoolean("is_on_topic"))
+    assertEquals("Objects represent real-world entities.", parsedValid.getString("answer"))
+
+    // Out of scope handling
+    val outOfScopeJson = """{"is_on_topic": false, "answer": "Some hallucinated off topic response.", "confidence_score": 0.2}"""
+    val sanitizedOutOfScope = com.example.engine.OutputVerificationEngine.verifyAndSanitize(outOfScopeJson)
+    val parsedOutOfScope = org.json.JSONObject(sanitizedOutOfScope)
+    assertEquals(false, parsedOutOfScope.getBoolean("is_on_topic"))
+    org.junit.Assert.assertTrue(parsedOutOfScope.getString("answer").contains("Query out of application scope"))
+
+    // Malformed JSON fallback
+    val malformed = "This is truncated or not a json..."
+    val fallback = com.example.engine.OutputVerificationEngine.verifyAndSanitize(malformed)
+    val parsedFallback = org.json.JSONObject(fallback)
+    assertEquals(false, parsedFallback.getBoolean("is_on_topic"))
+    org.junit.Assert.assertTrue(parsedFallback.getString("answer").contains("Factual decoding validation failed"))
+  }
+
+  @Test
+  fun `local inference engine builds correct llama server command args`() {
+    val engine = com.example.engine.LocalInferenceEngine()
+    val args = engine.buildLlamaServerCommandArgs(
+      modelPath = "/data/models/llama-3.2-3b.gguf",
+      grammarPath = "/data/assets/strict_response.gbnf",
+      port = 8080
+    )
+
+    assertEquals("./llama-server", args[0])
+    org.junit.Assert.assertTrue(args.contains("-m"))
+    org.junit.Assert.assertTrue(args.contains("/data/models/llama-3.2-3b.gguf"))
+    org.junit.Assert.assertTrue(args.contains("--port"))
+    org.junit.Assert.assertTrue(args.contains("8080"))
+    org.junit.Assert.assertTrue(args.contains("--temp"))
+    org.junit.Assert.assertTrue(args.contains("0.0"))
+    org.junit.Assert.assertTrue(args.contains("--grammar-file"))
+    org.junit.Assert.assertTrue(args.contains("/data/assets/strict_response.gbnf"))
+  }
 }
