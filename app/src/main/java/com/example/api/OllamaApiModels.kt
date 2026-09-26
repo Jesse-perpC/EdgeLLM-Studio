@@ -14,7 +14,8 @@ data class ApiServerConfig(
     val enableOpenAiCompat: Boolean = true,
     val batteryProtectionThreshold: Int = 15,
     val maxConcurrentRequests: Int = 4,
-    val defaultModelId: String? = null
+    val defaultModelId: String? = null,
+    val authToken: String = "sk-edgellm-local-tensor-token"
 )
 
 data class ApiServerStats(

@@ -102,6 +102,13 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             prompt
         }
 
+        // Apply strict prompt wrapping with explicit boundary markers for on-device accuracy
+        val strictExecutionPrompt = if (isAirGapped || params.temperature == 0.0f) {
+            OfflineKnowledgeEngine.wrapStrictPrompt(effectivePrompt)
+        } else {
+            effectivePrompt
+        }
+
         // 1. Android AICore System Foundation Model Routing (Gemini Nano)
         if (model.format == com.example.data.model.ModelFormat.ANDROID_AICORE) {
             aiCoreEngine.generateStreamingResponse(
@@ -266,9 +273,13 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             )
         }
 
-        // Apply Post-Generation Verification & Quality Guardrails (Label Studio, CoVe, Preamble-stripping, Loop Detection)
+        // 1. Intercept loops, off-topic triggers, and strip preamble via strict Chain-of-Verification
+        val cleanCheck = OutputVerificationEngine.verifyAndCleanOutput(responseText)
+        val textToProcess = if (!cleanCheck.isValid) cleanCheck.cleanedText else responseText
+
+        // 2. Apply Post-Generation Verification & Quality Guardrails (CoVe, Arithmetic, Code fence balance)
         val verification = OutputVerificationEngine.verifyAndRefine(
-            rawOutput = responseText,
+            rawOutput = textToProcess,
             query = prompt,
             enableThinkingMode = params.enableThinkingMode
         )

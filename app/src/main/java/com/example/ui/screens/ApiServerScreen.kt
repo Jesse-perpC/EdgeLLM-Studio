@@ -3,6 +3,8 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -318,6 +321,29 @@ fun ApiServerScreen(
                             ) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = "Copy Local URL", modifier = Modifier.size(18.dp))
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = {
+                                try {
+                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(stats.lanUrl))
+                                    context.startActivity(browserIntent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Open browser at ${stats.lanUrl}", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = stats.isRunning,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("open_browser_web_ui_btn")
+                        ) {
+                            Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open In-Browser Web UI (${stats.lanUrl})", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
 

@@ -220,8 +220,28 @@ class OllamaInferenceServer(
                     sendCorsPreflight(out)
                 }
 
-                // Health / Root info
-                method == "GET" && (path == "/" || path == "/health") -> {
+                // Web UI & In-Browser Playground on root IP or /ui or /chat
+                method == "GET" && (path == "/" || path == "/ui" || path == "/chat") -> {
+                    val acceptHeader = headers["accept"] ?: ""
+                    if (path == "/ui" || path == "/chat" || acceptHeader.contains("text/html") || !acceptHeader.contains("application/json")) {
+                        val html = OllamaWebUiGenerator.generateHtml(
+                            stats = _serverStats.value,
+                            activeModel = activeModelProvider(),
+                            models = modelProvider(),
+                            apiToken = config.authToken
+                        )
+                        sendHtmlResponse(out, 200, html)
+                    } else {
+                        val response = OllamaJsonHelper.createHealthResponse(
+                            _serverStats.value,
+                            activeModelProvider()?.name
+                        )
+                        sendJsonResponse(out, 200, response)
+                    }
+                }
+
+                // Explicit JSON Health Check
+                method == "GET" && path == "/health" -> {
                     val response = OllamaJsonHelper.createHealthResponse(
                         _serverStats.value,
                         activeModelProvider()?.name
@@ -653,6 +673,20 @@ class OllamaInferenceServer(
         val bytes = jsonPayload.toByteArray(StandardCharsets.UTF_8)
         val headers = "HTTP/1.1 $statusCode $statusText\r\n" +
                 "Content-Type: application/json; charset=utf-8\r\n" +
+                "Content-Length: ${bytes.size}\r\n" +
+                "Connection: close\r\n" +
+                corsHeaderString() +
+                "\r\n"
+
+        out.write(headers.toByteArray(StandardCharsets.UTF_8))
+        out.write(bytes)
+        out.flush()
+    }
+
+    private fun sendHtmlResponse(out: OutputStream, statusCode: Int, html: String) {
+        val bytes = html.toByteArray(StandardCharsets.UTF_8)
+        val headers = "HTTP/1.1 $statusCode OK\r\n" +
+                "Content-Type: text/html; charset=utf-8\r\n" +
                 "Content-Length: ${bytes.size}\r\n" +
                 "Connection: close\r\n" +
                 corsHeaderString() +

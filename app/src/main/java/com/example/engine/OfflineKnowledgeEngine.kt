@@ -6,6 +6,24 @@ import com.example.data.model.ModelSpec
 object OfflineKnowledgeEngine {
 
     /**
+     * Prepends a rigid system layout wrapper around the user input with explicit boundary markers.
+     * Keeps smaller on-device models strictly focused on factual output with zero conversational fluff.
+     */
+    fun wrapStrictPrompt(userQuery: String): String {
+        return """
+        [SYSTEM_INSTRUCTION]
+        You are a highly constrained, local hardware-based fact engine. 
+        You must deliver the absolute direct answer in the very first sentence. 
+        Do not include any pleasantries, conversational filler, or assumptions.
+        If you lack precise historical or factual data to answer perfectly, respond with exactly: "I do not know."
+        [/SYSTEM_INSTRUCTION]
+        [USER_QUERY]
+        $userQuery
+        [/USER_QUERY]
+        """.trimIndent()
+    }
+
+    /**
      * Answers queries with high accuracy and domain-specific depth when operating offline or air-gapped.
      */
     fun answerQuery(

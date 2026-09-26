@@ -118,14 +118,44 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 - **Content-Addressed SHA-256 Chunk Inspector**: Inspect exact document chunks, token lengths, and cryptographic hash identities.
 - **Live Cosine Similarity Slider**: Dynamically adjust retrieval confidence thresholds ($0.0 \dots 1.0$) and test search queries live against ranked chunks.
 
-### 4. ⚡ OpenAI & Ollama-Compatible Local HTTP Server (`ApiServerScreen`)
+### 4. ⚡ OpenAI & Ollama-Compatible Local HTTP Server & In-Browser Web UI (`ApiServerScreen`)
 - **Embedded Mobile Daemon**: Runs a native HTTP server directly on your Android device on port `8080` (or Ollama port `11434`).
+- **🌐 Built-In In-Browser Web UI Terminal**:
+  - Visiting `http://<PHONE_IP>:8080/` (or `/ui`) in any web browser on your Wi-Fi network serves an interactive, responsive Web Playground.
+  - Test prompts with real-time Server-Sent Events (SSE) streaming, live tokens/second speedometer, TTFT latency tracking, and temperature controls.
+  - Zero external CDN dependencies — operates 100% offline and air-gapped.
+- **TypeScript Web App Integration**:
+  - Connect any TypeScript/JavaScript frontend, Node.js service, or admin dashboard to your Android device using the official `openai` client:
+    ```typescript
+    import { OpenAI } from "openai";
+
+    const localAndroidLLM = new OpenAI({
+      baseURL: "http://<PHONE_IP>:8080/v1",
+      apiKey: "sk-edgellm-local-tensor-token"
+    });
+
+    const completion = await localAndroidLLM.chat.completions.create({
+      model: "tinyllama-1.1b-chat",
+      messages: [{ role: "user", content: "What is an object in Java?" }],
+      temperature: 0.0 // Greedy deterministic decoding
+    });
+
+    console.log(completion.choices[0].message.content);
+    ```
 - **Standard Endpoints**:
+  - `GET /` or `/ui` (Self-contained in-browser Web Terminal & Chat Studio)
   - `POST /v1/chat/completions` (OpenAI format, supports streaming SSE tokens)
   - `POST /api/chat` and `POST /api/generate` (Ollama native format)
-  - `GET /v1/models` (Catalog of downloaded local models)
-- **Developer Ready**: Connect external tools (Cursor IDE, VS Code Continue extension, Python `openai` client, or LAN web browsers) to your phone's Wi-Fi IP.
+  - `GET /v1/models` and `GET /api/tags` (Catalog of downloaded local models)
+  - `GET /health` (Server health & memory status)
 - **Security & Observability**: Bearer API token generation, rotation, copy-to-clipboard, rate limiting, and a live request audit logger tracking latency and tokens/sec.
+
+### 5. 🛡️ Output Verification & Local Guardrails Engine (`OutputVerificationEngine`)
+- **Chain-of-Verification (CoVe)**: Intercepts raw model tokens and verifies them against factual ground-truth before returning to the UI or client.
+- **N-Gram Token Loop Repetition Tracking**: Detects degraded repetitive token spinning across 3-gram, 4-gram, and 5-gram frequencies and gracefully breaks factual loops.
+- **Off-Topic Boundary Triggers**: Scans for system prompt breakdowns (`"as an AI"`, `"my opinions"`, `"creative writing"`, `"cannot answer"`) and strictly enforces within-scope answers.
+- **Strict Context Delimiter Injection (`OfflineKnowledgeEngine`)**: Encloses inputs in rigid `[SYSTEM_INSTRUCTION] ... [/SYSTEM_INSTRUCTION]` and `[USER_QUERY] ... [/USER_QUERY]` boundary markers to anchor small mobile models (1B/3B).
+- **Deterministic Inference Defaults**: Forces `temperature = 0.0f` and `top_k = 1` for greedy probability-optimal next-token decoding with zero chaotic drift.
 
 ### 5. ⚔️ LMSYS-Style Model Arena & Hardware Benchmark (`ModelArenaScreen`)
 - **Side-by-Side Dual Battle**: Compare two local models running against the same prompt simultaneously.
