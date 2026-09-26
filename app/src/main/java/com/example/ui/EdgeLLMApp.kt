@@ -130,6 +130,7 @@ fun EdgeLLMApp(
     var showThemeStudioSheet by remember { mutableStateOf(false) }
     var showSiliconGovernorSheet by remember { mutableStateOf(false) }
     var showQuantCalcSheet by remember { mutableStateOf(false) }
+    var showVoiceStudioSheet by remember { mutableStateOf(false) }
     var prefilledExportText by remember { mutableStateOf("") }
 
     MyApplicationTheme(
@@ -434,7 +435,14 @@ fun EdgeLLMApp(
                     onOpenThemeStudio = { showThemeStudioSheet = true },
                     onOpenSiliconGovernor = { showSiliconGovernorSheet = true },
                     onOpenQuantCalc = { showQuantCalcSheet = true },
+                    onOpenVoiceStudio = { showVoiceStudioSheet = true },
                     onDismiss = { showNavMenuSheet = false }
+                )
+            }
+            if (showVoiceStudioSheet) {
+                com.example.ui.components.VoiceCloningStudioSheet(
+                    viewModel = viewModel,
+                    onDismiss = { showVoiceStudioSheet = false }
                 )
             }
             if (showSiliconGovernorSheet) {

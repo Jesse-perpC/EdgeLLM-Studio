@@ -516,12 +516,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return billingRepository.getStripeSupabaseWebhookCode()
     }
 
-    // Voice Text-to-Speech Engine
+    // Voice Text-to-Speech & Voice Cloning Engine
     val isSpeaking: StateFlow<Boolean> get() = voiceSpeechManager.isSpeaking
     val currentlySpeakingId: StateFlow<String?> get() = voiceSpeechManager.currentlySpeakingId
     val speechRate: StateFlow<Float> get() = voiceSpeechManager.speechRate
+    val speechPitch: StateFlow<Float> get() = voiceSpeechManager.speechPitch
+    val availableVoiceProfiles: StateFlow<List<com.example.engine.VoiceProfile>> get() = voiceSpeechManager.availableProfiles
+    val activeVoiceProfile: StateFlow<com.example.engine.VoiceProfile> get() = voiceSpeechManager.activeVoiceProfile
     private val _autoVoiceReadout = MutableStateFlow(false)
     val autoVoiceReadout: StateFlow<Boolean> = _autoVoiceReadout.asStateFlow()
+
+    fun selectVoiceProfile(profile: com.example.engine.VoiceProfile) {
+        voiceSpeechManager.selectVoiceProfile(profile)
+    }
+
+    fun setSpeechPitch(pitch: Float) {
+        voiceSpeechManager.setSpeechPitch(pitch)
+    }
+
+    fun createClonedVoiceProfile(
+        name: String,
+        pitch: Float,
+        speechRate: Float,
+        sampleName: String? = null,
+        timbre: String = "Personal Cloned Voice"
+    ): com.example.engine.VoiceProfile {
+        return voiceSpeechManager.createClonedVoiceProfile(
+            name = name,
+            pitch = pitch,
+            speechRate = speechRate,
+            sampleName = sampleName,
+            timbre = timbre
+        )
+    }
+
+    fun deleteClonedVoiceProfile(id: String) {
+        voiceSpeechManager.deleteClonedProfile(id)
+    }
 
     // Air-Gapped vs Cloud Assist Mode
     private val _isAirGappedMode = MutableStateFlow(false)

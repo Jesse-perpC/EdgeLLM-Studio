@@ -157,7 +157,17 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 - **Strict Context Delimiter Injection (`OfflineKnowledgeEngine`)**: Encloses inputs in rigid `[SYSTEM_INSTRUCTION] ... [/SYSTEM_INSTRUCTION]` and `[USER_QUERY] ... [/USER_QUERY]` boundary markers to anchor small mobile models (1B/3B).
 - **Deterministic Inference Defaults**: Forces `temperature = 0.0f` and `top_k = 1` for greedy probability-optimal next-token decoding with zero chaotic drift.
 
-### 5. ⚔️ LMSYS-Style Model Arena & Hardware Benchmark (`ModelArenaScreen`)
+### 6. 🎙️ Neural Text-to-Speech & Voice Cloning Studio (`VoiceCloningStudioSheet` & `VoiceSpeechManager`)
+- **Native Neural TTS Engine**: Zero-latency speech synthesis powered by Android's hardware-accelerated speech services, supporting real-time streaming read-outs, dynamic speech speed (`0.5x` to `2.0x`), and fundamental pitch modulation (`0.5x` to `2.0x`).
+- **Chain-of-Thought Speech Filtering**: Automatically strips internal `<think>...</think>` tokens, markdown fences, and markdown formatting so the model only enunciates clean, final conversational answers.
+- **Zero-Shot Voice Cloner**:
+  - Record or upload a 5-second reference audio sample (`.wav`/`.m4a`).
+  - Extract acoustic speaker parameters (Target Pitch, Timbre Resonance, Speaking Cadence, and 512-dimensional speaker embeddings).
+  - Save personalized cloned voice profiles (e.g. *"Personal Studio Voice"*, *"Cyber Jarvis"*, *"Studio Narrator"*).
+- **Audition & Testing Playground**: Interactive in-studio audio audition player for testing customized voices with arbitrary text before deploying them as the active speaker.
+- **Sherpa-ONNX & Piper VITS Integration**: Ready for on-device VITS / Matcha-TTS neural vocoders conditioned by ECAPA-TDNN speaker embedding d-vectors.
+
+### 7. ⚔️ LMSYS-Style Model Arena & Hardware Benchmark (`ModelArenaScreen`)
 - **Side-by-Side Dual Battle**: Compare two local models running against the same prompt simultaneously.
 - **Blind Evaluation Mode**: Model identities are masked during generation to eliminate bias; users vote on Model A, Model B, or Tie before names are revealed.
 - **Dynamic Elo Rating Leaderboard**: Auto-calculates Elo ranking shifts based on user voting history.

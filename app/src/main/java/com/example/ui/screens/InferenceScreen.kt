@@ -49,7 +49,9 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
+import com.example.ui.components.VoiceCloningStudioSheet
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
@@ -172,6 +174,7 @@ fun InferenceScreen(
     var showPromptToolsSheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showVoiceRateDialog by remember { mutableStateOf(false) }
+    var showVoiceStudioSheet by remember { mutableStateOf(false) }
     var showSampleVisualsDialog by remember { mutableStateOf(false) }
     var showMemorySheet by remember { mutableStateOf(false) }
     var showScreenContextSheet by remember { mutableStateOf(false) }
@@ -869,6 +872,38 @@ fun InferenceScreen(
                             }
                         }
                     }
+
+                    // Voice Profile & Speech Studio Chip
+                    item {
+                        val activeVoice by viewModel.activeVoiceProfile.collectAsState()
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF0284C7).copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .clickable { showVoiceStudioSheet = true }
+                                .testTag("open_voice_studio_chip_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.RecordVoiceOver,
+                                    contentDescription = null,
+                                    tint = Color(0xFF38BDF8),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Voice: ${activeVoice.name}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF38BDF8)
+                                )
+                            }
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
             }
@@ -1053,6 +1088,73 @@ fun InferenceScreen(
                                     )
                                     Text(
                                         text = activePersona.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Active Voice Profile & Studio Card
+                        val activeVoiceProfile by viewModel.activeVoiceProfile.collectAsState()
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .clickable { showVoiceStudioSheet = true }
+                                .testTag("active_voice_profile_card")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF0284C7).copy(alpha = 0.15f),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.RecordVoiceOver,
+                                            contentDescription = null,
+                                            tint = Color(0xFF38BDF8),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Voice: ${activeVoiceProfile.name}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        if (activeVoiceProfile.isCloned) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFA855F7).copy(alpha = 0.2f)
+                                            ) {
+                                                Text(
+                                                    text = "CLONED",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFA855F7),
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = "${activeVoiceProfile.timbreSignature} • Tap to Clone or Change Voice",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1
@@ -1335,6 +1437,14 @@ fun InferenceScreen(
             onCreateCustomPersona = { viewModel.addCustomPersona(it) },
             onDeleteCustomPersona = { viewModel.deleteCustomPersona(it) },
             onDismiss = { showPersonaSheet = false }
+        )
+    }
+
+    // Voice Cloning & Speech Studio Sheet
+    if (showVoiceStudioSheet) {
+        VoiceCloningStudioSheet(
+            viewModel = viewModel,
+            onDismiss = { showVoiceStudioSheet = false }
         )
     }
 

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -98,6 +99,7 @@ fun AppNavigationMenuSheet(
     onOpenThemeStudio: () -> Unit,
     onOpenSiliconGovernor: () -> Unit,
     onOpenQuantCalc: () -> Unit,
+    onOpenVoiceStudio: () -> Unit = {},
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -329,6 +331,16 @@ fun AppNavigationMenuSheet(
                     items = listOf(
                         NavMenuItem(
                             destination = null,
+                            title = "Voice Cloning & Speech Studio",
+                            subtitle = "Neural TTS profiles, zero-shot cloning & acoustic timbre",
+                            icon = Icons.Default.RecordVoiceOver,
+                            badge = "VOICE AI",
+                            badgeColor = Color(0xFF38BDF8),
+                            isAction = true,
+                            actionType = "voice_studio"
+                        ),
+                        NavMenuItem(
+                            destination = null,
                             title = "Silicon Governor & Thermals",
                             subtitle = "NPU/GPU/CPU thread allocation, thermal governor",
                             icon = Icons.Default.Thermostat,
@@ -408,6 +420,10 @@ fun AppNavigationMenuSheet(
                                             .clickable {
                                                 if (item.isAction) {
                                                     when (item.actionType) {
+                                                        "voice_studio" -> {
+                                                            onDismiss()
+                                                            onOpenVoiceStudio()
+                                                        }
                                                         "governor" -> {
                                                             onDismiss()
                                                             onOpenSiliconGovernor()
