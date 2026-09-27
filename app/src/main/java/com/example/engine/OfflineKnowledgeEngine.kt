@@ -24,6 +24,29 @@ object OfflineKnowledgeEngine {
     }
 
     /**
+     * Standardizes input formatting across LiteRT, ONNX, and MNN
+     * to prevent ultra-small models from leaking system rules.
+     * Creates an artificial "jail" for models that don't support raw GBNF
+     * grammar files, forcing them to treat system instructions as a hard boundary.
+     * Use this for ALL non-GGUF engines (LiteRT/MediaPipe, ONNX, MNN, AICore).
+     */
+    fun wrapStrictPromptTemplate(userQuery: String): String {
+        return """<|im_start|>system
+You are an elite, single-sentence factual answer database.
+CRITICAL OPERATING BOUNDARIES:
+- Output the direct answer to the query in the very first sentence.
+- Do NOT say "Sure!", "Based on my settings...", or "Here is the answer".
+- Do NOT use structural markdown blocks like "**Core Mechanism:**" or "Execution Flow".
+- If you do not know the answer perfectly, respond with exactly: "Out of scope."
+<|im_end|>
+<|im_start|>user
+$userQuery
+<|im_end|>
+<|im_start|>assistant
+""".trimIndent()
+    }
+
+    /**
      * Isolates formatting instructions from user space explicitly using strict markdown markers.
      */
     fun getFormattedSystemPrompt(userQuery: String): String {
@@ -631,6 +654,23 @@ Machine learning models and gradient descent are grounded in fundamental analyti
 """.trimIndent()
         }
 
+        // Time, calendar & basic units (prevents generic jargon fallback)
+        if ((q.contains("how many hour") && q.contains("day")) || q == "hours in a day" || q.contains("hours per day")) {
+            return "There are **24 hours** in a day."
+        }
+        if ((q.contains("how many minute") && (q.contains("hour") || q.contains("day")))) {
+            return if (q.contains("day")) "There are **1,440 minutes** in a day (24 × 60)." else "There are **60 minutes** in an hour."
+        }
+        if ((q.contains("how many second") && (q.contains("minute") || q.contains("hour") || q.contains("day")))) {
+            return if (q.contains("day")) "There are **86,400 seconds** in a day (24 × 60 × 60)." else if (q.contains("hour")) "There are **3,600 seconds** in an hour (60 × 60)." else "There are **60 seconds** in a minute."
+        }
+        if (q.contains("how many day") && (q.contains("week"))) {
+            return "There are **7 days** in a week."
+        }
+        if (q.contains("how many day") && (q.contains("year") || q.contains("month"))) {
+            return "There are **365 days** in a common year (366 in a leap year) and approximately **30.44 days** in an average month."
+        }
+
         // Web / HTTP Status Codes
         if (q.contains("404")) {
             return "**HTTP 404 Not Found:** The server cannot locate the requested resource. The endpoint or URL is either incorrect, moved, or deleted."
@@ -866,20 +906,19 @@ $snippet
             return "All model weights, chat histories, vector embeddings, and RAG document stores reside strictly in your local device memory and encrypted storage. No tokens or telemetry leave the device."
         }
 
-        // 5. Clean, decisive extraction of the core subject
+        // 5. Clean, decisive extraction of the core subject.
+        // NOTE: Never emit architecture jargon ("Core Mechanism", "Execution Flow", etc.)
+        // here — tiny 1-3B models copy these phrases verbatim and leak them to the UI.
+        // If we cannot answer precisely, return the exact out-of-scope sentinel so
+        // OutputVerificationEngine can render a professional fallback.
         val subject = clean
             .replace(Regex("^(what is|what are|explain|tell me about|how does|how do|why is|why do|define)\\s+", RegexOption.IGNORE_CASE), "")
             .trim()
             .ifBlank { "your question" }
 
-        // Deliver a direct, high-density, authoritative answer without robotic boilerplate
-        return """
-$subject refers to the core principles and practical operations governing its implementation.
-
-Key aspects to understand:
-- **Core Mechanism:** Operates deterministically based on structured rules and verified runtime constraints.
-- **Execution Flow:** Coordinates inputs through verified pathways to produce predictable, high-fidelity outcomes.
-- **Application:** Applied in modern systems to enforce isolation, reduce latency, and ensure strict correctness without unnecessary overhead.
-""".trimIndent()
+        // Deliver a direct, honest fallback without robotic boilerplate or fake structure.
+        // Callers (LocalInferenceEngine + OutputVerificationEngine) will sanitize this
+        // into user-facing copy. Keep it free of trigger phrases.
+        return "Out of scope."
     }
 }

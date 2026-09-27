@@ -11,6 +11,20 @@ package com.example.engine
 class OutputVerificationEngine {
 
     companion object {
+        // Common hallucination keywords small models output when they break character.
+        // Tiny 1B-3B checkpoints copy system-prompt phrasing verbatim into the chat bubble.
+        private val systemJargonTriggers = listOf(
+            "core mechanism",
+            "execution flow",
+            "strict correctness",
+            "as an ai",
+            "operating boundaries",
+            "governing its implementation",
+            "core principles and practical operations",
+            "verified pathways",
+            "high-fidelity outcomes"
+        )
+
         // Define strict boundary keywords or regex patterns to catch drift
         private val offTopicTriggers = listOf(
             "as an AI",
@@ -75,6 +89,38 @@ class OutputVerificationEngine {
                 }
             }
 
+            // 2b. Scan for leaked system/jargon template text (non-GGUF engines).
+            // This is the post-decoder screen for LiteRT / ONNX / MNN which cannot
+            // enforce GBNF token-level constraints.
+            for (trigger in systemJargonTriggers) {
+                if (rawOutput.contains(trigger, ignoreCase = true)) {
+                    return VerificationResult(
+                        isValid = false,
+                        cleanedText = "I do not have enough precise internal information to answer this offline.",
+                        verifiedText = "I do not have enough precise internal information to answer this offline.",
+                        trustScore = 0.20f,
+                        correctionsApplied = listOf("Intercepted system-jargon leak: $trigger"),
+                        verificationFlags = listOf("SYSTEM_JARGON_LEAK_DETECTED", trigger),
+                        factualAccuracyScore = 0.20f,
+                        topicAdherenceScore = 0.10f
+                    )
+                }
+            }
+
+            // 2c. Honor the strict-prompt out-of-scope sentinel from wrapStrictPromptTemplate.
+            if (rawOutput.contains("out of scope", ignoreCase = true)) {
+                return VerificationResult(
+                    isValid = false,
+                    cleanedText = "I am unable to answer this question using offline weights.",
+                    verifiedText = "I am unable to answer this question using offline weights.",
+                    trustScore = 0.20f,
+                    correctionsApplied = listOf("Mapped out-of-scope sentinel to user-facing fallback"),
+                    verificationFlags = listOf("OUT_OF_SCOPE_SENTINEL"),
+                    factualAccuracyScore = 0.20f,
+                    topicAdherenceScore = 0.10f
+                )
+            }
+
             // 3. Strip introductory boilerplate fluff ("Sure, I can help with that!")
             val cleanedText = stripPreamble(rawOutput)
 
@@ -89,12 +135,48 @@ class OutputVerificationEngine {
         }
 
         /**
+         * Unified post-parsing sanitizer for ALL engines.
+         * Because tiny 1B-3B models running on mobile processors frequently break
+         * character despite strict prompting, this acts as the final shield before
+         * text hits the Jetpack Compose chat screen.
+         *
+         * - JSON-looking input -> strict GBNF/JSON validation path (unchanged behavior).
+         * - Plain-text input -> jargon-leak screen for LiteRT / ONNX / MNN which
+         *   cannot natively read GBNF grammar files.
+         */
+        fun verifyAndSanitizeText(rawModelOutput: String): String {
+            val trimmedOutput = rawModelOutput.trim()
+
+            // 1. Edge Case Protection: Check if the model leaked system keywords
+            for (trigger in systemJargonTriggers) {
+                if (trimmedOutput.contains(trigger, ignoreCase = true)) {
+                    return "I do not have enough precise internal information to answer this offline."
+                }
+            }
+
+            // 2. Guardrail: If the model fell back to the designated error string
+            if (trimmedOutput.contains("out of scope", ignoreCase = true)) {
+                return "I am unable to answer this question using offline weights."
+            }
+
+            // 3. Success: Return the cleaned, direct sentence (with preamble stripped)
+            return stripPreamble(trimmedOutput)
+        }
+
+        /**
          * Fallback verification and sanitization for GBNF JSON structured outputs.
-         * If a tiny model (like a 1B parameter checkpoint) experiences a decoding loop
-         * or truncation failure despite grammar rules, this verification fallback
-         * provides the ultimate protection before data leaves the system loop.
+         * Unified entry point: routes plain-text to [verifyAndSanitizeText] so
+         * non-GGUF engines get the same guarantee without native grammar support.
          */
         fun verifyAndSanitize(rawJsonOutput: String): String {
+            val trimmedEarly = rawJsonOutput.trim()
+            // Unified routing: plain-text (non-GGUF engines) -> text sanitizer.
+            // Prevents returning a JSON envelope into a chat bubble.
+            val looksLikeJson = trimmedEarly.contains("{") && trimmedEarly.contains("}") ||
+                    trimmedEarly.contains("```json")
+            if (!looksLikeJson) {
+                return verifyAndSanitizeText(rawJsonOutput)
+            }
             return try {
                 val trimmed = rawJsonOutput.trim()
                 val jsonCandidate = when {
@@ -334,6 +416,7 @@ class OutputVerificationEngine {
     fun hasTokenLoop(text: String): Boolean = Companion.hasTokenLoop(text)
     fun stripPreamble(text: String): String = Companion.stripPreamble(text)
     fun verifyAndSanitize(rawJsonOutput: String): String = Companion.verifyAndSanitize(rawJsonOutput)
+    fun verifyAndSanitizeText(rawModelOutput: String): String = Companion.verifyAndSanitizeText(rawModelOutput)
     fun verifyAndRefine(
         rawOutput: String,
         query: String,

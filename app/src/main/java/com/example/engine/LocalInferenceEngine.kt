@@ -103,7 +103,14 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             prompt
         }
 
-        // Apply strict prompt wrapping with explicit boundary markers for on-device accuracy
+        // Unified strict prompt jail for non-GGUF engines (LiteRT/MediaPipe, ONNX, MNN, AICore).
+        // These runtimes cannot read GBNF grammar files, so the ChatML wrapper is the
+        // only way to force a hard system boundary. GGUF keeps native GBNF instead.
+        val nonGbnfStrictPrompt = OfflineKnowledgeEngine.wrapStrictPromptTemplate(effectivePrompt)
+
+        // Apply strict prompt wrapping with explicit boundary markers for on-device accuracy.
+        // NOTE: strictExecutionPrompt was previously computed but never used (dead code
+        // that caused the jargon leak). It is now wired into every non-GBNF route below.
         val strictExecutionPrompt = if (isAirGapped || params.temperature == 0.0f) {
             OfflineKnowledgeEngine.wrapStrictPrompt(effectivePrompt)
         } else {
@@ -113,13 +120,14 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         // 1. Android AICore System Foundation Model Routing (Gemini Nano)
         if (model.format == com.example.data.model.ModelFormat.ANDROID_AICORE) {
             aiCoreEngine.generateStreamingResponse(
-                prompt = effectivePrompt,
+                prompt = nonGbnfStrictPrompt,
                 systemInstruction = params.systemPrompt
             ).collect { chunk ->
+                val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
                 emit(
                     StreamTokenChunk(
                         token = chunk.token,
-                        accumulatedText = chunk.accumulatedText,
+                        accumulatedText = displayText,
                         tokenCount = chunk.tokenCount,
                         tokensPerSecond = chunk.tokensPerSecond,
                         timeToFirstTokenMs = chunk.timeToFirstTokenMs,
@@ -153,12 +161,13 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 loraPath = null,
                 supportedLoraRank = loraAdapter?.rank ?: 8
             )
-            mediaPipeEngine.generateStreamingResponse(effectivePrompt, mpOptions).collect { chunk ->
+            mediaPipeEngine.generateStreamingResponse(nonGbnfStrictPrompt, mpOptions).collect { chunk ->
                 val loraBadge = if (chunk.loraRank != null) " (LoRA r=${chunk.loraRank})" else ""
+                val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
                 emit(
                     StreamTokenChunk(
                         token = chunk.token,
-                        accumulatedText = chunk.accumulatedText,
+                        accumulatedText = displayText,
                         tokenCount = chunk.tokenCount,
                         tokensPerSecond = chunk.tokensPerSecond,
                         timeToFirstTokenMs = chunk.timeToFirstTokenMs,
@@ -191,12 +200,13 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 threadCount = settings.threadCount,
                 enablePromptCache = settings.enablePrefixCaching
             )
-            alibabaMnnEngine.generateStreamingResponse(effectivePrompt, mnnConfig).collect { chunk ->
+            alibabaMnnEngine.generateStreamingResponse(nonGbnfStrictPrompt, mnnConfig).collect { chunk ->
                 val cacheHitTag = if (chunk.promptCacheHit) " • MNN PromptCache HIT" else ""
+                val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
                 emit(
                     StreamTokenChunk(
                         token = chunk.token,
-                        accumulatedText = chunk.accumulatedText,
+                        accumulatedText = displayText,
                         tokenCount = chunk.tokenCount,
                         tokensPerSecond = chunk.currentDecodeSpeedTps,
                         timeToFirstTokenMs = chunk.timeToFirstTokenMs,
@@ -275,7 +285,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 val loraBadge = if (loraAdapter != null) " • LoRA: ${loraAdapter.name} (r=${loraAdapter.rank})" else ""
                 val backendDesc = "${settings.computeBackend.shortName} (${settings.threadCount}T)$turboBadge$prefixBadge$specBadge$samplerBadge$loraBadge"
                 Pair(
-                    generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
+                    generateOfflineIntelligence(strictExecutionPrompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
                     backendDesc
                 )
             }
@@ -283,7 +293,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             val loraBadge = if (loraAdapter != null) " • LoRA: ${loraAdapter.name} (r=${loraAdapter.rank})" else ""
             val backendDesc = "${settings.computeBackend.shortName} (${settings.threadCount}T)$turboBadge$prefixBadge$specBadge$samplerBadge$loraBadge"
             Pair(
-                generateOfflineIntelligence(prompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
+                generateOfflineIntelligence(strictExecutionPrompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
                 backendDesc
             )
         }
@@ -575,6 +585,42 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
 
     fun clearPrefixCache() {
         PrefixKVCacheManager.clearCache()
+    }
+
+    /**
+     * Post-decoder screen for non-GBNF engines (LiteRT/MediaPipe, ONNX, MNN, AICore).
+     * - Strips any echoed strict-prompt jail (simulated stubs echo the input prompt).
+     * - Runs the unified OutputVerificationEngine sanitizer so jargon / "Out of scope"
+     *   leaks never reach the Jetpack Compose chat bubble.
+     * Call this on EVERY chunk emitted by early-return branches.
+     */
+    private fun sanitizeNonGbnfChunk(
+        accumulatedText: String,
+        originalPrompt: String,
+        effectivePrompt: String,
+        strictPrompt: String
+    ): String {
+        var display = accumulatedText
+        // Remove echoed jail wrappers from simulated stub outputs (they embed the prompt).
+        if (display.contains(strictPrompt)) {
+            display = display.replace(strictPrompt, originalPrompt)
+        }
+        if (display.contains(effectivePrompt) && effectivePrompt != originalPrompt) {
+            display = display.replace(effectivePrompt, originalPrompt)
+        }
+        // Strip raw ChatML jail markers if a tiny model echoed them verbatim.
+        display = display
+            .replace("<|im_start|>system", "")
+            .replace("<|im_start|>user", "")
+            .replace("<|im_start|>assistant", "")
+            .replace("<|im_end|>", "")
+            .replace("[SYSTEM_INSTRUCTION]", "")
+            .replace("[/SYSTEM_INSTRUCTION]", "")
+            .replace("[USER_QUERY]", "")
+            .replace("[/USER_QUERY]", "")
+            .trim()
+        // Unified post-sanitization (jargon + out-of-scope guardrails).
+        return OutputVerificationEngine.verifyAndSanitizeText(display)
     }
 
     /**
