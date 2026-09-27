@@ -1231,6 +1231,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteMessage(id: String) {
+        viewModelScope.launch {
+            repository.deleteMessage(id)
+        }
+    }
+
     fun updateAccelerationSettings(settings: HardwareAccelerationSettings) {
         _accelerationSettings.value = settings
     }
@@ -1841,6 +1847,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 personaId = _activePersona.value?.id ?: "general",
                 tokensDelta = 0
             )
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch {
+            repository.deleteSession(sessionId)
+            if (_activeSessionId.value == sessionId) {
+                _activeSessionId.value = "default_session"
+            }
+        }
+    }
+
+    fun clearAllSessions() {
+        viewModelScope.launch {
+            repository.clearAllSessions()
+            _activeSessionId.value = "default_session"
         }
     }
 }

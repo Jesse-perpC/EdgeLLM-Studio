@@ -378,6 +378,14 @@ class EdgeLLMRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun deleteSession(id: String) {
+        database.conversationSessionDao().deleteSession(id)
+    }
+
+    suspend fun clearAllSessions() {
+        database.conversationSessionDao().clearAllSessions()
+    }
+
     suspend fun updateMessageRating(id: String, rating: Int, feedbackNotes: String? = null) {
         database.chatDao().updateMessageRating(id, rating, feedbackNotes)
     }
@@ -418,6 +426,10 @@ class EdgeLLMRepository(private val database: AppDatabase) {
     }
 
     suspend fun deleteChatMessage(id: String) {
+        database.chatDao().deleteMessage(id)
+    }
+
+    suspend fun deleteMessage(id: String) {
         database.chatDao().deleteMessage(id)
     }
 

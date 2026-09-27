@@ -342,6 +342,16 @@ class OllamaInferenceServer(
         val fullPrompt = if (systemPrompt.isNotBlank()) "$systemPrompt\n\n$prompt" else prompt
         val activeModel = resolveModel(modelName)
 
+        var ollamaImageUri: String? = null
+        val ollamaImages = json.optJSONArray("images")
+        if (ollamaImages != null && ollamaImages.length() > 0) {
+            val raw = ollamaImages.optString(0)
+            if (raw.isNotBlank()) {
+                ollamaImageUri = if (raw.startsWith("data:")) raw else "data:image/jpeg;base64,$raw"
+            }
+        }
+        val ollamaImageLabel = if (ollamaImageUri != null) "Visual Input" else null
+
         val settings = accelerationSettingsProvider()
         val formatVal = json.optString("format", "")
         val grammarVal = json.optString("grammar", "").ifEmpty { json.optJSONObject("options")?.optString("grammar", "") ?: "" }
@@ -374,7 +384,9 @@ class OllamaInferenceServer(
                     prompt = fullPrompt,
                     model = activeModel,
                     settings = settings,
-                    params = params
+                    params = params,
+                    attachedImageUri = ollamaImageUri,
+                    attachedImageLabel = ollamaImageLabel
                 ).collect { chunk ->
                     totalTokens = chunk.tokenCount
                     val chunkJson = JSONObject().apply {
@@ -409,7 +421,9 @@ class OllamaInferenceServer(
             val responseText = inferenceEngine.generateOfflineIntelligence(
                 prompt = fullPrompt,
                 model = activeModel,
-                params = params
+                params = params,
+                attachedImageUri = ollamaImageUri,
+                attachedImageLabel = ollamaImageLabel
             )
             val tokens = inferenceEngine.tokenizeResponse(responseText)
             totalTokens = tokens.size
@@ -549,12 +563,46 @@ class OllamaInferenceServer(
         val stream = json.optBoolean("stream", false)
         val messagesArray = json.optJSONArray("messages") ?: JSONArray()
 
+        var extractedImageLabel: String? = json.optString("image_label").takeIf { it.isNotBlank() }
+        var extractedImageUri: String? = json.optString("image_url").takeIf { it.isNotBlank() }
+            ?: json.optString("image").takeIf { it.isNotBlank() }
+            ?: json.optString("image_base64").takeIf { it.isNotBlank() }
+
+        // Also check top-level images array (Ollama-style compatibility)
+        val topImages = json.optJSONArray("images")
+        if (extractedImageUri == null && topImages != null && topImages.length() > 0) {
+            val raw = topImages.optString(0)
+            if (raw.isNotBlank()) {
+                extractedImageUri = if (raw.startsWith("data:")) raw else "data:image/jpeg;base64,$raw"
+                if (extractedImageLabel == null) extractedImageLabel = "Attached Visual"
+            }
+        }
+
         val promptBuilder = StringBuilder()
         for (i in 0 until messagesArray.length()) {
             val msg = messagesArray.optJSONObject(i) ?: continue
             val role = msg.optString("role", "user")
-            val content = msg.optString("content", "")
-            promptBuilder.append("$role: $content\n")
+            val contentObj = msg.opt("content")
+            if (contentObj is JSONArray) {
+                // OpenAI Multimodal content array format
+                for (j in 0 until contentObj.length()) {
+                    val part = contentObj.optJSONObject(j) ?: continue
+                    val type = part.optString("type")
+                    if (type == "text") {
+                        val text = part.optString("text")
+                        promptBuilder.append("$role: $text\n")
+                    } else if (type == "image_url") {
+                        val imgUrl = part.optJSONObject("image_url")?.optString("url") ?: part.optString("image_url")
+                        if (imgUrl.isNotBlank()) {
+                            extractedImageUri = imgUrl
+                            if (extractedImageLabel == null) extractedImageLabel = "Web Visual Input"
+                        }
+                    }
+                }
+            } else {
+                val content = msg.optString("content", "")
+                promptBuilder.append("$role: $content\n")
+            }
         }
         promptBuilder.append("assistant: ")
 
@@ -593,7 +641,9 @@ class OllamaInferenceServer(
                     prompt = fullPrompt,
                     model = activeModel,
                     settings = settings,
-                    params = params
+                    params = params,
+                    attachedImageUri = extractedImageUri,
+                    attachedImageLabel = extractedImageLabel
                 ).collect { chunk ->
                     totalTokens = chunk.tokenCount
                     val deltaJson = JSONObject().apply {
@@ -625,7 +675,9 @@ class OllamaInferenceServer(
             val responseText = inferenceEngine.generateOfflineIntelligence(
                 prompt = fullPrompt,
                 model = activeModel,
-                params = params
+                params = params,
+                attachedImageUri = extractedImageUri,
+                attachedImageLabel = extractedImageLabel
             )
             val tokens = inferenceEngine.tokenizeResponse(responseText)
             totalTokens = tokens.size

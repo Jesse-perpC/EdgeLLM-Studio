@@ -1,4 +1,4 @@
-name: Build EdgeLLM Android APK
+name: Build EdgeLLM Android APK & Release Package
 
 on:
   push:
@@ -16,18 +16,21 @@ permissions:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Android APK & Release Packages
     runs-on: ubuntu-latest
 
     env:
       CI: "false"
       GRADLE_OPTS: "-Xmx3584m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
+      BUILD_NUMBER: ${{ github.run_number }}
+      APP_VERSION_NAME: "1.0.${{ github.run_number }}"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           lfs: true
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -47,7 +50,7 @@ jobs:
           echo "Ensuring Android SDK platform 36 is present..."
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" 2>/dev/null || true
 
-      - name: Prepare Environment & Keystore
+      - name: Prepare Environment & Keystores
         run: |
           # 1. Provide .env for Secrets Gradle plugin
           if [ -f .env.example ]; then
@@ -68,38 +71,83 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          # 3. Make gradlew executable
+          # 3. Optional custom release keystore secret support
+          if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "Configuring custom release keystore from secrets..."
+            echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/my-upload-key.jks" || true
+            echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/my-upload-key.jks" >> $GITHUB_ENV
+            if [ -n "${{ secrets.STORE_PASSWORD }}" ]; then
+              echo "STORE_PASSWORD=${{ secrets.STORE_PASSWORD }}" >> $GITHUB_ENV
+            fi
+            if [ -n "${{ secrets.KEY_ALIAS }}" ]; then
+              echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+            fi
+            if [ -n "${{ secrets.KEY_PASSWORD }}" ]; then
+              echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+            fi
+          fi
+
+          # 4. Make gradlew executable
           chmod +x gradlew
 
-      - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug --no-daemon --no-configuration-cache --stacktrace
+      - name: Build Debug and Release APKs with Gradle
+        run: ./gradlew assembleDebug assembleRelease --no-daemon --no-configuration-cache --stacktrace
 
-      - name: Locate Generated APK
+      - name: Locate & Rename Generated APKs
         id: locate-apk
         run: |
-          echo "Listing all APKs:"
+          echo "Listing all generated APKs:"
           find app/build/outputs/apk -type f -name "*.apk" -ls
-          APK_PATH=$(find app/build/outputs/apk/debug -type f -name "*.apk" | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            echo "ERROR: No APK generated!"
-            exit 1
-          fi
-          echo "Found APK at: $APK_PATH"
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          
+          mkdir -p dist-apks
+          VERSION="1.0.${{ github.run_number }}"
+          echo "Processing artifacts for Version: $VERSION"
 
-      - name: Upload Android APK Artifact
+          DEBUG_APK=$(find app/build/outputs/apk/debug -type f -name "*.apk" | head -n 1)
+          RELEASE_APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
+
+          if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
+            echo "Found Release APK at: $RELEASE_APK"
+            cp "$RELEASE_APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk"
+            cp "$RELEASE_APK" "dist-apks/EdgeLLM-Studio-release-latest.apk"
+            echo "release_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
+            echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -n "$DEBUG_APK" ] && [ -f "$DEBUG_APK" ]; then
+            echo "Found Debug APK at: $DEBUG_APK"
+            cp "$DEBUG_APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk"
+            cp "$DEBUG_APK" "dist-apks/EdgeLLM-Studio-debug-latest.apk"
+            echo "debug_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
+            if [ -z "$RELEASE_APK" ]; then
+              echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Upload Release APK Artifact
+        if: steps.locate-apk.outputs.release_apk_path != ''
         uses: actions/upload-artifact@v4
         with:
-          name: EdgeLLM-Studio-Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
+          name: EdgeLLM-Studio-v1.0.${{ github.run_number }}-Release-APK
+          path: dist-apks/*release*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdgeLLM-Studio-v1.0.${{ github.run_number }}-Debug-APK
+          path: dist-apks/*debug*.apk
           if-no-files-found: error
           retention-days: 30
 
       - name: Package Windows Desktop Bundle
-        if: always() && steps.locate-apk.outputs.apk_path != ''
+        if: always() && steps.locate-apk.outputs.primary_apk_path != ''
         run: |
           mkdir -p dist-windows
-          cp "${{ steps.locate-apk.outputs.apk_path }}" dist-windows/EdgeLLM-Studio.apk
+          cp "${{ steps.locate-apk.outputs.primary_apk_path }}" dist-windows/EdgeLLM-Studio.apk
           if [ -d scripts/windows ]; then
             cp scripts/windows/* dist-windows/ 2>/dev/null || true
           fi
@@ -107,7 +155,7 @@ jobs:
           ls -lh EdgeLLM-Studio-Windows-Desktop.zip
 
       - name: Upload Windows Desktop Artifact
-        if: always() && steps.locate-apk.outputs.apk_path != ''
+        if: always() && steps.locate-apk.outputs.primary_apk_path != ''
         uses: actions/upload-artifact@v4
         with:
           name: EdgeLLM-Studio-Windows-Desktop-Bundle
@@ -115,13 +163,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Publish GitHub Release
+      - name: Publish GitHub Release (Tagged Push)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/debug/*.apk
+            dist-apks/*.apk
             EdgeLLM-Studio-Windows-Desktop.zip
+          name: "EdgeLLM Studio ${{ github.ref_name }}"
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish GitHub Release (Main Branch Auto-Release)
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && !startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "EdgeLLM Studio Release v1.0.${{ github.run_number }}"
+          body: |
+            ### 🚀 Automated Build Release v1.0.${{ github.run_number }}
+            - **Commit**: `${{ github.sha }}`
+            - **Version Code**: `${{ github.run_number }}`
+            - **Version Name**: `1.0.${{ github.run_number }}`
+            - **Release APK**: Included below (Self-contained, installable directly on Android 7.0+)
+            - **Debug APK**: Included below for ADB logcat diagnostics
+            - **Windows Desktop Bundle**: Included below with WSA launcher script
+          files: |
+            dist-apks/*.apk
+            EdgeLLM-Studio-Windows-Desktop.zip
+          prerelease: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -301,6 +301,97 @@ object OllamaWebUiGenerator {
       cursor: not-allowed;
       transform: none;
     }
+    .visual-preview-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0B132B;
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 12px;
+      padding: 8px 12px;
+      margin-top: 10px;
+    }
+    .visual-preview-thumb {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: #020617;
+    }
+    .visual-preview-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow: hidden;
+    }
+    .visual-preview-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .visual-vision-chip {
+      font-size: 11px;
+      color: var(--emerald);
+      font-weight: 600;
+    }
+    .visual-remove-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .visual-remove-btn:hover {
+      color: #EF4444;
+      background: rgba(239, 68, 68, 0.1);
+    }
+    .action-icon-btn {
+      background: #020617;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      color: var(--text-muted);
+      width: 52px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .action-icon-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .action-icon-btn.has-visual {
+      border-color: var(--emerald);
+      color: var(--emerald);
+      background: rgba(16, 185, 129, 0.15);
+    }
+    .chat-attached-visual {
+      max-width: 280px;
+      max-height: 200px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: block;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    .input-bar.drag-over {
+      border-color: var(--primary);
+      background: rgba(56, 189, 248, 0.08);
+      border-radius: 12px;
+    }
     .param-group {
       margin-bottom: 16px;
     }
@@ -409,8 +500,20 @@ object OllamaWebUiGenerator {
             </div>
           </div>
 
-          <div class="input-bar">
-            <textarea id="promptInput" placeholder="Ask your local model anything (Press Enter to send)..." rows="1"></textarea>
+          <!-- Visual Upload Preview Area -->
+          <div id="visualPreviewBar" class="visual-preview-bar" style="display: none;">
+            <img id="visualPreviewImg" class="visual-preview-thumb" src="" alt="Attached Visual Preview">
+            <div class="visual-preview-info">
+              <span id="visualPreviewName" class="visual-preview-name">visual.jpg</span>
+              <span class="visual-vision-chip">👁️ Vision Perception Model Ready (224x224 Patch Encoder)</span>
+            </div>
+            <button class="visual-remove-btn" onclick="clearSelectedVisual()" title="Remove Attached Visual">✕</button>
+          </div>
+
+          <div class="input-bar" id="inputBarContainer">
+            <input type="file" id="visualFileInput" accept="image/*" style="display: none;" onchange="handleVisualSelected(event)">
+            <button id="visualBtn" class="action-icon-btn" onclick="document.getElementById('visualFileInput').click()" title="Attach image / visual for vision models">📷</button>
+            <textarea id="promptInput" placeholder="Ask your local model anything or attach a visual (Enter to send)..." rows="1"></textarea>
             <button id="sendBtn" class="send-btn" onclick="sendMessage()">Send</button>
             <button id="stopBtn" class="send-btn" style="background:#EF4444; color:white; display:none;" onclick="stopGeneration()">Stop</button>
           </div>
@@ -425,6 +528,16 @@ object OllamaWebUiGenerator {
             <select id="modelSelector">
               $modelOptions
             </select>
+          </div>
+
+          <div class="param-group" style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 10px; margin-bottom: 14px;">
+            <div style="display:flex; align-items:center; gap:6px; font-weight:700; font-size:12px; color:var(--primary);">
+              <span>📷</span>
+              <span>Vision Perception Active</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.4;">
+              Upload screenshots, invoices, or charts via the 📷 button, drag-and-drop, or paste (Ctrl+V) to evaluate on-device multimodal vision models.
+            </div>
           </div>
 
           <div class="param-group">
@@ -566,6 +679,54 @@ curl http://${stats.lanIp}:${stats.port}/v1/chat/completions \
 
   <script>
     let abortController = null;
+    let currentVisualDataUrl = null;
+    let currentVisualName = '';
+
+    function handleVisualSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (file) {
+        processVisualFile(file);
+      }
+    }
+
+    function processVisualFile(file) {
+      if (!file.type || !file.type.startsWith('image/')) {
+        alert('Please select an image file (PNG, JPG, WebP, GIF).');
+        return;
+      }
+      currentVisualName = file.name || 'Visual input';
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        currentVisualDataUrl = e.target.result;
+        const imgEl = document.getElementById('visualPreviewImg');
+        if (imgEl) imgEl.src = currentVisualDataUrl;
+        const nameEl = document.getElementById('visualPreviewName');
+        if (nameEl) nameEl.innerText = currentVisualName;
+        const barEl = document.getElementById('visualPreviewBar');
+        if (barEl) barEl.style.display = 'flex';
+        const btnEl = document.getElementById('visualBtn');
+        if (btnEl) btnEl.classList.add('has-visual');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearSelectedVisual() {
+      currentVisualDataUrl = null;
+      currentVisualName = '';
+      const barEl = document.getElementById('visualPreviewBar');
+      if (barEl) barEl.style.display = 'none';
+      const imgEl = document.getElementById('visualPreviewImg');
+      if (imgEl) imgEl.src = '';
+      const inputEl = document.getElementById('visualFileInput');
+      if (inputEl) inputEl.value = '';
+      const btnEl = document.getElementById('visualBtn');
+      if (btnEl) btnEl.classList.remove('has-visual');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    }
 
     function switchTab(name) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -591,13 +752,65 @@ curl http://${stats.lanIp}:${stats.port}/v1/chat/completions \
       }
     });
 
+    // Drag-and-drop visual upload support
+    const chatContainerEl = document.getElementById('chatHistory');
+    const inputBarContainerEl = document.getElementById('inputBarContainer');
+    [chatContainerEl, inputBarContainerEl].forEach(function(el) {
+      if (!el) return;
+      el.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        inputBarContainerEl.classList.add('drag-over');
+      });
+      el.addEventListener('dragleave', function() {
+        inputBarContainerEl.classList.remove('drag-over');
+      });
+      el.addEventListener('drop', function(e) {
+        e.preventDefault();
+        inputBarContainerEl.classList.remove('drag-over');
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file && file.type && file.type.startsWith('image/')) {
+          processVisualFile(file);
+        }
+      });
+    });
+
+    // Clipboard paste image support
+    document.getElementById('promptInput').addEventListener('paste', function(e) {
+      const items = (e.clipboardData || (window.clipboardData && window.clipboardData.items)) && (e.clipboardData || window.clipboardData).items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type && items[i].type.indexOf('image') !== -1) {
+            const file = items[i].getAsFile();
+            if (file) {
+              processVisualFile(file);
+              break;
+            }
+          }
+        }
+      }
+    });
+
     async function sendMessage() {
       const input = document.getElementById('promptInput');
       const text = input.value.trim();
-      if (!text) return;
+      const visualToAttach = currentVisualDataUrl;
+      const visualNameToAttach = currentVisualName;
+
+      if (!text && !visualToAttach) return;
 
       input.value = '';
-      appendMessage('user', text);
+
+      let userBubbleHtml = '';
+      if (visualToAttach) {
+        userBubbleHtml += '<img src="' + visualToAttach + '" class="chat-attached-visual" alt="Attached visual">';
+      }
+      if (text) {
+        userBubbleHtml += '<div>' + escapeHtml(text) + '</div>';
+      } else {
+        userBubbleHtml += '<div><em>[Analyzing attached visual...]</em></div>';
+      }
+      appendMessage('user', userBubbleHtml);
+      clearSelectedVisual();
 
       document.getElementById('sendBtn').style.display = 'none';
       document.getElementById('stopBtn').style.display = 'inline-flex';
@@ -624,13 +837,30 @@ curl http://${stats.lanIp}:${stats.port}/v1/chat/completions \
         }
 
         const grammarChoice = document.getElementById('grammarSelect') ? document.getElementById('grammarSelect').value : '';
+
+        let messageContent;
+        if (visualToAttach) {
+          messageContent = [
+            { type: 'text', text: text || 'Analyze and describe this visual image in detail.' },
+            { type: 'image_url', image_url: { url: visualToAttach } }
+          ];
+        } else {
+          messageContent = text;
+        }
+
         const reqPayload = {
           model: model,
-          messages: [{ role: 'user', content: text }],
+          messages: [{ role: 'user', content: messageContent }],
           temperature: temp,
           top_p: topP,
           stream: true
         };
+        if (visualToAttach) {
+          const rawBase64 = visualToAttach.includes(',') ? visualToAttach.split(',')[1] : visualToAttach;
+          reqPayload.images = [rawBase64];
+          reqPayload.image_url = visualToAttach;
+          reqPayload.image_label = visualNameToAttach;
+        }
         if (grammarChoice) {
           reqPayload.grammar = grammarChoice;
         }

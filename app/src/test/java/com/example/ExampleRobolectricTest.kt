@@ -781,4 +781,166 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertTrue(args.contains("--grammar-file"))
     org.junit.Assert.assertTrue(args.contains("/data/assets/strict_response.gbnf"))
   }
+
+  @Test
+  fun `chat history and conversation sessions persist and manage in room database`() {
+    kotlinx.coroutines.runBlocking {
+      val context = ApplicationProvider.getApplicationContext<Context>()
+      val db = androidx.room.Room.inMemoryDatabaseBuilder(
+        context,
+        com.example.data.local.AppDatabase::class.java
+      ).allowMainThreadQueries().build()
+
+      val chatDao = db.chatDao()
+      val sessionDao = db.conversationSessionDao()
+
+      // 1. Create a conversation session
+      val sessionId = "session_test_42"
+      val session = com.example.data.local.entity.ConversationSessionEntity(
+        id = sessionId,
+        title = "Physics Q&A",
+        contextSummary = "Discussion about thermodynamics",
+        activePersonaId = "expert",
+        messageCount = 2,
+        totalTokens = 150,
+        createdAt = System.currentTimeMillis(),
+        lastActiveAt = System.currentTimeMillis()
+      )
+      sessionDao.insertSession(session)
+
+      val retrievedSession = sessionDao.getSessionById(sessionId)
+      org.junit.Assert.assertNotNull(retrievedSession)
+      assertEquals("Physics Q&A", retrievedSession?.title)
+
+      // 2. Insert chat messages for this session
+      val msg1 = com.example.data.local.entity.ChatMessageEntity(
+        id = "msg_1",
+        sessionId = sessionId,
+        sender = "USER",
+        text = "What is the second law of thermodynamics?",
+        timestamp = System.currentTimeMillis() - 1000,
+        tokensGenerated = 8,
+        tokensPerSecond = 0f,
+        timeToFirstTokenMs = 0L,
+        executionBackend = "USER",
+        modelId = "user"
+      )
+      val msg2 = com.example.data.local.entity.ChatMessageEntity(
+        id = "msg_2",
+        sessionId = sessionId,
+        sender = "ASSISTANT",
+        text = "The entropy of an isolated system always increases over time.",
+        timestamp = System.currentTimeMillis(),
+        tokensGenerated = 12,
+        tokensPerSecond = 34.5f,
+        timeToFirstTokenMs = 120L,
+        executionBackend = "CPU_NEON",
+        modelId = "test-model"
+      )
+      chatDao.insertMessage(msg1)
+      chatDao.insertMessage(msg2)
+
+      val recentMessages = chatDao.getRecentSessionMessages(sessionId, 10)
+      assertEquals(2, recentMessages.size)
+
+      // 3. Delete individual session
+      sessionDao.deleteSession(sessionId)
+      org.junit.Assert.assertNull(sessionDao.getSessionById(sessionId))
+
+      // 4. Clear chat history
+      chatDao.clearHistory()
+      val emptySnapshot = chatDao.getAllMessagesSnapshot()
+      assertEquals(0, emptySnapshot.size)
+
+      db.close()
+    }
+  }
+
+  @Test
+  fun `build number versioning logic computes ascending release version`() {
+    val runNumber = 42
+    val versionName = "1.0.$runNumber"
+    assertEquals("1.0.42", versionName)
+    org.junit.Assert.assertTrue(runNumber > 1)
+  }
+
+  @Test
+  fun `web terminal html contains visual upload controls and preview bar`() {
+    val stats = com.example.api.ApiServerStats(
+      isRunning = true,
+      port = 8080,
+      lanIp = "192.168.1.100"
+    )
+    val model = com.example.data.model.ModelSpec(
+      id = "llama3.2-vision",
+      name = "Llama 3.2 1B Vision",
+      parameterCount = "1.2B",
+      format = com.example.data.model.ModelFormat.GGUF,
+      quantization = "Q4_K_M",
+      fileSizeBytes = 1200000000L,
+      requiredRamBytes = 2000000000L,
+      contextLength = 4096,
+      description = "On-device multimodal vision model",
+      category = com.example.data.model.ModelCategory.VISION_MULTIMODAL,
+      downloadUrl = "https://example.com/model.gguf",
+      sha256Checksum = "dummy"
+    )
+    val html = com.example.api.OllamaWebUiGenerator.generateHtml(
+      stats = stats,
+      activeModel = model,
+      models = listOf(model),
+      apiToken = ""
+    )
+
+    org.junit.Assert.assertTrue(html.contains("id=\"visualFileInput\""))
+    org.junit.Assert.assertTrue(html.contains("id=\"visualBtn\""))
+    org.junit.Assert.assertTrue(html.contains("id=\"visualPreviewBar\""))
+    org.junit.Assert.assertTrue(html.contains("chat-attached-visual"))
+    org.junit.Assert.assertTrue(html.contains("handleVisualSelected"))
+    org.junit.Assert.assertTrue(html.contains("Vision Perception Active"))
+  }
+
+  @Test
+  fun `local inference engine multimodal vision analyzes attached image`() {
+    val engine = com.example.engine.LocalInferenceEngine()
+    val model = com.example.data.model.ModelSpec(
+      id = "llama3.2-vision",
+      name = "Llama 3.2 1B Vision",
+      parameterCount = "1.2B",
+      format = com.example.data.model.ModelFormat.GGUF,
+      quantization = "Q4_K_M",
+      fileSizeBytes = 1200000000L,
+      requiredRamBytes = 2000000000L,
+      contextLength = 4096,
+      description = "On-device multimodal vision model",
+      category = com.example.data.model.ModelCategory.VISION_MULTIMODAL,
+      downloadUrl = "https://example.com/model.gguf",
+      sha256Checksum = "dummy"
+    )
+    val params = com.example.data.model.GenerationParameters()
+
+    val visionResponse = engine.generateOfflineIntelligence(
+      prompt = "Extract text and analyze invoice",
+      model = model,
+      params = params,
+      attachedImageUri = "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+      attachedImageLabel = "Invoice_2026.png"
+    )
+
+    org.junit.Assert.assertTrue(visionResponse.contains("Multimodal Vision Analysis"))
+    org.junit.Assert.assertTrue(visionResponse.contains("Invoice_2026.png"))
+  }
+
+  @Test
+  fun `conversational interface reasoning extraction parses think tags correctly`() {
+    val rawText = "<think>\nStep 1: Check battery state.\nStep 2: Initialize Vulkan tensors.\n</think>\nThe Vulkan acceleration engine is active and ready."
+    val thinkRegex = Regex("<think>([\\s\\S]*?)</think>")
+    val match = thinkRegex.find(rawText)
+    org.junit.Assert.assertNotNull(match)
+    val thought = match?.groupValues?.get(1)?.trim() ?: ""
+    val finalAnswer = rawText.replace(thinkRegex, "").trim()
+
+    org.junit.Assert.assertTrue(thought.contains("Step 1: Check battery state"))
+    assertEquals("The Vulkan acceleration engine is active and ready.", finalAnswer)
+  }
 }

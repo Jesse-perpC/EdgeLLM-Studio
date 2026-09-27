@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
@@ -172,6 +173,7 @@ fun InferenceScreen(
     var showPersonaSheet by remember { mutableStateOf(false) }
     var showKnowledgeSheet by remember { mutableStateOf(false) }
     var showPromptToolsSheet by remember { mutableStateOf(false) }
+    var showChatHistorySheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showVoiceRateDialog by remember { mutableStateOf(false) }
     var showVoiceStudioSheet by remember { mutableStateOf(false) }
@@ -367,6 +369,21 @@ fun InferenceScreen(
                                 contentDescription = "Export Chat",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Chat History & Sessions Drawer
+                        IconButton(
+                            onClick = { showChatHistorySheet = true },
+                            modifier = Modifier
+                                .size(34.dp)
+                                .testTag("open_chat_history_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = "Chat History & Sessions",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(19.dp)
                             )
                         }
 
@@ -1497,6 +1514,32 @@ fun InferenceScreen(
                 showMemorySheet = false
                 viewModel.clearSemanticSearchResults()
             }
+        )
+    }
+
+    // Chat History & Saved Sessions Manager BottomSheet
+    if (showChatHistorySheet) {
+        com.example.ui.components.ChatHistoryBottomSheet(
+            sessions = conversationSessions,
+            activeSessionId = activeSessionId,
+            messages = messages,
+            onSwitchSession = { sessionId ->
+                viewModel.switchSession(sessionId)
+            },
+            onCreateNewSession = { title ->
+                viewModel.createNewSession(title)
+            },
+            onDeleteSession = { sessionId ->
+                viewModel.deleteSession(sessionId)
+            },
+            onClearAllHistory = {
+                viewModel.clearChat()
+                viewModel.clearAllSessions()
+            },
+            onDeleteMessage = { messageId ->
+                viewModel.deleteMessage(messageId)
+            },
+            onDismiss = { showChatHistorySheet = false }
         )
     }
 
