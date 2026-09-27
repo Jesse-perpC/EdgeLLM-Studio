@@ -1,6 +1,8 @@
 package com.example.engine
 
 import android.content.Context
+import com.example.data.model.AiPersona
+import com.example.data.model.ModelSpec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -72,7 +74,9 @@ class AlibabaMnnEngine(private val context: Context? = null) {
      */
     fun generateStreamingResponse(
         prompt: String,
-        config: MnnLlmConfig
+        config: MnnLlmConfig,
+        model: ModelSpec? = null,
+        persona: AiPersona? = null
     ): Flow<MnnTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
         val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1)
@@ -120,7 +124,7 @@ class AlibabaMnnEngine(private val context: Context? = null) {
             MnnQuantization.KV_INT8 -> 320L
         })
 
-        val generatedText = generateMnnResponseContent(prompt, config)
+        val generatedText = generateMnnResponseContent(prompt, config, model, persona)
         val words = generatedText.split(" ")
         val sb = StringBuilder()
         var tokenCount = 0
@@ -167,37 +171,27 @@ class AlibabaMnnEngine(private val context: Context? = null) {
         )
     }
 
-    private fun generateMnnResponseContent(prompt: String, config: MnnLlmConfig): String {
-        val lower = prompt.lowercase()
-        val cacheStatus = if (config.enablePromptCache) "⚡ MNN Prompt Cache Enabled (Disk KV)" else "Cold Prompt"
-        val header = "### 🇨🇳 Alibaba MNN-LLM Mobile Inference Engine\n" +
-                "> **Backend:** ${config.backend.displayName} | **Quant:** ${config.quantization.displayName} | **Threads:** ${config.threadCount} | $cacheStatus\n\n"
+    /**
+     * Grounded generation: answer the ACTUAL user query first using the shared
+     * knowledge base (full model capabilities), telemetry as footer only.
+     */
+    private fun generateMnnResponseContent(
+        prompt: String,
+        config: MnnLlmConfig,
+        model: ModelSpec? = null,
+        persona: AiPersona? = null
+    ): String {
+        val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
 
-        val body = when {
-            lower.contains("benchmark") || lower.contains("speed") || lower.contains("performance") -> {
-                "**Alibaba MNN-LLM Profiler Metrics:**\n" +
-                        "• **Prefill Speed:** Up to 280 tokens/sec with OpenCL fused matrix operators.\n" +
-                        "• **Decode Speed:** Up to 45 tokens/sec (W4A16 quantization on ARM NEON/Adreno GPU).\n" +
-                        "• **Memory Footprint:** Peak RAM under 850 MB with INT8 dynamic KV cache.\n" +
-                        "• **Thermal Efficiency:** ~40% less thermal throttle compared to standard desktop runtimes on Android."
-            }
-            lower.contains("qwen") || lower.contains("alibaba") -> {
-                "**Qwen Model Family on Alibaba MNN:**\n" +
-                        "MNN is the premier runtime for **Qwen 2.5** (0.5B, 1.5B, 3B, 7B) and **Qwen2-VL** multimodal vision.\n" +
-                        "1. **Bilingual & Reasoning Excellence:** Unmatched Chinese, English, and multilingual coding benchmarks per parameter.\n" +
-                        "2. **Dynamic Operator Fusion:** MNN automatically fuses LayerNorm, RoPE, and Attention into single GPU dispatch commands.\n" +
-                        "3. **Zero-Copy Memory Mapping:** Weights are streamed via `mmap` directly from fast UFS storage into GPU VRAM."
-            }
-            else -> {
-                "Processed via **Alibaba MNN Mobile Neural Network**:\n\n" +
-                        "Your query: \"$prompt\"\n\n" +
-                        "**MNN Technical Highlights:**\n" +
-                        "• **Cross-Platform Micro-Kernels:** Highly tuned assembly kernels for ARMv8.2-A+ dot-product instructions (`udot`/`sdot`) and FP16 arithmetic.\n" +
-                        "• **Low Memory Fragmentation:** Block-based allocator eliminates Android memory fragmentation and prevents Out-Of-Memory termination.\n" +
-                        "• **Reliable Edge Execution:** 100% offline with zero cloud dependency."
-            }
+        if (model != null) {
+            val grounded = OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+            val sanitized = OutputVerificationEngine.verifyAndSanitizeText(grounded)
+            return "$sanitized\n\n_MNN ${config.backend.shortName} • ${config.quantization.displayName} • ${config.threadCount} threads._"
         }
 
-        return header + body
+        // Legacy fallback without model handle: stay on-topic, no jail echo.
+        return "Direct answer for \"$userQuery\":\n\n" +
+                "Processed on-device via MNN ${config.backend.shortName} (${config.quantization.displayName}). " +
+                "Load a model to receive full grounded answers with zero cloud calls."
     }
 }

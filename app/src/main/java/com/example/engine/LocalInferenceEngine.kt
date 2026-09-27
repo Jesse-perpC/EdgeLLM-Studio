@@ -121,7 +121,9 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         if (model.format == com.example.data.model.ModelFormat.ANDROID_AICORE) {
             aiCoreEngine.generateStreamingResponse(
                 prompt = nonGbnfStrictPrompt,
-                systemInstruction = params.systemPrompt
+                systemInstruction = params.systemPrompt,
+                model = model,
+                persona = persona
             ).collect { chunk ->
                 val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
                 emit(
@@ -161,7 +163,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 loraPath = null,
                 supportedLoraRank = loraAdapter?.rank ?: 8
             )
-            mediaPipeEngine.generateStreamingResponse(nonGbnfStrictPrompt, mpOptions).collect { chunk ->
+            mediaPipeEngine.generateStreamingResponse(nonGbnfStrictPrompt, mpOptions, model, persona).collect { chunk ->
                 val loraBadge = if (chunk.loraRank != null) " (LoRA r=${chunk.loraRank})" else ""
                 val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
                 emit(
@@ -200,7 +202,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 threadCount = settings.threadCount,
                 enablePromptCache = settings.enablePrefixCaching
             )
-            alibabaMnnEngine.generateStreamingResponse(nonGbnfStrictPrompt, mnnConfig).collect { chunk ->
+            alibabaMnnEngine.generateStreamingResponse(nonGbnfStrictPrompt, mnnConfig, model, persona).collect { chunk ->
                 val cacheHitTag = if (chunk.promptCacheHit) " • MNN PromptCache HIT" else ""
                 val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
                 emit(

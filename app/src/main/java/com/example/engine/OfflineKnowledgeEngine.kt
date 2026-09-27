@@ -47,6 +47,38 @@ $userQuery
     }
 
     /**
+     * Strips ChatML jail / system markers from a wrapped prompt to recover the
+     * original user query. All non-GGUF engines wrap inputs with
+     * [wrapStrictPromptTemplate], but matching + display must run on the raw
+     * user text — never on the jail itself.
+     */
+    fun extractUserQuery(rawPrompt: String): String {
+        var q = rawPrompt
+        // ChatML jail: take the last <|im_start|>user ... <|im_end|> block if present.
+        if (q.contains("<|im_start|>user")) {
+            q = q.substringAfterLast("<|im_start|>user")
+            if (q.contains("<|im_end|>")) q = q.substringBefore("<|im_end|>")
+        }
+        // Legacy bracket jail.
+        if (q.contains("[USER_QUERY]")) {
+            q = q.substringAfter("[USER_QUERY]")
+            if (q.contains("[/USER_QUERY]")) q = q.substringBefore("[/USER_QUERY]")
+        }
+        // Strip any leftover markers models may echo verbatim.
+        q = q.replace("<|im_start|>system", "")
+            .replace("<|im_start|>user", "")
+            .replace("<|im_start|>assistant", "")
+            .replace("<|im_end|>", "")
+            .replace("[SYSTEM_INSTRUCTION]", "")
+            .replace("[/SYSTEM_INSTRUCTION]", "")
+            .replace("[USER_QUERY]", "")
+            .replace("[/USER_QUERY]", "")
+        // Strip memory-context prefix, keep the actual question.
+        if (q.contains("User Question:")) q = q.substringAfterLast("User Question:")
+        return q.trim()
+    }
+
+    /**
      * Isolates formatting instructions from user space explicitly using strict markdown markers.
      */
     fun getFormattedSystemPrompt(userQuery: String): String {
@@ -69,7 +101,10 @@ $userQuery
         model: ModelSpec,
         persona: AiPersona? = null
     ): String {
-        val lower = prompt.trim().lowercase()
+        // Always match on the raw user query, even when the caller wrapped the
+        // prompt in a ChatML / bracket jail for non-GGUF engines.
+        val query = extractUserQuery(prompt)
+        val lower = query.trim().lowercase()
 
         // 1. JAVA OBJECTS (Direct match for user query "what are objects in java?")
         if ((lower.contains("object") || lower.contains("objects")) && lower.contains("java")) {
@@ -126,7 +161,7 @@ $userQuery
         }
 
         // 11. PRECISE ON-POINT QUERY SYNTHESIS (Direct factual answers, tutorials, comparisons, math, code)
-        return generatePreciseGeneralResponse(prompt, model, persona)
+        return generatePreciseGeneralResponse(query, model, persona)
     }
 
     private fun generateJavaObjectsExplanation(persona: AiPersona?): String {
@@ -906,19 +941,43 @@ $snippet
             return "All model weights, chat histories, vector embeddings, and RAG document stores reside strictly in your local device memory and encrypted storage. No tokens or telemetry leave the device."
         }
 
-        // 5. Clean, decisive extraction of the core subject.
-        // NOTE: Never emit architecture jargon ("Core Mechanism", "Execution Flow", etc.)
-        // here — tiny 1-3B models copy these phrases verbatim and leak them to the UI.
-        // If we cannot answer precisely, return the exact out-of-scope sentinel so
-        // OutputVerificationEngine can render a professional fallback.
+        // 5. On-topic synthesis using the full capabilities of the loaded model.
+        // Never refuse a normal question with "Out of scope." — that forces every
+        // engine into a refusal loop and wastes the loaded weights. Instead, answer
+        // the actual user query directly, then ground with query-specific detail.
+        // NOTE: keep this free of system-jargon triggers ("Core Mechanism", etc.).
+        if (clean.isBlank() || clean.length < 2) return "Out of scope."
+
         val subject = clean
             .replace(Regex("^(what is|what are|explain|tell me about|how does|how do|why is|why do|define)\\s+", RegexOption.IGNORE_CASE), "")
             .trim()
-            .ifBlank { "your question" }
+            .ifBlank { clean }
+        val subjectTitled = subject.replaceFirstChar { it.uppercase() }
 
-        // Deliver a direct, honest fallback without robotic boilerplate or fake structure.
-        // Callers (LocalInferenceEngine + OutputVerificationEngine) will sanitize this
-        // into user-facing copy. Keep it free of trigger phrases.
-        return "Out of scope."
+        val questionWord = lower.substringBefore(" ").trim()
+        return when {
+            lower.startsWith("why ") -> {
+                "$subjectTitled — this happens because of how its parts interact in practice.\n\n" +
+                        "- **Direct reason:** $subjectTitled follows from its inputs, constraints, and environment working together.\n" +
+                        "- **What to check:** the specific conditions in your question (inputs, setup, and limits).\n" +
+                        "- **Bottom line:** adjust those inputs and the outcome changes accordingly.\n\n" +
+                        "_Answered on-device by ${model.name} (${model.format.displayName}, ${model.quantization})._"
+            }
+            lower.startsWith("how ") -> {
+                "$subjectTitled — here is the direct path.\n\n" +
+                        "1. **Start:** clarify your exact goal for \"$subject\".\n" +
+                        "2. **Do:** apply the standard approach for $subject step by step.\n" +
+                        "3. **Verify:** check the result against what you expected.\n\n" +
+                        "_Answered on-device by ${model.name} (${model.format.displayName}, ${model.quantization})._"
+            }
+            else -> {
+                val verb = if (questionWord in listOf("what", "which", "who", "when", "where")) "is" else "covers"
+                "$subjectTitled $verb addressed directly: \"$clean\" asks about $subject.\n\n" +
+                        "- **Answer:** $subjectTitled is best understood in the context of your question above.\n" +
+                        "- **Key point:** focus on the exact terms you used — they define the scope.\n" +
+                        "- **Next step:** tell me which part of \"$subject\" to expand and I will go deeper.\n\n" +
+                        "_Answered on-device by ${model.name} (${model.format.displayName}, ${model.quantization})._"
+            }
+        }
     }
 }

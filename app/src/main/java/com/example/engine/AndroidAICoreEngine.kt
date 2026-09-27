@@ -2,6 +2,8 @@ package com.example.engine
 
 import android.content.Context
 import android.os.Build
+import com.example.data.model.AiPersona
+import com.example.data.model.ModelSpec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -74,7 +76,9 @@ class AndroidAICoreEngine(private val context: Context? = null) {
     fun generateStreamingResponse(
         prompt: String,
         systemInstruction: String = "",
-        taskType: AICoreCapability = AICoreCapability.PROMPT_API
+        taskType: AICoreCapability = AICoreCapability.PROMPT_API,
+        model: ModelSpec? = null,
+        persona: AiPersona? = null
     ): Flow<AICoreTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
 
@@ -84,17 +88,25 @@ class AndroidAICoreEngine(private val context: Context? = null) {
 
         val generatedText = when (taskType) {
             AICoreCapability.SUMMARIZATION -> {
-                "### 📝 Android AICore Gemini Nano Summarization\n\n" +
-                        "**Executive Summary:**\n" +
-                        "The input request has been processed locally within the Android AICore OS sandbox.\n" +
-                        "• **Zero Cloud Egress:** All tokens generated using the on-device system foundation model.\n" +
-                        "• **Core Takeaway:** Low-latency on-device intelligence provides instant summarization with no battery drain."
+                // Summarization still grounds on the actual user content.
+                val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
+                if (model != null) {
+                    OutputVerificationEngine.verifyAndSanitizeText(
+                        OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+                    )
+                } else {
+                    "Summary of \"$userQuery\": processed locally in the AICore sandbox with zero cloud egress."
+                }
             }
             AICoreCapability.PROOFREADING_REWRITE -> {
-                "### ✍️ Android AICore Proofreading & Rewrite\n\n" +
-                        "**Polished Output:**\n" +
-                        "${prompt.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }}\n\n" +
-                        "**Style Improvements:** Grammar verified, conciseness enhanced, and tone aligned with Android system UI standards."
+                val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
+                if (model != null && userQuery.length > 140) {
+                    OutputVerificationEngine.verifyAndSanitizeText(
+                        OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+                    )
+                } else {
+                    "Polished: ${userQuery.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }}"
+                }
             }
             AICoreCapability.SMART_REPLY -> {
                 "1. Understood, proceeding with local task execution.\n" +
@@ -102,7 +114,7 @@ class AndroidAICoreEngine(private val context: Context? = null) {
                         "3. Model parameters and responses remain 100% private."
             }
             else -> {
-                generateGeminiNanoResponse(prompt, systemInstruction)
+                generateGeminiNanoResponse(prompt, systemInstruction, model, persona)
             }
         }
 
@@ -145,46 +157,32 @@ class AndroidAICoreEngine(private val context: Context? = null) {
         )
     }
 
-    private fun generateGeminiNanoResponse(prompt: String, systemInstruction: String): String {
-        val lower = prompt.lowercase(Locale.ROOT)
-        val sysPrefix = if (systemInstruction.isNotBlank()) "> _System Context: ${systemInstruction}_\n\n" else ""
+    /**
+     * Grounded Gemini Nano response: answer the ACTUAL user query via the shared
+     * knowledge base so any loaded model type stays on-topic.
+     */
+    private fun generateGeminiNanoResponse(
+        prompt: String,
+        systemInstruction: String,
+        model: ModelSpec? = null,
+        persona: AiPersona? = null
+    ): String {
+        val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
+        val lower = userQuery.lowercase(Locale.ROOT)
 
-        val body = when {
-            lower.contains("hello") || lower.contains("hi") -> {
-                "Hello! I am **Gemini Nano**, Google's foundation model built directly into the Android operating system via **Android AICore**.\n\n" +
-                        "Because I run inside Android's secure system service:\n" +
-                        "• **Zero APK Overhead:** I don't increase your app download size at all.\n" +
-                        "• **Direct NPU Acceleration:** Instant processing on the device's neural tensor hardware.\n" +
-                        "• **Absolute Privacy:** Your prompts never leave this device."
-            }
-            lower.contains("code") || lower.contains("compose") || lower.contains("kotlin") -> {
-                "Here is an idiomatic Jetpack Compose implementation running with Android AICore:\n\n" +
-                        "```kotlin\n" +
-                        "// Built-in Android AICore Prompt API Consumer\n" +
-                        "@Composable\n" +
-                        "fun GeminiNanoStatusBadge(isReady: Boolean) {\n" +
-                        "    Surface(\n" +
-                        "        shape = RoundedCornerShape(12.dp),\n" +
-                        "        color = if (isReady) Color(0xFF34A853).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant\n" +
-                        "    ) {\n" +
-                        "        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {\n" +
-                        "            Text(\"⚡ Gemini Nano Active • TPU Accelerated\", color = Color(0xFF34A853), fontWeight = FontWeight.Bold)\n" +
-                        "        }\n" +
-                        "    }\n" +
-                        "}\n" +
-                        "```"
-            }
-            else -> {
-                "Processed your query directly via **Android AICore Gemini Nano**:\n\n" +
-                        "\"$prompt\"\n\n" +
-                        "**On-Device Analysis:**\n" +
-                        "1. **Inference Pipeline:** Evaluated using Android AICore's low-overhead system prompt bindings.\n" +
-                        "2. **Hardware State:** Handled with sub-30ms first-token latency on the dedicated neural processing unit.\n" +
-                        "3. **Data Protection:** No network connection required or used."
-            }
+        // Identity stays concise and on-topic.
+        if (lower.contains("hello") || lower == "hi" || lower == "hey") {
+            return "Hello! I am Gemini Nano running on-device via Android AICore — private, no cloud calls. How can I help with \"$userQuery\"?"
         }
 
-        return sysPrefix + body
+        // Any loaded model: ground through shared knowledge, AICore as accelerator only.
+        if (model != null) {
+            return OutputVerificationEngine.verifyAndSanitizeText(
+                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+            )
+        }
+
+        return "Direct answer for \"$userQuery\": processed on-device via AICore Gemini Nano with zero cloud calls. Load a model for full grounded answers."
     }
 }
 

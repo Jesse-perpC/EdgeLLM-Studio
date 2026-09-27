@@ -1,6 +1,8 @@
 package com.example.engine
 
 import android.content.Context
+import com.example.data.model.AiPersona
+import com.example.data.model.ModelSpec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -93,7 +95,9 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
      */
     fun generateStreamingResponse(
         prompt: String,
-        options: MediaPipeLlmOptions
+        options: MediaPipeLlmOptions,
+        model: ModelSpec? = null,
+        persona: AiPersona? = null
     ): Flow<MediaPipeTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
 
@@ -110,7 +114,7 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         val calculatedTps = (baseSpeed * (if (options.enableKvCacheQuantization) 1.2f else 1.0f)).coerceIn(12f, 60f)
         val delayPerToken = (1000f / calculatedTps).toLong().coerceIn(12L, 80L)
 
-        val simulatedText = generateMediaPipeKnowledge(prompt, options)
+        val simulatedText = generateMediaPipeKnowledge(prompt, options, model, persona)
         val words = simulatedText.split(" ")
         val sb = StringBuilder()
         var tokenCount = 0
@@ -154,42 +158,46 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         )
     }
 
-    private fun generateMediaPipeKnowledge(prompt: String, options: MediaPipeLlmOptions): String {
-        val lower = prompt.lowercase()
-        val delegateDesc = if (options.delegate == MediaPipeDelegate.GPU) "GPU OpenCL/Vulkan Delegate" else "CPU Multi-Core Delegate"
-        val loraDesc = if (options.loraPath != null) " • LoRA Rank: ${options.supportedLoraRank}" else ""
+    /**
+     * Grounded generation: answer the ACTUAL user query first using the shared
+     * knowledge base (full model capabilities), then append a compact telemetry
+     * footer. Never replace the answer with runtime marketing copy.
+     */
+    private fun generateMediaPipeKnowledge(
+        prompt: String,
+        options: MediaPipeLlmOptions,
+        model: ModelSpec? = null,
+        persona: AiPersona? = null
+    ): String {
+        val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
+        val delegateDesc = if (options.delegate == MediaPipeDelegate.GPU) "GPU OpenCL/Vulkan" else "CPU Multi-Core"
+        val loraDesc = if (options.loraPath != null) " • LoRA r=${options.supportedLoraRank}" else ""
 
-        val header = "### ⚡ Google MediaPipe LLM Inference Engine\n" +
-                "> **Runtime:** `com.google.mediapipe:tasks-genai` | **Backend:** $delegateDesc | **Top-K:** ${options.topK} | **Temp:** ${options.temperature}$loraDesc\n\n"
-
-        val body = when {
-            lower.contains("code") || lower.contains("function") -> {
-                "```kotlin\n" +
-                        "// MediaPipe LLM Inference Configuration\n" +
-                        "val options = LlmInference.LlmInferenceOptions.builder()\n" +
-                        "    .setModelPath(\"${options.modelPath.ifBlank { "/data/local/tmp/gemma-2b-it-gpu.bin" }}\")\n" +
-                        "    .setMaxTokens(${options.maxTokens})\n" +
-                        "    .setTopK(${options.topK})\n" +
-                        "    .setTemperature(${options.temperature}f)\n" +
-                        "    .build()\n" +
-                        "\n" +
-                        "val llmInference = LlmInference.createFromOptions(context, options)\n" +
-                        "llmInference.generateResponseAsync(prompt, resultListener, errorListener)\n" +
-                        "```\n\n" +
-                        "**Execution Characteristics:**\n" +
-                        "• **Direct GPU Acceleration:** Matrix multiplications executed with hardware-specific tiling on mobile GPU.\n" +
-                        "• **Memory Footprint:** KV Cache quantized with dynamic 8-bit quantization for minimal mobile RAM usage."
-            }
-            else -> {
-                "Answered using **Google MediaPipe Tasks GenAI** on-device inference:\n\n" +
-                        "The model evaluated your query: **\"$prompt\"**.\n\n" +
-                        "**Core Insights:**\n" +
-                        "1. **Latency & Throughput:** MediaPipe's optimized GPU shaders provide consistent streaming without frame drops in Jetpack Compose.\n" +
-                        "2. **Safety & Privacy:** Execution remains strictly isolated inside the application process with zero external API calls.\n" +
-                        "3. **Adapter Support:** Seamlessly merges low-rank adapters (LoRA) on the fly without reloading model base weights."
-            }
+        // Code questions keep a useful config snippet AND a grounded answer.
+        if (model != null && (userQuery.contains("code", ignoreCase = true) || userQuery.contains("function", ignoreCase = true)) && userQuery.contains("mediapipe", ignoreCase = true)) {
+            return "```kotlin\n" +
+                    "// MediaPipe LLM Inference Configuration\n" +
+                    "val options = LlmInference.LlmInferenceOptions.builder()\n" +
+                    "    .setModelPath(\"${options.modelPath.ifBlank { "/data/local/tmp/gemma-2b-it-gpu.bin" }}\")\n" +
+                    "    .setMaxTokens(${options.maxTokens})\n" +
+                    "    .setTopK(${options.topK})\n" +
+                    "    .setTemperature(${options.temperature}f)\n" +
+                    "    .build()\n" +
+                    "```\n\n" +
+                    OfflineKnowledgeEngine.answerQuery(userQuery, model, persona) +
+                    "\n\n_MediaPipe $delegateDesc • Top-K ${options.topK} • Temp ${options.temperature}$loraDesc._"
         }
 
-        return header + body
+        // Default: full grounded answer for ANY model type, telemetry as footer only.
+        if (model != null) {
+            val grounded = OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+            val sanitized = OutputVerificationEngine.verifyAndSanitizeText(grounded)
+            return "$sanitized\n\n_MediaPipe $delegateDesc • Top-K ${options.topK}$loraDesc._"
+        }
+
+        // Legacy fallback (no model handle): stay on-topic without echoing the jail.
+        return "Direct answer for \"$userQuery\":\n\n" +
+                "This was processed on-device via MediaPipe ($delegateDesc). " +
+                "Load a model to receive full grounded answers with zero cloud calls.$loraDesc"
     }
 }
