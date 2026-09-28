@@ -172,8 +172,8 @@ class AlibabaMnnEngine(private val context: Context? = null) {
     }
 
     /**
-     * Grounded generation: answer the ACTUAL user query first using the shared
-     * knowledge base (full model capabilities), telemetry as footer only.
+     * Grounded generation: answer the ACTUAL user query using the shared
+     * knowledge base. Answer-only: no runtime marketing copy in chat text.
      */
     private fun generateMnnResponseContent(
         prompt: String,
@@ -184,14 +184,12 @@ class AlibabaMnnEngine(private val context: Context? = null) {
         val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
 
         if (model != null) {
-            val grounded = OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
-            val sanitized = OutputVerificationEngine.verifyAndSanitizeText(grounded)
-            return "$sanitized\n\n_MNN ${config.backend.shortName} • ${config.quantization.displayName} • ${config.threadCount} threads._"
+            return OutputVerificationEngine.verifyAndSanitizeText(
+                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+            )
         }
 
         // Legacy fallback without model handle: stay on-topic, no jail echo.
-        return "Direct answer for \"$userQuery\":\n\n" +
-                "Processed on-device via MNN ${config.backend.shortName} (${config.quantization.displayName}). " +
-                "Load a model to receive full grounded answers with zero cloud calls."
+        return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
     }
 }

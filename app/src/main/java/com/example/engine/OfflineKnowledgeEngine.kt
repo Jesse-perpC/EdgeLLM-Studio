@@ -381,11 +381,6 @@ Running machine learning models locally on mobile devices requires aggressive co
 2. **KV Cache (Key-Value Cache):**
    - Caches pre-computed attention keys and values for previous tokens to avoid recomputing the entire self-attention matrix at each new auto-regressive decoding step.
    - Memory footprint scales linearly with context length: 2 * layers * heads * head_dim * tokens * precision.
-
-3. **Active Model Configuration:**
-   - **Current Model:** ${model.name} (${model.parameterCount})
-   - **Format:** ${model.format.displayName} | **Precision:** ${model.quantization}
-   - **Context Window:** ${model.contextLength} tokens
 """.trimIndent()
     }
 
@@ -903,7 +898,7 @@ $snippet
     }
 
     private fun translateFallback(text: String, lang: String): String {
-        return "Direct neural translation to $lang: \"$text\" processed using on-device multilingual embedding alignment."
+        return "\"$text\" (${lang.replaceFirstChar { it.uppercase() }})"
     }
 
     private fun generateDecisiveAnswer(
@@ -955,28 +950,28 @@ $snippet
         val subjectTitled = subject.replaceFirstChar { it.uppercase() }
 
         val questionWord = lower.substringBefore(" ").trim()
+        // Answer-only: no setup/telemetry footers. Engine metadata (backend,
+        // tokens/sec) travels via StreamTokenChunk fields for the UI chrome,
+        // never inside the chat text itself.
         return when {
             lower.startsWith("why ") -> {
                 "$subjectTitled — this happens because of how its parts interact in practice.\n\n" +
                         "- **Direct reason:** $subjectTitled follows from its inputs, constraints, and environment working together.\n" +
                         "- **What to check:** the specific conditions in your question (inputs, setup, and limits).\n" +
-                        "- **Bottom line:** adjust those inputs and the outcome changes accordingly.\n\n" +
-                        "_Answered on-device by ${model.name} (${model.format.displayName}, ${model.quantization})._"
+                        "- **Bottom line:** adjust those inputs and the outcome changes accordingly."
             }
             lower.startsWith("how ") -> {
                 "$subjectTitled — here is the direct path.\n\n" +
                         "1. **Start:** clarify your exact goal for \"$subject\".\n" +
                         "2. **Do:** apply the standard approach for $subject step by step.\n" +
-                        "3. **Verify:** check the result against what you expected.\n\n" +
-                        "_Answered on-device by ${model.name} (${model.format.displayName}, ${model.quantization})._"
+                        "3. **Verify:** check the result against what you expected."
             }
             else -> {
                 val verb = if (questionWord in listOf("what", "which", "who", "when", "where")) "is" else "covers"
                 "$subjectTitled $verb addressed directly: \"$clean\" asks about $subject.\n\n" +
                         "- **Answer:** $subjectTitled is best understood in the context of your question above.\n" +
                         "- **Key point:** focus on the exact terms you used — they define the scope.\n" +
-                        "- **Next step:** tell me which part of \"$subject\" to expand and I will go deeper.\n\n" +
-                        "_Answered on-device by ${model.name} (${model.format.displayName}, ${model.quantization})._"
+                        "- **Next step:** tell me which part of \"$subject\" to expand and I will go deeper."
             }
         }
     }

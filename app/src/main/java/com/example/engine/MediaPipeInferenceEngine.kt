@@ -159,9 +159,8 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
     }
 
     /**
-     * Grounded generation: answer the ACTUAL user query first using the shared
-     * knowledge base (full model capabilities), then append a compact telemetry
-     * footer. Never replace the answer with runtime marketing copy.
+     * Grounded generation: answer the ACTUAL user query using the shared
+     * knowledge base. Answer-only: no runtime marketing copy in chat text.
      */
     private fun generateMediaPipeKnowledge(
         prompt: String,
@@ -170,8 +169,6 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         persona: AiPersona? = null
     ): String {
         val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-        val delegateDesc = if (options.delegate == MediaPipeDelegate.GPU) "GPU OpenCL/Vulkan" else "CPU Multi-Core"
-        val loraDesc = if (options.loraPath != null) " • LoRA r=${options.supportedLoraRank}" else ""
 
         // Code questions keep a useful config snippet AND a grounded answer.
         if (model != null && (userQuery.contains("code", ignoreCase = true) || userQuery.contains("function", ignoreCase = true)) && userQuery.contains("mediapipe", ignoreCase = true)) {
@@ -184,20 +181,18 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
                     "    .setTemperature(${options.temperature}f)\n" +
                     "    .build()\n" +
                     "```\n\n" +
-                    OfflineKnowledgeEngine.answerQuery(userQuery, model, persona) +
-                    "\n\n_MediaPipe $delegateDesc • Top-K ${options.topK} • Temp ${options.temperature}$loraDesc._"
+                    OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
         }
 
-        // Default: full grounded answer for ANY model type, telemetry as footer only.
+        // Default: full grounded answer for ANY model type. Answer-only: no
+        // runtime/telemetry footer in chat text (metadata travels via chunk fields).
         if (model != null) {
-            val grounded = OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
-            val sanitized = OutputVerificationEngine.verifyAndSanitizeText(grounded)
-            return "$sanitized\n\n_MediaPipe $delegateDesc • Top-K ${options.topK}$loraDesc._"
+            return OutputVerificationEngine.verifyAndSanitizeText(
+                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+            )
         }
 
         // Legacy fallback (no model handle): stay on-topic without echoing the jail.
-        return "Direct answer for \"$userQuery\":\n\n" +
-                "This was processed on-device via MediaPipe ($delegateDesc). " +
-                "Load a model to receive full grounded answers with zero cloud calls.$loraDesc"
+        return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
     }
 }

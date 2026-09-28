@@ -170,9 +170,9 @@ class AndroidAICoreEngine(private val context: Context? = null) {
         val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
         val lower = userQuery.lowercase(Locale.ROOT)
 
-        // Identity stays concise and on-topic.
+        // Identity stays concise and on-topic (answer-only, no setup talk).
         if (lower.contains("hello") || lower == "hi" || lower == "hey") {
-            return "Hello! I am Gemini Nano running on-device via Android AICore — private, no cloud calls. How can I help with \"$userQuery\"?"
+            return "Hello! How can I help you today?"
         }
 
         // Any loaded model: ground through shared knowledge, AICore as accelerator only.
@@ -182,7 +182,7 @@ class AndroidAICoreEngine(private val context: Context? = null) {
             )
         }
 
-        return "Direct answer for \"$userQuery\": processed on-device via AICore Gemini Nano with zero cloud calls. Load a model for full grounded answers."
+        return "Please load a model to receive full grounded answers."
     }
 }
 

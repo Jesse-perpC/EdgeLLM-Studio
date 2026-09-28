@@ -411,10 +411,8 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         val lower = prompt.trim().lowercase()
 
         // 1. If an image is attached for local Multimodal Vision analysis:
+        // Answer-only: no pipeline/setup headers in chat text.
         if (attachedImageUri != null || attachedImageLabel != null) {
-            val label = attachedImageLabel ?: "Visual Input"
-            val visionHeader = "### 📷 Multimodal Vision Analysis: `$label`\n\n" +
-                    "**Perception Pipeline:** MobileViT Patch Encoder (224x224, 16x16 tokens) running on ${model.name}.\n\n"
             val analysis = when {
                 lower.contains("ocr") || lower.contains("text") || lower.contains("extract") || lower.contains("read") -> {
                     "**Extracted Text Elements (Offline OCR):**\n" +
@@ -443,43 +441,29 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                             "**Total:** **$0.00 (100% Offline)**"
                 }
                 else -> {
-                    "**Visual Perception Summary:**\n" +
-                            "- **Scene Context:** High-resolution document / interface snapshot with clear high-contrast geometric regions.\n" +
-                            "- **Detected Features:** 4 major text clusters, 2 graphical panels, and system telemetry markers.\n" +
-                            "- **Synthesis for \"$prompt\":** The visual data confirms nominal operational status without cloud dependency."
+                    "- **Scene Context:** High-resolution document / interface snapshot with clear high-contrast geometric regions.\n" +
+                            "- **Detected Features:** 4 major text clusters, 2 graphical panels, and system telemetry markers."
                 }
             }
-            return visionHeader + analysis
+            return analysis
         }
 
         // 1.5. If Screen Context (Circle to Search / Inspect Screen) is present:
+        // Answer-only: key elements, no parser/hardware internals.
         if (prompt.contains("[SCREEN_CONTEXT]")) {
             val screenText = prompt.substringAfter("[SCREEN_CONTEXT]").substringBefore("[/SCREEN_CONTEXT]").trim()
             val userQuestion = prompt.substringAfter("[/SCREEN_CONTEXT]").trim().ifBlank { "Summarize this on-screen content." }
             val lines = screenText.lines().filter { it.isNotBlank() }.take(5)
             val entityBullets = lines.joinToString("\n") { "• ${it.take(80)}" }
-            return "### 📱 On-Device Screen AI Context Inspection\n\n" +
-                    "**Foreground Screen Source:** Extracted ${screenText.length} characters via local Accessibility & OCR parser.\n\n" +
-                    "**Analysis for: \"$userQuestion\"**\n\n" +
-                    "**Key Screen Elements Detected:**\n" +
-                    "$entityBullets\n\n" +
-                    "**Executive Summary:**\n" +
-                    "The displayed page contains verified content parsed directly in hardware memory. All details are immediately actionable.\n\n" +
-                    "**Actionable Next Steps:**\n" +
-                    "- Create automatic calendar reminder\n" +
-                    "- Copy extracted summary to clipboard\n" +
-                    "- Search additional web references on-device"
+            return "For \"$userQuestion\":\n\n$entityBullets"
         }
 
         // 2. If Tool-Calling ("Talents") is enabled and a tool call is detected:
+        // Answer-only: just the tool output.
         if (params.enableToolCalling) {
             val toolCall = OnDeviceToolEngine.parseToolCallFromPrompt(prompt)
             if (toolCall != null) {
-                return "[TOOL_CALL: ${toolCall.iconEmoji} ${toolCall.toolName}(\"${toolCall.inputArgument}\")]\n" +
-                        "[TOOL_RESULT: ${toolCall.outputResult}] (${toolCall.executionTimeMs}ms)\n\n" +
-                        "**Local Tool Execution Output:**\n\n" +
-                        "${toolCall.outputResult}\n\n" +
-                        "_Executed natively on-device in ${toolCall.executionTimeMs}ms without cloud telemetry._"
+                return toolCall.outputResult
             }
         }
 
@@ -503,56 +487,33 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         }
 
         // 2. If a document is attached for local RAG grounding:
+        // Answer-only: cite the document title + excerpt, no storage internals.
         if (attachedDoc != null) {
             val docPreview = attachedDoc.content.take(400).replace("\n", " ")
-            return "### Grounded Document Analysis: `${attachedDoc.title}`\n\n" +
-                    "**Reference Source:** Ingested offline from `${attachedDoc.title}` (${attachedDoc.sizeBytes} bytes, ~${attachedDoc.tokenCountEstimate} tokens).\n\n" +
-                    "**Key Findings from Document:**\n" +
-                    "- **Content Focus:** ${attachedDoc.summary}\n" +
-                    "- **Query Match:** In response to your prompt *\"$prompt\"*, the document establishes specific local constraints and operational specifications.\n\n" +
-                    "**Relevant Excerpt:**\n" +
-                    "> \"$docPreview...\"\n\n" +
-                    "**Synthesized Conclusion:**\n" +
-                    "All facts above were retrieved entirely offline from your local document buffer. No content was sent outside this device."
+            return "From `${attachedDoc.title}`:\n\n" +
+                    "- **Focus:** ${attachedDoc.summary}\n" +
+                    "> \"$docPreview...\""
         }
 
-        // 2. Thinking Mode (Chain-of-Thought): Strictly opt-in when enabled by user toggle
-        val includeCoT = params.enableThinkingMode
-
-        val memoryThought = if (recalledMemories.isNotEmpty()) {
-            "• Memory Anchor: Recalled ${recalledMemories.size} semantic node(s) via 128-D vector cosine similarity.\n"
-        } else ""
-
-        val reasoningTrace = if (includeCoT) {
-            "<think>\n" +
-                    "Deconstructing query intent: \"$prompt\"\n" +
-                    "Context: ${model.name} (${model.quantization}) | Precision: Deterministic\n" +
-                    memoryThought +
-                    "Verifying premise and formulating decisive answer.\n" +
-                    "</think>\n\n"
-        } else ""
+        // 2. Thinking Mode is internal only when enabled; never leaks into chat text.
+        // (Answer-only: CoT stays out unless GrammarMode.STEP_BY_STEP_REASONING requests it.)
 
         // 3. Response generation based on offline intelligence and rich domain knowledge:
         val rawBody = when {
             lower.contains("what do you remember") || lower.contains("do you remember") || lower.contains("my preference") || lower.contains("my memory") || lower.contains("remember me") -> {
                 if (recalledMemories.isNotEmpty()) {
-                    "I recall the following facts and preferences from our persistent semantic memory database:\n\n" +
-                            recalledMemories.joinToString("\n\n") { "• $it" } +
-                            "\n\n_All memories are indexed with 128-dimensional vector embeddings and stored in your encrypted local Room database._"
+                    recalledMemories.joinToString("\n") { "• $it" }
                 } else {
-                    "I have established our on-device semantic memory engine. All interactions, personal preferences, and technical facts are stored in your encrypted local Room database with 128-dimensional subword vector embeddings for offline retrieval."
+                    "I don't have any saved memories yet."
                 }
             }
             lower.contains("hello") || lower.contains("hi") || lower == "hey" -> {
-                "Hello! I am ${persona?.name ?: model.name}, powered by local ${model.format.displayName} quantization (${model.quantization}) and hybrid edge intelligence. How can I assist you with programming, architecture, analysis, or technical questions today?"
+                "Hello! How can I help you today?"
             }
             else -> {
                 val base = OfflineKnowledgeEngine.answerQuery(prompt, model, persona)
-                if (recalledMemories.isNotEmpty() && (lower.contains("suggest") || lower.contains("write") || lower.contains("code") || lower.contains("how should i"))) {
-                    "> 💡 _Grounded by long-term memory: ${recalledMemories.first().take(90)}..._\n\n" + base
-                } else {
-                    base
-                }
+                // Answer-only: memory grounding stays invisible unless it changes the answer.
+                base
             }
         }
 
@@ -578,11 +539,9 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             else -> rawBody
         }
 
-        val loraNote = if (loraAdapter != null) {
-            "\n\n> 🧩 _LoRA Active: **${loraAdapter.name}** (r=${loraAdapter.rank}, α=${loraAdapter.alpha} • ${loraAdapter.accuracyBoost})_"
-        } else ""
-
-        return reasoningTrace + body + loraNote
+        // Answer-only: reasoning trace and LoRA internals stay out of chat text.
+        // (Telemetry remains available via StreamTokenChunk metadata.)
+        return body
     }
 
     fun clearPrefixCache() {
