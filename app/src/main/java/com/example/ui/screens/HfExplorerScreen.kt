@@ -324,7 +324,35 @@ fun HfExplorerScreen(
             }
         }
 
-        // 5. Model Items List
+        // 5. Model Items List (with empty state for dead-end filters)
+        if (filteredModels.isEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🔍", fontSize = 28.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "No models match this filter",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Try a different search term or broaden the pipeline / framework filters.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
         items(filteredModels) { model ->
             Card(
                 shape = RoundedCornerShape(16.dp),

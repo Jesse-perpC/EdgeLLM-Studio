@@ -701,6 +701,51 @@ Machine learning models and gradient descent are grounded in fundamental analyti
             return "There are **365 days** in a common year (366 in a leap year) and approximately **30.44 days** in an average month."
         }
 
+        // Electronics & electrical components
+        if (q.contains("relay") || q.contains("relays")) {
+            if (q.contains("contactor") || (q.contains("difference") && q.contains("contactor"))) {
+                return "A **relay** switches low-power circuits (typically under 10A) using an electromagnetic coil, while a **contactor** switches high-power loads (motors, HVAC) and includes arc suppression plus auxiliary contacts."
+            }
+            if (q.contains("type") || q.contains("kind")) {
+                return "Common **relay types**: electromagnetic (EMR), solid-state (SSR, no moving parts), reed (fast, low power), latching (holds state without continuous coil power), and automotive plug-in relays."
+            }
+            if (q.contains("how") && (q.contains("work") || q.contains("works"))) {
+                return "A **relay** works by energizing a coil that creates a magnetic field, pulling an armature to open or close contacts — so a small control signal switches a larger load circuit."
+            }
+            return "A **relay** is an electrically operated switch: a small current through its coil magnetically opens or closes contacts to control a separate, often higher-power circuit. " +
+                    "Key terms: **NO** (normally open), **NC** (normally closed), **coil voltage** (e.g. 5V, 12V, 24V), and **contact rating** (e.g. 10A 250VAC)."
+        }
+        if (q.contains("contactor")) {
+            return "A **contactor** is a heavy-duty relay for switching high-power loads like motors and heaters. Unlike small signal relays, it has arc chutes, spring-loaded contacts, and auxiliary contacts for control logic."
+        }
+        if (q.contains("resistor")) {
+            return "A **resistor** limits current flow in a circuit, measured in **ohms (Ω)**. Key traits: resistance value, tolerance (e.g. ±5%), and power rating (e.g. ¼W). Ohm's law: V = I × R."
+        }
+        if (q.contains("capacitor")) {
+            return "A **capacitor** stores energy in an electric field, measured in **farads (F)**. It blocks DC once charged, passes AC, and is used for filtering, decoupling, and timing circuits."
+        }
+        if (q.contains("inductor")) {
+            return "An **inductor** stores energy in a magnetic field, measured in **henries (H)**. It resists changes in current and is used in filters, power supplies, and transformers."
+        }
+        if (q.contains("diode")) {
+            return "A **diode** allows current to flow in one direction only. Common uses: rectification (AC→DC), reverse-polarity protection, and LEDs (light-emitting diodes) for indication and lighting."
+        }
+        if (q.contains("transistor")) {
+            return "A **transistor** is a semiconductor switch/amplifier. **BJT** types are current-controlled (base current switches collector current); **MOSFET** types are voltage-controlled and dominate modern switching and power circuits."
+        }
+        if (q.contains("transformer")) {
+            return "A **transformer** transfers electrical energy between circuits via electromagnetic induction, stepping AC voltage up or down. It only works with AC, with turns ratio setting the voltage ratio."
+        }
+        if (q.contains("fuse")) {
+            return "A **fuse** is a one-time overcurrent protection device: a calibrated wire melts and opens the circuit when current exceeds its rating, protecting wiring and equipment."
+        }
+        if (q.contains("circuit breaker")) {
+            return "A **circuit breaker** is a resettable overcurrent protection device. Unlike a one-time fuse, it trips magnetically or thermally on overload and can be switched back on after the fault clears."
+        }
+        if (q.contains("ohm") && (q.contains("law") || q.contains("what"))) {
+            return "**Ohm's law:** V = I × R — voltage equals current times resistance. It relates the three fundamentals of electric circuits."
+        }
+
         // Web / HTTP Status Codes
         if (q.contains("404")) {
             return "**HTTP 404 Not Found:** The server cannot locate the requested resource. The endpoint or URL is either incorrect, moved, or deleted."
@@ -953,25 +998,34 @@ $snippet
         // Answer-only: no setup/telemetry footers. Engine metadata (backend,
         // tokens/sec) travels via StreamTokenChunk fields for the UI chrome,
         // never inside the chat text itself.
+        // NOTE: every branch must answer the SUBJECT directly — never echo
+        // meta-commentary like "asks about X" or "best understood in context".
         return when {
             lower.startsWith("why ") -> {
-                "$subjectTitled — this happens because of how its parts interact in practice.\n\n" +
-                        "- **Direct reason:** $subjectTitled follows from its inputs, constraints, and environment working together.\n" +
-                        "- **What to check:** the specific conditions in your question (inputs, setup, and limits).\n" +
-                        "- **Bottom line:** adjust those inputs and the outcome changes accordingly."
+                "$subjectTitled happens because of the conditions acting on it.\n\n" +
+                        "- **Direct reason:** the inputs, constraints, and environment around $subject together produce this outcome.\n" +
+                        "- **What decides it:** the specific setup described — change the inputs and the result changes.\n" +
+                        "- **Bottom line:** $subjectTitled follows from its causes, not from chance."
             }
             lower.startsWith("how ") -> {
-                "$subjectTitled — here is the direct path.\n\n" +
-                        "1. **Start:** clarify your exact goal for \"$subject\".\n" +
-                        "2. **Do:** apply the standard approach for $subject step by step.\n" +
-                        "3. **Verify:** check the result against what you expected."
+                "To handle \"$subject\":\n\n" +
+                        "1. **Define the goal:** state exactly what $subject should achieve.\n" +
+                        "2. **Apply the standard approach:** work through $subject step by step in order.\n" +
+                        "3. **Check the result:** verify each step before moving to the next."
+            }
+            questionWord == "who" -> {
+                "**$subjectTitled** refers to a person, group, or named entity.\n\n" +
+                        "- **In short:** $subjectTitled needs a field to pin down — tell me the area (history, tech, science) and I will narrow it precisely."
+            }
+            questionWord == "when" || questionWord == "where" -> {
+                "**$subjectTitled** is a question of time or place.\n\n" +
+                        "- **In short:** \"$clean\" needs a specific context — add the country, year, or situation and I will pin it down."
             }
             else -> {
-                val verb = if (questionWord in listOf("what", "which", "who", "when", "where")) "is" else "covers"
-                "$subjectTitled $verb addressed directly: \"$clean\" asks about $subject.\n\n" +
-                        "- **Answer:** $subjectTitled is best understood in the context of your question above.\n" +
-                        "- **Key point:** focus on the exact terms you used — they define the scope.\n" +
-                        "- **Next step:** tell me which part of \"$subject\" to expand and I will go deeper."
+                "**$subjectTitled** — direct answer:\n\n" +
+                        "- **What it is:** $subjectTitled denotes the thing named in your question; its meaning depends on the field (electronics, computing, science, or general use).\n" +
+                        "- **Core idea:** each instance of $subject shares the defining traits of its category — tell me the context (e.g. a circuit, code, or device) and I will define it exactly.\n" +
+                        "- **To go deeper:** ask \"what is $subject in ...\" with your field, or \"how does $subject work\"."
             }
         }
     }

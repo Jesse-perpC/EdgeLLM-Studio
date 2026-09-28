@@ -36,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -246,6 +247,65 @@ fun SiliconGovernorSheet(
                                     tint = Color(mode.badgeColor),
                                     modifier = Modifier.size(20.dp)
                                 )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Manual Thread Override",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${governorStatus.manualThreadOverride ?: governorStatus.recommendedThreads} threads" +
+                                            if (governorStatus.manualThreadOverride != null) " (pinned)" else " (auto)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            val isLocked = governorStatus.batteryTemperatureCelsius > 42.0f
+                            Slider(
+                                value = (governorStatus.manualThreadOverride
+                                    ?: governorStatus.recommendedThreads).toFloat(),
+                                onValueChange = { v ->
+                                    viewModel.siliconGovernorManager.setManualThreadOverride(v.toInt())
+                                },
+                                valueRange = 1f..8f,
+                                steps = 6,
+                                enabled = !isLocked
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (isLocked) "Locked: cooling to protect hardware" else "Drag to pin threads (1–8)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (governorStatus.manualThreadOverride != null) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.siliconGovernorManager.clearManualThreadOverride() }
+                                    ) {
+                                        Text("Auto", fontSize = 11.sp)
+                                    }
+                                }
                             }
                         }
                     }

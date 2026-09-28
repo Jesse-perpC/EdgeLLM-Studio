@@ -30,6 +30,8 @@ import com.example.engine.CryptoManager
 import com.example.engine.HardwareCapabilityDetector
 import com.example.engine.LocalInferenceEngine
 import com.example.engine.ModelDownloadManager
+import com.example.engine.OfflineKnowledgeEngine
+import com.example.engine.OutputVerificationEngine
 import com.example.engine.ShareDuration
 import com.example.engine.StreamTokenChunk
 import com.example.engine.TemporaryShareManager
@@ -216,6 +218,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             delay(80)
             val ttftB = System.currentTimeMillis() - tStart
 
+            // Grounded answers for arbitrary prompts: route through each contender's
+            // real knowledge pipeline (answer-only, sanitized) so battles reflect
+            // loaded-model capabilities instead of runtime boilerplate.
+            // Curated challenge prompts below keep their hand-tuned responses.
+            fun chunkForStream(text: String): List<String> {
+                val sentences = text.split(Regex("(?<=[.!?\\n])\\s+"))
+                    .map { it.trim() }.filter { it.isNotBlank() }
+                if (sentences.isEmpty()) return listOf(text.ifBlank { "No response generated." })
+                val out = mutableListOf<String>()
+                val cur = StringBuilder()
+                for (s in sentences) {
+                    if (cur.length + s.length + 1 > 280 && cur.isNotEmpty()) {
+                        out.add(cur.toString() + " ")
+                        cur.clear()
+                    }
+                    if (cur.isNotEmpty()) cur.append(" ")
+                    cur.append(s)
+                }
+                if (cur.isNotEmpty()) out.add(cur.toString())
+                return out.ifEmpty { listOf(text) }
+            }
+            val contenderA = modelA ?: downloadManager.getActiveModel()
+            val contenderB = modelB ?: downloadManager.getActiveModel()
+            val groundedChunksA = chunkForStream(
+                OutputVerificationEngine.verifyAndSanitizeText(
+                    OfflineKnowledgeEngine.answerQuery(prompt, contenderA, _activePersona.value)
+                )
+            )
+            val groundedChunksB = chunkForStream(
+                OutputVerificationEngine.verifyAndSanitizeText(
+                    OfflineKnowledgeEngine.answerQuery(prompt, contenderB, _activePersona.value)
+                )
+            )
+
             // Multi-phase streaming simulation with progressive generation
             val chunksA = when {
                 prompt.contains("paradox", ignoreCase = true) -> listOf(
@@ -247,12 +283,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "        tail.lazySet(currentTail + 1)\n",
                     "        return true\n    }\n}\n```"
                 )
-                else -> listOf(
-                    "Direct Evaluation on '${prompt.take(35)}...':\n\n",
-                    "1. Foundational Tensor Matrix: Quantized INT4/Q4 weights execute directly within local L3/SLC cache.\n",
-                    "2. High Efficiency: Zero thermal envelope penalty observed; average latency remains deterministic.\n",
-                    "3. Architectural Verification: Fully verified via local on-device kernel without network dependency."
-                )
+                else -> groundedChunksA
             }
 
             val chunksB = when {
@@ -285,12 +316,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "        tail = currentTail + 1\n",
                     "        return true\n    }\n}\n```"
                 )
-                else -> listOf(
-                    "Alternative Assessment on '${prompt.take(35)}...':\n\n",
-                    "• Core Inference Profile: Streamed through on-device neural accelerator (NPU / GPU pipeline).\n",
-                    "• Memory Footprint: Constant KV cache window utilizing attention sink tokens to prevent context overflow.\n",
-                    "• Precision Score: Syntactically sound with low perplexity score and complete air-gapped isolation."
-                )
+                else -> groundedChunksB
             }
 
             var textA = ""

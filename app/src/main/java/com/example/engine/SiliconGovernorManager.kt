@@ -25,7 +25,8 @@ data class SiliconGovernorStatus(
     val recommendedThreads: Int = 4,
     val thermalThrottlingRisk: String = "LOW (Safe)",
     val activeFrequencyCapMhz: Int = 2800,
-    val energySavingPercent: Int = 22
+    val energySavingPercent: Int = 22,
+    val manualThreadOverride: Int? = null
 )
 
 enum class GovernorMode(val displayName: String, val badgeColor: Long, val description: String) {
@@ -54,8 +55,33 @@ class SiliconGovernorManager(private val context: Context) {
             currentGovernorMode = mode,
             recommendedThreads = recommendedThreads,
             activeFrequencyCapMhz = freqCap,
-            energySavingPercent = energySave
+            energySavingPercent = energySave,
+            manualThreadOverride = null // mode switch clears any manual pin
         )
+    }
+
+    /**
+     * Manual thread-count override from the Silicon Governor sheet slider.
+     * Gracefully refused when thermals are critical (>42°C) so the device
+     * stays protected: returns false and leaves state untouched.
+     */
+    fun setManualThreadOverride(threads: Int): Boolean {
+        if (_status.value.batteryTemperatureCelsius > 42.0f) return false
+        _status.value = _status.value.copy(
+            manualThreadOverride = threads.coerceIn(1, 8)
+        )
+        return true
+    }
+
+    fun clearManualThreadOverride() {
+        _status.value = _status.value.copy(manualThreadOverride = null)
+    }
+
+    /** Effective threads for inference: manual pin wins unless thermals forbid it. */
+    fun effectiveThreads(): Int {
+        val s = _status.value
+        val manual = s.manualThreadOverride
+        return if (manual != null && s.batteryTemperatureCelsius <= 42.0f) manual else s.recommendedThreads
     }
 
     fun refreshGovernorStatus() {
