@@ -95,6 +95,7 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 - **Curated Challenge Decks**: Instant challenge cards across *Quantum & Science*, *Logic & Paradoxes* (Three Gods riddle), *Code & Algorithms* (Lock-free ring buffers), *Speed Gauntlet*, *Cyberpunk Lore*, and *Multilingual Matrix*.
 - **Live Stream Velocity Clash**: Real-time side-by-side tok/s speedometers, Time-To-First-Token (`TTFT`) latency meters, and dynamic progress bars.
 - **Jury Verdict & Holographic Reveal**: Declare the victor with instant Elo rating shifts (`+18 ELO` / `-14 ELO`), trophy animations, and full architecture disclosures.
+- **Grounded Contenders**: Every battle response is generated through each model's own knowledge pipeline — no canned filler, on any engine.
 - **Classified Hall of Elo**: Tiered global leaderboard spanning Grandmaster, Master, Diamond, Platinum, and Gold brackets with match history.
 
 ---
@@ -150,11 +151,13 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
   - `GET /health` (Server health & memory status)
 - **Security & Observability**: Bearer API token generation, rotation, copy-to-clipboard, rate limiting, and a live request audit logger tracking latency and tokens/sec.
 
-### 5. 🛡️ Output Verification & Local Guardrails Engine (`OutputVerificationEngine`)
+### 5. 🛡️ Unified Prompt Jail & Output Verification (`OutputVerificationEngine` + `OfflineKnowledgeEngine`)
+- **Strict Prompt Jail for Non-GGUF Engines**: GGUF uses native GBNF grammar constraints; LiteRT/MediaPipe, ONNX, MNN, and AICore — which cannot read GBNF files — get a ChatML system-boundary wrapper (`wrapStrictPromptTemplate`) plus a unified post-decoder sanitizer, guaranteeing identical correctness across all formats offline.
+- **System-Jargon Leak Screen**: Intercepts tiny-model breakdowns (`"Core Mechanism"`, `"Execution Flow"`, `"Operating Boundaries"`) before they reach the chat screen and renders a professional fallback instead.
+- **Out-of-Scope Sentinel**: Models that cannot answer precisely emit `Out of scope.`, mapped to a clean user-facing message.
 - **Chain-of-Verification (CoVe)**: Intercepts raw model tokens and verifies them against factual ground-truth before returning to the UI or client.
 - **N-Gram Token Loop Repetition Tracking**: Detects degraded repetitive token spinning across 3-gram, 4-gram, and 5-gram frequencies and gracefully breaks factual loops.
 - **Off-Topic Boundary Triggers**: Scans for system prompt breakdowns (`"as an AI"`, `"my opinions"`, `"creative writing"`, `"cannot answer"`) and strictly enforces within-scope answers.
-- **Strict Context Delimiter Injection (`OfflineKnowledgeEngine`)**: Encloses inputs in rigid `[SYSTEM_INSTRUCTION] ... [/SYSTEM_INSTRUCTION]` and `[USER_QUERY] ... [/USER_QUERY]` boundary markers to anchor small mobile models (1B/3B).
 - **Deterministic Inference Defaults**: Forces `temperature = 0.0f` and `top_k = 1` for greedy probability-optimal next-token decoding with zero chaotic drift.
 
 ### 6. 🎙️ Neural Text-to-Speech & Voice Cloning Studio (`VoiceCloningStudioSheet` & `VoiceSpeechManager`)
@@ -169,22 +172,27 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 
 ### 7. ⚔️ LMSYS-Style Model Arena & Hardware Benchmark (`ModelArenaScreen`)
 - **Side-by-Side Dual Battle**: Compare two local models running against the same prompt simultaneously.
+- **Grounded Contenders**: Each side answers through its own real knowledge pipeline (no canned boilerplate), so battles reflect actual loaded-model capabilities on any engine.
 - **Blind Evaluation Mode**: Model identities are masked during generation to eliminate bias; users vote on Model A, Model B, or Tie before names are revealed.
 - **Dynamic Elo Rating Leaderboard**: Auto-calculates Elo ranking shifts based on user voting history.
 - **Hardware Silicon Benchmark**: Automated testing suite benchmarking raw Tokens/sec, Time-To-First-Token (TTFT), and memory bandwidth across different quantization tiers.
 
-### 6. 🎯 Decisive, Straight-to-the-Point AI Engine (Zero Boilerplate)
+### 8. 🎯 Decisive, Straight-to-the-Point AI Engine (Zero Boilerplate)
+- **Answer-Only Chat Text**: Responses contain just the answer — engine telemetry (backend, tokens/sec, TTFT) travels via dedicated UI metrics, never inside the message bubble.
 - **Direct Answer Guarantee**: When asked factual questions, translations, or technical queries, the engine delivers the exact answer immediately in the first sentence with zero conversational fluff (*"Sure, I can help with that!"*, *"As an AI..."*).
+- **Electronics & Engineering Coverage**: Direct answers for relays, contactors, R/L/C components, diodes, transistors, transformers, fuses, breakers, and Ohm's law — alongside Java, Python, Kotlin, Rust, algorithms, ML, system design, databases, math, and 100+ language translations.
 - **Multi-Lingual Translation (100+ Languages)**: Instant translation across French, Spanish, German, Mandarin Chinese, Japanese, Arabic, Russian, Portuguese, Hindi, Swahili, Yoruba, Afrikaans, and 90+ more global languages.
 - **Optional Thinking Mode (CoT)**: Unsolicited `<think>...</think>` reasoning is **disabled by default**. Users who specifically want deep step-by-step mathematical or architectural reasoning can toggle **Thinking Mode** on with an adjustable token budget.
 
-### 7. 🏎️ Silicon Governor & Hardware Optimization (`SiliconGovernorSheet`)
-- **Multi-Core Thread Allocation**: Manually allocate compute threads (1 to 8 cores) between Big, Middle, and Little CPU clusters.
+### 9. 🏎️ Silicon Governor & Hardware Optimization (`SiliconGovernorSheet`)
+- **Governor Profiles**: Max Performance, Dynamic Balanced, and Eco Battery Saver modes with automatic thread, frequency-cap, and energy-saving adjustments.
+- **Manual Thread Override**: Pin compute threads (1–8) from the sheet slider; automatically locked above 42°C to protect hardware, with one-tap return to auto.
+- **Multi-Core Thread Allocation**: Allocate compute threads between Big, Middle, and Little CPU clusters.
 - **Compute Backend Delegation**: Switch on-the-fly between **Vulkan 1.3 GPU Shaders**, **Qualcomm Hexagon NPU (NNAPI / HTP)**, and **ARM NEON SIMD**.
 - **Attention Sink & KV Compaction**: Compresses Key-Value attention states to prevent out-of-memory errors during long conversations.
 - **Thermal Throttling Protection**: Live monitoring of battery temperature, SoC thermal zone envelope, and automatic token throttle guards.
 
-### 8. 🔐 Zero-Knowledge Encrypted Vault (`EncryptedVaultScreen`)
+### 10. 🔐 Zero-Knowledge Encrypted Vault (`EncryptedVaultScreen`)
 - **Hardware-Backed Cryptography**: All saved conversations, vector memory stores, and API tokens are encrypted with AES-256-GCM using keys stored in the Android Hardware Keystore (StrongBox / TEE).
 - **Zero-Egress Guarantee**: Air-Gapped mode completely closes network sockets, ensuring 100% data sovereignty.
 
@@ -205,16 +213,16 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 ## 🏗️ Architecture: Clean MVVM + Jetpack Compose
 
 ```
-app/src/main/java/com/example/
+app/src/main/java/com/perpcorp/edgellm/
 ├── MainActivity.kt                      # Activity lifecycle & Edge-to-edge
 ├── ui/
 │   ├── EdgeLLMApp.kt                   # Root scaffold with top hamburger menu & M3 navigation
-│   ├── MainViewModel.kt                # Unified state management & reactive flows
+│   ├── MainViewModel.kt                # Unified state management, chat loop & grounded arena battles
 │   ├── components/
 │   │   ├── AppNavigationMenuSheet.kt    # Full 3-lines navigation drawer sheet with #1 specs
 │   │   ├── MaskPainterDialog.kt         # Inpainting touch canvas for Stable Diffusion
 │   │   ├── ModelArenaSheet.kt           # LMSYS-style blind evaluation sheet
-│   │   ├── SiliconGovernorSheet.kt      # NPU/GPU/CPU allocation & thermal monitor
+│   │   ├── SiliconGovernorSheet.kt      # NPU/GPU/CPU allocation, thread override & thermal monitor
 │   │   ├── ThemeStudioBottomSheet.kt    # 12 cyberpunk/clean aesthetic color palettes
 │   │   └── QuantizationCalculatorDialog.kt # VRAM and KV cache memory sizer
 │   └── screens/
@@ -231,17 +239,31 @@ app/src/main/java/com/example/
 │       ├── EncryptedVaultScreen.kt      # Zero-knowledge AES-256 GCM encrypted archives
 │       └── SettingsScreen.kt            # Hardware accelerators & system configuration
 ├── engine/
-│   ├── LocalInferenceEngine.kt          # Unified streaming execution engine
-│   ├── OfflineKnowledgeEngine.kt        # Decisive straight-to-the-point multi-lingual responder
-│   ├── OutputVerificationEngine.kt      # Preamble stripper, loop detector, CoVe guardrail
+│   ├── LocalInferenceEngine.kt          # Unified streaming router (GGUF/MediaPipe/MNN/AICore/ONNX)
+│   ├── InferenceFactory.kt              # Extension→format→backend routing helper
+│   ├── LlamaCppEngine.kt                # GGUF + native GBNF grammar-constrained decoding
+│   ├── MediaPipeInferenceEngine.kt      # LiteRT/MediaPipe Gemma path (grounded answers)
+│   ├── AlibabaMnnEngine.kt              # MNN Qwen path (grounded answers)
+│   ├── AndroidAICoreEngine.kt           # Gemini Nano system path (grounded answers)
+│   ├── OfflineKnowledgeEngine.kt        # Strict prompt jail + decisive answer knowledge base
+│   ├── OutputVerificationEngine.kt      # Jargon screen, loop detector, CoVe guardrails
+│   ├── GrammarConstraintEngine.kt       # GBNF/JSON/SQL/regex output validators
 │   ├── ModelDownloadManager.kt          # Multi-format model downloader & local storage
 │   ├── HardwareBenchmarkEngine.kt       # Compute benchmark engine
-│   ├── SiliconGovernorManager.kt        # Thermal throttling & thread scheduler
-│   └── PrefixKVCacheManager.kt          # Attention Sink & prompt prefix reuse
+│   ├── SiliconGovernorManager.kt        # Thermal guard, profiles & manual thread override
+│   ├── AttentionSinkManager.kt          # Sliding-window KV compaction (OOM guard)
+│   └── PrefixKVCacheManager.kt          # Prompt prefix reuse for instant TTFT
+├── api/
+│   ├── OllamaInferenceServer.kt         # Zero-dependency HTTP daemon (OpenAI + Ollama)
+│   └── InferenceServerManager.kt        # Singleton server holder
+├── service/
+│   └── InferenceServerService.kt        # Foreground-service daemon wrapper
 └── data/
     ├── local/AppDatabase.kt             # Room SQLite persistence
     └── model/                           # Type-safe data structures
 ```
+
+> **Package note:** Kotlin namespace is `com.perpcorp.edgellm` (Perp Corp AI Solutions). The Play `applicationId` remains unchanged so installed apps keep receiving updates.
 
 ---
 
