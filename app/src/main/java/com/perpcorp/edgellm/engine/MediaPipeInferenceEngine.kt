@@ -150,10 +150,12 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         val existing = cachedLlm
         if (existing != null && cachedKey == key) return existing
         closeQuietly()
+        // NOTE: tasks-genai 0.10.27 Builder has NO setTopK (removed upstream;
+        // sampling is temperature-driven). Our topK field is kept for telemetry
+        // display only ("Top-K (40)" badges) and the cache key.
         val builder = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath)
             .setMaxTokens(options.maxTokens)
-            .setTopK(options.topK)
             .setTemperature(options.temperature)
             .setRandomSeed(options.randomSeed)
         if (options.loraPath != null) builder.setLoraPath(options.loraPath)
@@ -270,7 +272,6 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
                     "val options = LlmInference.LlmInferenceOptions.builder()\n" +
                     "    .setModelPath(\"${options.modelPath.ifBlank { "/data/local/tmp/gemma-2b-it-gpu.bin" }}\")\n" +
                     "    .setMaxTokens(${options.maxTokens})\n" +
-                    "    .setTopK(${options.topK})\n" +
                     "    .setTemperature(${options.temperature}f)\n" +
                     "    .build()\n" +
                     "```\n\n" +
