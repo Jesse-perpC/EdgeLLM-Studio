@@ -135,7 +135,11 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
                 .build()
             session = LlmInferenceSession.createFromOptions(llm, sessionOpts)
             val cleanQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-            val raw = withContext(Dispatchers.IO) { session!!.generateResponse(cleanQuery) }
+            // 0.10.27 sessions take input via addQueryChunk(); generateResponse() drains it.
+            val raw = withContext(Dispatchers.IO) {
+                session!!.addQueryChunk(cleanQuery)
+                session!!.generateResponse()
+            }
             val text = raw.trim()
             if (text.isEmpty()) {
                 Log.w(TAG, "Native returned empty text; using grounded fallback")
