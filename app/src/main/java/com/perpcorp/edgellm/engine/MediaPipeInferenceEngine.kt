@@ -3,6 +3,7 @@ package com.perpcorp.edgellm.engine
 import android.content.Context
 import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import com.perpcorp.edgellm.data.model.AiPersona
 import com.perpcorp.edgellm.data.model.ModelSpec
 import kotlinx.coroutines.Dispatchers
@@ -110,7 +111,9 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
     }
 
     /**
-     * Real weight inference via MediaPipe `tasks-genai`.
+     * Real weight inference via MediaPipe `tasks-genai` 0.10.27.
+     * Sampling params (temperature/topK/seed/LoRA) live in the per-message
+     * `LlmInferenceSessionOptions` in this version — NOT in LlmInferenceOptions.
      * Returns null (→ grounded KB fallback) when: no Android Context, no valid
      * `.task` model file on disk, or any native failure. Never throws.
      */
@@ -121,10 +124,18 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         val appContext = context?.applicationContext ?: return null
         val path = options.modelPath.ifBlank { return null }
         if (!File(path).exists()) return null
+        var session: LlmInferenceSession? = null
         return try {
             val llm = getOrCreateLlm(appContext, options, path)
+            val sessionOpts = LlmInferenceSession.LlmInferenceSessionOptions.builder()
+                .setTopK(options.topK)
+                .setTemperature(options.temperature)
+                .setRandomSeed(options.randomSeed)
+                .apply { if (options.loraPath != null) setLoraPath(options.loraPath) }
+                .build()
+            session = LlmInferenceSession.createFromOptions(llm, sessionOpts)
             val cleanQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-            val raw = withContext(Dispatchers.IO) { llm.generateResponse(cleanQuery) }
+            val raw = withContext(Dispatchers.IO) { session!!.generateResponse(cleanQuery) }
             val text = raw.trim()
             if (text.isEmpty()) {
                 Log.w(TAG, "Native returned empty text; using grounded fallback")
@@ -136,6 +147,12 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
             Log.w(TAG, "Real inference unavailable (${e.message}); using grounded fallback")
             closeQuietly()
             null
+        } finally {
+            try {
+                session?.close()
+            } catch (_: Throwable) {
+                // Best-effort native cleanup
+            }
         }
     }
 
@@ -145,20 +162,17 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         options: MediaPipeLlmOptions,
         modelPath: String
     ): LlmInference {
-        val key = "$modelPath|${options.maxTokens}|${options.topK}|${options.temperature}|" +
-                "${options.randomSeed}|${options.loraPath}"
+        val key = "$modelPath|${options.maxTokens}"
         val existing = cachedLlm
         if (existing != null && cachedKey == key) return existing
         closeQuietly()
-        // NOTE: tasks-genai 0.10.27 Builder has NO setTopK (removed upstream;
-        // sampling is temperature-driven). Our topK field is kept for telemetry
-        // display only ("Top-K (40)" badges) and the cache key.
         val builder = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath)
             .setMaxTokens(options.maxTokens)
-            .setTemperature(options.temperature)
-            .setRandomSeed(options.randomSeed)
-        if (options.loraPath != null) builder.setLoraPath(options.loraPath)
+        // NOTE: tasks-genai 0.10.27 LlmInferenceOptions has NO setTopK /
+        // setTemperature / setRandomSeed / setLoraPath (removed upstream).
+        // Those live on LlmInferenceSessionOptions per message (see above).
+        // Our topK field is kept for telemetry display only.
         val created = LlmInference.createFromOptions(appContext, builder.build())
         cachedLlm = created
         cachedKey = key
