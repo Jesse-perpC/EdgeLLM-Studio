@@ -165,18 +165,9 @@ class OutputVerificationEngine {
 
         /**
          * Fallback verification and sanitization for GBNF JSON structured outputs.
-         * Unified entry point: routes plain-text to [verifyAndSanitizeText] so
-         * non-GGUF engines get the same guarantee without native grammar support.
+         * Guarantees structural JSON shape conforms to strict factual schema.
          */
         fun verifyAndSanitize(rawJsonOutput: String): String {
-            val trimmedEarly = rawJsonOutput.trim()
-            // Unified routing: plain-text (non-GGUF engines) -> text sanitizer.
-            // Prevents returning a JSON envelope into a chat bubble.
-            val looksLikeJson = trimmedEarly.contains("{") && trimmedEarly.contains("}") ||
-                    trimmedEarly.contains("```json")
-            if (!looksLikeJson) {
-                return verifyAndSanitizeText(rawJsonOutput)
-            }
             return try {
                 val trimmed = rawJsonOutput.trim()
                 val jsonCandidate = when {
@@ -198,7 +189,7 @@ class OutputVerificationEngine {
                 // Clean up text formatting if needed and return valid payload
                 jsonCandidate
             } catch (e: Exception) {
-                // Hard fallback if structural parsing fails due to runtime truncation
+                // Hard fallback if structural parsing fails due to runtime truncation or malformed non-JSON
                 "{\"is_on_topic\": false, \"answer\": \"Factual decoding validation failed.\", \"confidence_score\": 0.0}"
             }
         }
@@ -385,8 +376,8 @@ class OutputVerificationEngine {
 
         private fun verifyArithmeticInText(text: String, query: String): String? {
             val cleanQuery = query.lowercase().trim()
-            val mathRegex = Regex("(?:what is|calculate|evaluate|solve)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*([\\+\\-\\*/×÷])\\s*([0-9]+(?:\\.[0-9]+)?)")
-            val match = mathRegex.find(cleanQuery) ?: return null
+            val mathOnlyRegex = Regex("^(?:what is|calculate|evaluate|solve)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*([\\+\\-\\*/×÷])\\s*([0-9]+(?:\\.[0-9]+)?)\\s*\\??$")
+            val match = mathOnlyRegex.find(cleanQuery) ?: return null
 
             val a = match.groupValues[1].toDoubleOrNull() ?: return null
             val op = match.groupValues[2]

@@ -71,10 +71,12 @@ escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]
             try {
                 System.loadLibrary("llama-android")
                 isNativeLoaded = true
-                Log.i(TAG, "llama-android native library loaded successfully")
+                try { Log.i(TAG, "llama-android native library loaded successfully") } catch (_: Throwable) {}
             } catch (e: UnsatisfiedLinkError) {
                 isNativeLoaded = false
-                Log.d(TAG, "llama-android native shared library not bundled; utilizing native-compliant JVM fallback runner")
+                try { Log.d(TAG, "llama-android native shared library not bundled; utilizing native-compliant JVM fallback runner") } catch (_: Throwable) {}
+            } catch (_: Throwable) {
+                isNativeLoaded = false
             }
         }
     }
@@ -252,8 +254,17 @@ escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]
         val fullResponse = if (useGbnfGrammar) {
             val factual = generateStrictFactualResponse(prompt, model)
             val jsonText = factual.toJsonString()
-            // Stage 2 Verification Fallback via OutputVerificationEngine
-            OutputVerificationEngine.verifyAndSanitize(jsonText)
+            val sanitizedJson = OutputVerificationEngine.verifyAndSanitize(jsonText)
+            if (params.enforceJsonSchema) {
+                sanitizedJson
+            } else {
+                try {
+                    val obj = org.json.JSONObject(sanitizedJson)
+                    obj.optString("answer", factual.answer)
+                } catch (_: Exception) {
+                    factual.answer
+                }
+            }
         } else {
             OfflineKnowledgeEngine.answerQuery(prompt, model, null)
         }

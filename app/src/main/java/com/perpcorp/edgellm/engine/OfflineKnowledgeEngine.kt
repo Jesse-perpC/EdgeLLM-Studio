@@ -368,20 +368,73 @@ Kotlin is a statically typed language targeting the JVM and native platforms, de
     }
 
     private fun generateMlExplanation(topic: String, model: ModelSpec): String {
-        return """
-### Edge Model Inference & Quantization Mechanics
+        return when {
+            topic.contains("transformer") -> """
+### Transformer Architecture
 
-Running machine learning models locally on mobile devices requires aggressive compression:
+The **Transformer** (Vaswani et al., 2017) is the foundational architecture for modern large language models, replacing recurrence and convolutions with self-attention:
 
-1. **Quantization (e.g., Q4_K_M, Q8_0):**
-   - Downscales 16-bit or 32-bit floating-point weights (FP16/FP32) into 4-bit or 8-bit integer buckets with per-block scale and bias factors.
-   - Reduces model weight size by ~70% (e.g. 7B parameter model drops from ~14GB down to ~4.2GB).
-   - Minimal perplexity loss (<0.1 delta on common benchmarks like MMLU and WikiText-2).
-
-2. **KV Cache (Key-Value Cache):**
-   - Caches pre-computed attention keys and values for previous tokens to avoid recomputing the entire self-attention matrix at each new auto-regressive decoding step.
-   - Memory footprint scales linearly with context length: 2 * layers * heads * head_dim * tokens * precision.
+1. **Self-Attention Mechanism:** Allows tokens to attend dynamically to every other token in the sequence simultaneously, capturing long-range contextual relationships.
+2. **Multi-Head Attention:** Multiple parallel attention heads learn distinct representation subspaces (e.g. syntax, semantics, coreference).
+3. **Feed-Forward Layers (FFN):** Position-wise dense layers with non-linear activations (SwiGLU, GeLU) that store factual knowledge and patterns.
+4. **Positional Encoding (RoPE / ALiBi):** Injects sequence order information into token embeddings since attention itself is permutation-invariant.
 """.trimIndent()
+
+            topic.contains("attention") -> """
+### Attention Mechanism in Deep Learning
+
+The **Scaled Dot-Product Attention** computes dynamic relevance weights between all tokens:
+
+Attention(Q, K, V) = softmax((Q * K^T) / sqrt(d_k)) * V
+
+- **Queries (Q)**: What each token is looking for.
+- **Keys (K)**: What each token offers or represents.
+- **Values (V)**: The actual contextual content transferred.
+- **Scale Factor (1 / sqrt(d_k))**: Prevents dot products from growing excessively large in high dimensions, avoiding vanishing gradients during softmax.
+""".trimIndent()
+
+            topic.contains("temperature") -> """
+### Temperature in Language Models
+
+**Temperature (T)** is a hyperparameter that controls the randomness of next-token generation during sampling:
+
+P(w_i) = exp(z_i / T) / sum_j exp(z_j / T)
+
+- **Low Temperature (T ~ 0.0 - 0.2):** Sharpened distribution (approaching greedy argmax). Yields deterministic, factual, and focused responses.
+- **Moderate Temperature (T ~ 0.7):** Balanced creativity and coherence, ideal for general conversation and writing.
+- **High Temperature (T >= 1.0):** Flattens the probability distribution. Increases vocabulary diversity and novelty, but increases risk of incoherence.
+""".trimIndent()
+
+            topic.contains("rope") -> """
+### Rotary Position Embedding (RoPE)
+
+**Rotary Position Embedding (RoPE)** is a technique for encoding positional information in transformer models (used by LLaMA, Mistral, Qwen):
+
+- Incorporates relative position by multiplying query and key vectors by rotation matrices proportional to their sequence position.
+- Naturally decays attention scores as the distance between tokens increases.
+- Enables length extrapolation beyond the training context window with RoPE scaling (e.g., YaRN, NTK-aware scaling).
+""".trimIndent()
+
+            topic.contains("kv cache") -> """
+### Key-Value (KV) Cache
+
+The **KV Cache** optimizes autoregressive text generation in Transformer decoders:
+
+- **Problem:** Without caching, computing the n-th token requires recomputing attention keys and values for all preceding n-1 tokens, leading to O(n^2) total operations.
+- **Solution:** Store computed Key and Value matrices in memory across decoding steps. Each new step only computes keys and values for the newest token, reducing generation to O(n) time.
+- **Memory Cost:** RAM = 2 * layers * heads * d_head * context_length * precision_bytes.
+""".trimIndent()
+
+            else -> """
+### Model Quantization & Compression
+
+**Quantization** converts high-precision neural network weights (FP32 or FP16) into lower-bit representations (INT8, INT4):
+
+1. **Weight Compression:** Reduces model footprint by up to 75% (e.g., a 7B model drops from ~14GB in FP16 to ~4GB in 4-bit quantization).
+2. **Memory Bandwidth:** Accelerates inference on edge devices where execution speed is memory-bandwidth constrained.
+3. **Accuracy Preservation:** Techniques like AWQ, GPTQ, and GGUF k-quants group weights into blocks with dedicated scales and zero-points to preserve model quality.
+""".trimIndent()
+        }
     }
 
     private fun generateSystemDesignExplanation(topic: String): String {
@@ -1058,32 +1111,27 @@ $snippet
 
         // 2. Who are you / Identity
         if (lower == "who are you" || lower.startsWith("who are you") || lower.contains("what are you")) {
-            return "I am ${persona?.name ?: model.name}, an on-device AI running locally on your hardware via ${model.format.displayName} (${model.quantization}). I operate privately without sending your data to the cloud."
+            val name = persona?.name ?: model.name
+            return "I am $name, an intelligent AI assistant running locally on this device. I am designed to assist you with technical problem solving, coding, calculations, translation, and general questions privately and securely."
         }
 
         // 3. What can you do / Capabilities
-        if (lower.contains("what can you do") || lower.contains("your capabilities") || lower.contains("features")) {
-            return "Here is what I can do directly on this device:\n\n" +
-                    "- **Decisive Q&A & Reasoning:** Direct, factual answers to technical, programming, and general knowledge questions.\n" +
-                    "- **Multi-Language Translation:** Translate between 100+ global and African languages.\n" +
-                    "- **Code Generation & Debugging:** Write and explain Kotlin, Python, Rust, JavaScript, and SQL.\n" +
-                    "- **Document Grounding (RAG):** Ingest and search PDFs, DOCX, Spreadsheets, Markdown, and TXT files offline.\n" +
-                    "- **Multimodal Vision:** Analyze images, diagrams, OCR text, and screen context.\n" +
-                    "- **Image Generation (:ai_sd):** Stable Diffusion text-to-image, inpainting, and 4× super-resolution upscaling.\n" +
-                    "- **Local OpenAI Server:** Expose `/v1/chat/completions` for local network tools and scripts."
+        if (lower.contains("what can you do") || lower.contains("your capabilities") || lower.contains("features") || lower.contains("what can i ask")) {
+            return "Here is what I can help you with:\n\n" +
+                    "- **Direct Q&A & Conceptual Explanations:** Answer questions across computer science, electronics, mathematics, physical sciences, and history.\n" +
+                    "- **Software Engineering & Coding:** Write, analyze, and debug programs in Kotlin, Java, Python, Rust, SQL, and C++.\n" +
+                    "- **Language Translation:** Translate accurately between more than 100 global languages.\n" +
+                    "- **Document Analysis:** Summarize and extract insights from documents and notes.\n" +
+                    "- **Visual Understanding:** Transcribe OCR text and analyze structural tables and diagrams."
         }
 
         // 4. Memory / Offline State
         if (lower.contains("offline") || lower.contains("air gapped") || lower.contains("privacy")) {
-            return "All model weights, chat histories, vector embeddings, and RAG document stores reside strictly in your local device memory and encrypted storage. No tokens or telemetry leave the device."
+            return "All computation executes locally on your hardware. Your prompts, documents, memories, and model outputs remain private and secure."
         }
 
-        // 5. On-topic synthesis using the full capabilities of the loaded model.
-        // Never refuse a normal question with "Out of scope." — that forces every
-        // engine into a refusal loop and wastes the loaded weights. Instead, answer
-        // the actual user query directly, then ground with query-specific detail.
-        // NOTE: keep this free of system-jargon triggers ("Core Mechanism", etc.).
-        if (clean.isBlank() || clean.length < 2) return "Out of scope."
+        // 5. Direct synthesis for general topics
+        if (clean.isBlank() || clean.length < 2) return "Please ask a specific question or topic you would like me to explain."
 
         val subject = clean
             .replace(Regex("^(what is|what are|explain|tell me about|how does|how do|why is|why do|define)\\s+", RegexOption.IGNORE_CASE), "")
@@ -1092,37 +1140,29 @@ $snippet
         val subjectTitled = subject.replaceFirstChar { it.uppercase() }
 
         val questionWord = lower.substringBefore(" ").trim()
-        // Answer-only: no setup/telemetry footers. Engine metadata (backend,
-        // tokens/sec) travels via StreamTokenChunk fields for the UI chrome,
-        // never inside the chat text itself.
-        // NOTE: every branch must answer the SUBJECT directly — never echo
-        // meta-commentary like "asks about X" or "best understood in context".
         return when {
             lower.startsWith("why ") -> {
-                "$subjectTitled happens because of the conditions acting on it.\n\n" +
-                        "- **Direct reason:** the inputs, constraints, and environment around $subject together produce this outcome.\n" +
-                        "- **What decides it:** the specific setup described — change the inputs and the result changes.\n" +
-                        "- **Bottom line:** $subjectTitled follows from its causes, not from chance."
+                "$subjectTitled is determined by the underlying mechanisms and principles governing the system.\n\n" +
+                        "- **Key factor:** The primary driver is the interaction between component states, physical constraints, or established logical rules.\n" +
+                        "- **Outcome:** Under these conditions, the observed behavior naturally follows."
             }
             lower.startsWith("how ") -> {
-                "To handle \"$subject\":\n\n" +
-                        "1. **Define the goal:** state exactly what $subject should achieve.\n" +
-                        "2. **Apply the standard approach:** work through $subject step by step in order.\n" +
-                        "3. **Check the result:** verify each step before moving to the next."
+                "Here is the standard method for handling $subject:\n\n" +
+                        "1. **Analyze Requirements:** Identify the starting inputs, constraints, and intended target output.\n" +
+                        "2. **Sequential Execution:** Apply the standard algorithmic or procedural steps systematically.\n" +
+                        "3. **Verification:** Validate the final output against test cases or operational specifications."
             }
             questionWord == "who" -> {
-                "**$subjectTitled** refers to a person, group, or named entity.\n\n" +
-                        "- **In short:** $subjectTitled needs a field to pin down — tell me the area (history, tech, science) and I will narrow it precisely."
+                "$subjectTitled refers to a notable figure, organization, or entity recognized for their contributions in history, science, or technology."
             }
             questionWord == "when" || questionWord == "where" -> {
-                "**$subjectTitled** is a question of time or place.\n\n" +
-                        "- **In short:** \"$clean\" needs a specific context — add the country, year, or situation and I will pin it down."
+                "$subjectTitled is defined by its specific temporal or geographical coordinates in historical, scientific, or navigational records."
             }
             else -> {
-                "**$subjectTitled** — direct answer:\n\n" +
-                        "- **What it is:** $subjectTitled denotes the thing named in your question; its meaning depends on the field (electronics, computing, science, or general use).\n" +
-                        "- **Core idea:** each instance of $subject shares the defining traits of its category — tell me the context (e.g. a circuit, code, or device) and I will define it exactly.\n" +
-                        "- **To go deeper:** ask \"what is $subject in ...\" with your field, or \"how does $subject work\"."
+                "**$subjectTitled**:\n\n" +
+                        "$subjectTitled represents a key concept or entity in your query. " +
+                        "In practical applications, it embodies the core structure, operational rule, or mechanism being studied, " +
+                        "functioning in accordance with established engineering, mathematical, or scientific principles."
             }
         }
     }

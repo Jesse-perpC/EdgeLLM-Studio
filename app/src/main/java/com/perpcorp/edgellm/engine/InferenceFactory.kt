@@ -35,7 +35,8 @@ object InferenceFactory {
             lower.endsWith(".tflite") || lower.endsWith(".task") || lower.endsWith(".bin") -> ModelFormat.MEDIAPIPE_TASK
             lower.endsWith(".onnx") || lower.endsWith(".ort") -> ModelFormat.ONNX
             lower.endsWith(".mnn") -> ModelFormat.MNN_LLM
-            lower.endsWith(".safetensors") || lower.endsWith(".ckpt") || lower.endsWith(".pt") -> ModelFormat.GGUF
+            lower.endsWith(".safetensors") || lower.endsWith(".ckpt") || lower.endsWith(".pt") ->
+                throw IllegalArgumentException("SafeTensors / PyTorch checkpoints ($filePath) cannot run directly on mobile. Please convert to .gguf or LiteRT .task format first.")
             else -> throw IllegalArgumentException("Unsupported on-device runtime format: $filePath")
         }
     }
