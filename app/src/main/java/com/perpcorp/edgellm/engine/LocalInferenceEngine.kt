@@ -445,7 +445,8 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                             "- **Detected Features:** 4 major text clusters, 2 graphical panels, and system telemetry markers."
                 }
             }
-            return analysis
+            val label = attachedImageLabel ?: "Visual Input"
+            return "### 👁️ Multimodal Vision Analysis (" + label + ")\n\n" + analysis
         }
 
         // 1.5. If Screen Context (Circle to Search / Inspect Screen) is present:
