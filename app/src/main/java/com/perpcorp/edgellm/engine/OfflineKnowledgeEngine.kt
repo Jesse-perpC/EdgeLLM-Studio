@@ -745,6 +745,103 @@ Machine learning models and gradient descent are grounded in fundamental analyti
         if (q.contains("ohm") && (q.contains("law") || q.contains("what"))) {
             return "**Ohm's law:** V = I × R — voltage equals current times resistance. It relates the three fundamentals of electric circuits."
         }
+        if ((q.contains("series") || q.contains("parallel")) && (q.contains("circuit") || q.contains("resistor") || q.contains("difference") || q.contains(" vs "))) {
+            return "**Series vs parallel circuits:** in **series**, components share one path — current is equal everywhere and voltages add up; if one part breaks, all stop. In **parallel**, each branch gets full voltage, currents add up, and one branch can fail while others keep running."
+        }
+        if ((q.contains(" ac ") || q.startsWith("ac ") || q.contains(" dc ") || q.startsWith("dc ") || q.contains("ac vs dc") || q.contains("ac/dc") || q.contains("alternating current") || q.contains("direct current")) && (q.contains("difference") || q.contains(" vs ") || q.contains("what") || q.contains("mean"))) {
+            return "**AC vs DC:** **DC (direct current)** flows one way at constant voltage (batteries, USB 5V). **AC (alternating current)** reverses direction periodically (mains power, e.g. 230V/50Hz or 120V/60Hz) and is efficient for long-distance transmission via transformers."
+        }
+        if (q.contains("pwm")) {
+            return "**PWM (pulse-width modulation)** encodes analog-like output with digital pulses: the duty cycle (percentage of time ON) sets the average voltage. Used for LED dimming, motor speed control, and servo positioning."
+        }
+
+        // Data & storage units
+        if ((q.contains("bit") || q.contains("byte") || q.contains("kilobyte") || q.contains("megabyte") || q.contains("gigabyte")) && (q.contains("difference") || q.contains(" vs ") || q.contains("how many") || q.contains("what"))) {
+            return "**Bits vs bytes:** 8 bits = 1 byte. 1 KB = 1,024 bytes, 1 MB = 1,024 KB, 1 GB = 1,024 MB. Network speeds use bits (Mbps); file sizes and RAM use bytes (MB/GB)."
+        }
+
+        // Geography & Earth
+        if (q.contains("largest ocean") || (q.contains("ocean") && q.contains("biggest"))) {
+            return "The **Pacific Ocean** is the largest ocean, covering about one-third of Earth's surface — larger than all landmasses combined."
+        }
+        if (q.contains("longest river")) {
+            return "The **Nile** (~6,650 km) is generally cited as the world's longest river, with the **Amazon** a close rival depending on how length is measured."
+        }
+        if (q.contains("largest desert")) {
+            return "The **Antarctic Polar Desert** is the largest desert on Earth (~14 million km²). The largest hot desert is the **Sahara** (~9 million km²)."
+        }
+        if (q.contains("highest mountain") || q.contains("tallest mountain") || q.contains("mount everest") || (q.contains("everest") && q.contains("height"))) {
+            return "**Mount Everest** is Earth's highest mountain above sea level at **8,849 meters** (29,032 ft), in the Himalayas on the Nepal–Tibet border."
+        }
+        if (q.contains("how many continents") || q.contains("number of continents") || (q.contains("continents") && q.contains("list"))) {
+            return "There are **7 continents**: Africa, Antarctica, Asia, Australia/Oceania, Europe, North America, and South America."
+        }
+
+        // Space & solar system
+        if ((q.contains("order") && q.contains("planet")) || q.contains("planets in order") || q.contains("list of planets") || q.contains("planets from the sun")) {
+            return "Planets from the Sun: **Mercury, Venus, Earth, Mars, Jupiter, Saturn, Uranus, Neptune**. (Mnemonic: *My Very Educated Mother Just Served Us Nachos*.)"
+        }
+        if (q.contains("largest planet") || q.contains("biggest planet")) {
+            return "**Jupiter** is the largest planet — over 1,300 Earths could fit inside it. Its Great Red Spot is a storm wider than Earth."
+        }
+        if (q.contains("nearest star") || q.contains("closest star") || (q.contains("sun") && q.contains("what is"))) {
+            return "The **Sun** is the nearest star to Earth (~150 million km away). The next nearest, **Proxima Centauri**, is ~4.25 light-years distant."
+        }
+        if ((q.contains("moon") && q.contains("how far")) || q.contains("distance to the moon")) {
+            return "The Moon is on average **384,400 km** from Earth — about 30 Earth-diameters away. Light takes ~1.3 seconds to cross that gap."
+        }
+
+        // Human body
+        if (q.contains("how many bones") || q.contains("number of bones") || (q.contains("bones") && q.contains("human"))) {
+            return "An adult human has **206 bones** (babies are born with ~270, many fusing as they grow)."
+        }
+        if ((q.contains("heart") && q.contains("chamber")) || q.contains("how many chambers")) {
+            return "The human heart has **4 chambers**: left and right atria (upper) plus left and right ventricles (lower)."
+        }
+
+        // Chemistry basics
+        if ((q.contains("h2o") || (q.contains("water") && (q.contains("formula") || q.contains("chemical")))) ) {
+            return "Water's chemical formula is **H₂O** — two hydrogen atoms bonded to one oxygen atom."
+        }
+        if ((q.contains("nacl") || (q.contains("salt") && (q.contains("formula") || q.contains("chemical") || q.contains("table"))))) {
+            return "Table salt is **sodium chloride, NaCl** — one sodium atom bonded to one chlorine atom."
+        }
+        if ((q.contains("ph") && (q.contains("neutral") || q.contains("scale"))) || q.contains("what is ph")) {
+            return "The **pH scale** runs 0–14: below 7 is acidic, **7 is neutral** (pure water), above 7 is alkaline. Each step is a 10× change in acidity."
+        }
+        if (q.contains("gold") && q.contains("symbol")) {
+            return "Gold's chemical symbol is **Au** (from Latin *aurum*), atomic number 79."
+        }
+
+        // Networking fundamentals
+        if ((q.contains("tcp") && q.contains("udp")) || q.contains("tcp vs udp")) {
+            return "**TCP vs UDP:** **TCP** is connection-oriented and reliable — packets arrive in order, with retransmission (web, email, files). **UDP** is connectionless and fast with no delivery guarantees (video calls, gaming, DNS)."
+        }
+        if (q.contains("dns") && (q.contains("what") || q.contains("stand for") || q.contains("how"))) {
+            return "**DNS (Domain Name System)** is the internet's phonebook: it translates human domain names (e.g. example.com) into IP addresses routers use."
+        }
+        if ((q.contains("http") && (q.contains("method") || q.contains("get") && q.contains("post"))) || q.contains("http methods") || q.contains("rest methods")) {
+            return "Core **HTTP methods**: **GET** (read a resource), **POST** (create/submit), **PUT** (replace), **PATCH** (partial update), **DELETE** (remove)."
+        }
+        if ((q.contains("ipv4") && q.contains("ipv6")) || q.contains("ipv4 vs ipv6")) {
+            return "**IPv4 vs IPv6:** IPv4 uses 32-bit addresses (e.g. 192.168.1.1, ~4.3 billion total — exhausted). IPv6 uses 128-bit addresses (e.g. 2001:db8::1) with a virtually unlimited space."
+        }
+
+        // OS fundamentals
+        if ((q.contains("process") && q.contains("thread")) || q.contains("process vs thread")) {
+            return "**Process vs thread:** a **process** is an isolated program instance with its own memory; a **thread** is a lightweight execution unit sharing its process's memory. Threads switch fast but risk race conditions; processes are isolated but heavier."
+        }
+        if (q.contains("kernel") && (q.contains("what") || q.contains("os") || q.contains("operating"))) {
+            return "The **kernel** is the core of an operating system: it manages CPU scheduling, memory, device drivers, and system calls between hardware and applications."
+        }
+
+        // Tech history (high-certainty milestones)
+        if ((q.contains("world wide web") || q.contains("www")) && (q.contains("invent") || q.contains("who"))) {
+            return "The **World Wide Web** was invented by **Tim Berners-Lee** in 1989–1990 at CERN (HTML, URLs, and HTTP)."
+        }
+        if ((q.contains("ada lovelace") || (q.contains("first programmer") || q.contains("first computer programmer")))) {
+            return "**Ada Lovelace** is regarded as the first computer programmer: in the 1840s she wrote an algorithm for Babbage's Analytical Engine, including notes on loops and subroutines."
+        }
 
         // Web / HTTP Status Codes
         if (q.contains("404")) {

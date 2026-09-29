@@ -1,11 +1,15 @@
 package com.perpcorp.edgellm.engine
 
 import android.content.Context
+import android.util.Log
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.perpcorp.edgellm.data.model.AiPersona
 import com.perpcorp.edgellm.data.model.ModelSpec
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.random.Random
 
@@ -13,8 +17,23 @@ import kotlin.random.Random
  * Google MediaPipe LLM Inference API Engine for Android.
  * References: https://developers.google.com/edge/mediapipe/solutions/genai/llm_inference/android
  * Supports Gemma 2B, Gemma 2 2B, Falcon-RW-1B, StableLM-3B, and Phi-2 in `.bin` / `.task` format.
+ *
+ * Real-first design: when a valid `.task` model file + Android Context are present,
+ * tokens come from actual on-device weights via `tasks-genai`. Otherwise (no file,
+ * no Context, any native failure) it falls back to the shared grounded knowledge
+ * base so the chat never breaks or goes off-topic.
  */
 class MediaPipeInferenceEngine(private val context: Context? = null) {
+
+    companion object {
+        private const val TAG = "MediaPipeEngine"
+    }
+
+    @Volatile
+    private var cachedLlm: LlmInference? = null
+
+    @Volatile
+    private var cachedKey: String? = null
 
     enum class MediaPipeDelegate(val displayName: String, val shortName: String, val hardwareTarget: String) {
         GPU("GPU (OpenCL / Vulkan)", "GPU", "Offloads matrix multiplication and attention kernels to mobile Adreno/Mali GPU"),
@@ -91,7 +110,79 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
     }
 
     /**
-     * Executes asynchronous streaming generation mimicking MediaPipe LlmInference.generateResponseAsync().
+     * Real weight inference via MediaPipe `tasks-genai`.
+     * Returns null (→ grounded KB fallback) when: no Android Context, no valid
+     * `.task` model file on disk, or any native failure. Never throws.
+     */
+    private suspend fun tryRealLlmInference(
+        prompt: String,
+        options: MediaPipeLlmOptions
+    ): String? {
+        val appContext = context?.applicationContext ?: return null
+        val path = options.modelPath.ifBlank { return null }
+        if (!File(path).exists()) return null
+        return try {
+            val llm = getOrCreateLlm(appContext, options, path)
+            val cleanQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
+            val raw = withContext(Dispatchers.IO) { llm.generateResponse(cleanQuery) }
+            val text = raw.trim()
+            if (text.isEmpty()) {
+                Log.w(TAG, "Native returned empty text; using grounded fallback")
+                null
+            } else {
+                OutputVerificationEngine.verifyAndSanitizeText(text)
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Real inference unavailable (${e.message}); using grounded fallback")
+            closeQuietly()
+            null
+        }
+    }
+
+    @Synchronized
+    private fun getOrCreateLlm(
+        appContext: Context,
+        options: MediaPipeLlmOptions,
+        modelPath: String
+    ): LlmInference {
+        val key = "$modelPath|${options.maxTokens}|${options.topK}|${options.temperature}|" +
+                "${options.randomSeed}|${options.loraPath}"
+        val existing = cachedLlm
+        if (existing != null && cachedKey == key) return existing
+        closeQuietly()
+        val builder = LlmInference.LlmInferenceOptions.builder()
+            .setModelPath(modelPath)
+            .setMaxTokens(options.maxTokens)
+            .setTopK(options.topK)
+            .setTemperature(options.temperature)
+            .setRandomSeed(options.randomSeed)
+        if (options.loraPath != null) builder.setLoraPath(options.loraPath)
+        val created = LlmInference.createFromOptions(appContext, builder.build())
+        cachedLlm = created
+        cachedKey = key
+        return created
+    }
+
+    @Synchronized
+    fun close() {
+        closeQuietly()
+    }
+
+    private fun closeQuietly() {
+        try {
+            cachedLlm?.close()
+        } catch (_: Throwable) {
+            // Best-effort native cleanup
+        } finally {
+            cachedLlm = null
+            cachedKey = null
+        }
+    }
+
+    /**
+     * Streaming generation: real weight inference first, grounded KB fallback.
+     * The blocking native call runs on Dispatchers.IO; UI streaming is preserved
+     * by re-emitting the full response as word chunks with live telemetry.
      */
     fun generateStreamingResponse(
         prompt: String,
@@ -114,7 +205,9 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         val calculatedTps = (baseSpeed * (if (options.enableKvCacheQuantization) 1.2f else 1.0f)).coerceIn(12f, 60f)
         val delayPerToken = (1000f / calculatedTps).toLong().coerceIn(12L, 80L)
 
-        val simulatedText = generateMediaPipeKnowledge(prompt, options, model, persona)
+        // Real-first: tokens from on-device weights when possible, else KB fallback.
+        val simulatedText = tryRealLlmInference(prompt, options)
+            ?: generateMediaPipeKnowledge(prompt, options, model, persona)
         val words = simulatedText.split(" ")
         val sb = StringBuilder()
         var tokenCount = 0

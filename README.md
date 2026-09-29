@@ -180,7 +180,7 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 ### 8. 🎯 Decisive, Straight-to-the-Point AI Engine (Zero Boilerplate)
 - **Answer-Only Chat Text**: Responses contain just the answer — engine telemetry (backend, tokens/sec, TTFT) travels via dedicated UI metrics, never inside the message bubble.
 - **Direct Answer Guarantee**: When asked factual questions, translations, or technical queries, the engine delivers the exact answer immediately in the first sentence with zero conversational fluff (*"Sure, I can help with that!"*, *"As an AI..."*).
-- **Electronics & Engineering Coverage**: Direct answers for relays, contactors, R/L/C components, diodes, transistors, transformers, fuses, breakers, and Ohm's law — alongside Java, Python, Kotlin, Rust, algorithms, ML, system design, databases, math, and 100+ language translations.
+- **Electronics & Engineering Coverage**: Direct answers for relays, contactors, R/L/C components, diodes, transistors, transformers, fuses, breakers, Ohm's law, series/parallel, AC/DC, PWM — plus networking (TCP/UDP, DNS, HTTP, IPv4/6), OS basics, geography, space, human body, chemistry, and tech history — alongside Java, Python, Kotlin, Rust, algorithms, ML, system design, databases, math, and 100+ language translations.
 - **Multi-Lingual Translation (100+ Languages)**: Instant translation across French, Spanish, German, Mandarin Chinese, Japanese, Arabic, Russian, Portuguese, Hindi, Swahili, Yoruba, Afrikaans, and 90+ more global languages.
 - **Optional Thinking Mode (CoT)**: Unsolicited `<think>...</think>` reasoning is **disabled by default**. Users who specifically want deep step-by-step mathematical or architectural reasoning can toggle **Thinking Mode** on with an adjustable token budget.
 
@@ -242,7 +242,7 @@ app/src/main/java/com/perpcorp/edgellm/
 │   ├── LocalInferenceEngine.kt          # Unified streaming router (GGUF/MediaPipe/MNN/AICore/ONNX)
 │   ├── InferenceFactory.kt              # Extension→format→backend routing helper
 │   ├── LlamaCppEngine.kt                # GGUF + native GBNF grammar-constrained decoding
-│   ├── MediaPipeInferenceEngine.kt      # LiteRT/MediaPipe Gemma path (grounded answers)
+│   ├── MediaPipeInferenceEngine.kt      # Real tasks-genai weight inference first, grounded KB fallback
 │   ├── AlibabaMnnEngine.kt              # MNN Qwen path (grounded answers)
 │   ├── AndroidAICoreEngine.kt           # Gemini Nano system path (grounded answers)
 │   ├── OfflineKnowledgeEngine.kt        # Strict prompt jail + decisive answer knowledge base

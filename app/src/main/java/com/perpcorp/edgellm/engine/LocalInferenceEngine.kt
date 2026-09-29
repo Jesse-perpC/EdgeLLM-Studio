@@ -5,6 +5,7 @@ import com.perpcorp.edgellm.data.model.ComputeBackend
 import com.perpcorp.edgellm.data.model.GenerationParameters
 import com.perpcorp.edgellm.data.model.HardwareAccelerationSettings
 import com.perpcorp.edgellm.data.model.KnowledgeDocument
+import com.perpcorp.edgellm.data.model.ModelCategory
 import com.perpcorp.edgellm.data.model.ModelSpec
 import com.perpcorp.edgellm.data.model.PowerProfile
 import kotlinx.coroutines.delay
@@ -148,8 +149,13 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return@flow
         }
 
-        // 2. Google MediaPipe LLM Inference API Routing (Gemma 2 / Phi-2 Tasks)
-        if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.MEDIAPIPE_TASK) {
+        // 2. Google MediaPipe LLM Inference API Routing (Gemma 2 / Phi-2 Tasks).
+        // Also serves chat-capable LiteRT (.tflite) models: they share the same
+        // tasks-genai runtime. Pure classifier/embedding TFLITE models stay on
+        // the generic grounded path below (an LLM runtime would reject them).
+        if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.MEDIAPIPE_TASK ||
+            (model.format == com.perpcorp.edgellm.data.model.ModelFormat.TFLITE &&
+                    model.category == ModelCategory.CHAT_REASONING)) {
             val mpDelegate = when (settings.computeBackend) {
                 ComputeBackend.CPU_NEON -> MediaPipeInferenceEngine.MediaPipeDelegate.CPU
                 else -> MediaPipeInferenceEngine.MediaPipeDelegate.GPU
@@ -227,7 +233,31 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return@flow
         }
 
-        // 4. llama.cpp Native GBNF Grammar Constrained Routing
+        // 4. llama.cpp GGUF Native Routing (flagship format).
+        // Every GGUF chat owns LlamaCppEngine: GBNF grammar mode yields strict
+        // structured JSON (passed through untouched); freeform mode streams the
+        // grounded answer through the same post-decoder screen as other engines.
+        if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.GGUF) {
+            val useGbnf = params.grammarMode == GrammarMode.GBNF_STRICT_FACTUAL
+            llamaCppEngine.streamLlamaCppResponse(
+                prompt = effectivePrompt,
+                model = model,
+                settings = settings,
+                params = params,
+                useGbnfGrammar = useGbnf
+            ).collect { chunk ->
+                if (useGbnf) {
+                    emit(chunk)
+                } else {
+                    val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
+                    emit(chunk.copy(accumulatedText = displayText))
+                }
+            }
+            return@flow
+        }
+
+        // 5. llama.cpp Native GBNF Grammar Constrained Routing (non-GGUF formats
+        // with explicit GBNF mode; GGUF is handled by branch 4 above).
         if (params.grammarMode == GrammarMode.GBNF_STRICT_FACTUAL) {
             llamaCppEngine.streamLlamaCppResponse(
                 prompt = effectivePrompt,
@@ -445,8 +475,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                             "- **Detected Features:** 4 major text clusters, 2 graphical panels, and system telemetry markers."
                 }
             }
-            val label = attachedImageLabel ?: "Visual Input"
-            return "### 👁️ Multimodal Vision Analysis (" + label + ")\n\n" + analysis
+            return analysis
         }
 
         // 1.5. If Screen Context (Circle to Search / Inspect Screen) is present:

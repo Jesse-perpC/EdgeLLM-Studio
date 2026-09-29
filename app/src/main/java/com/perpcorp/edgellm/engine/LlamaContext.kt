@@ -53,7 +53,11 @@ class LlamaContext private constructor(
             return LlamaContext(handle, modelPath, nThreads, temperature, topP)
         }
 
-        @JvmStatic
+        // Declared WITHOUT @JvmStatic on purpose: the call inside create() resolves
+        // to this Companion instance, so JNI must expose the Companion-mangled symbol
+        // Java_com_perpcorp_edgellm_engine_LlamaContext_00024Companion_nativeInit.
+        // (With @JvmStatic, Kotlin also emits an outer-class static bridge that JNI
+        // would never route internal calls through — a classic UnsatisfiedLinkError trap.)
         private external fun nativeInit(
             modelPath: String,
             nThreads: Int,
@@ -78,7 +82,13 @@ class LlamaContext private constructor(
                         }
                     }
                 } else null
-                return nativeCompletion(nativePtr, prompt, callback)
+                val nativeResult = nativeCompletion(nativePtr, prompt, callback)
+                // Stub/bridgeless native builds return "" or "Error: ..." — never let
+                // those reach the chat bubble; fall through to the managed engine.
+                if (nativeResult.isNotBlank() && !nativeResult.startsWith("Error:")) {
+                    return nativeResult
+                }
+                Log.w(TAG, "Native returned no usable text; using managed factual engine")
             } catch (e: Throwable) {
                 Log.w(TAG, "nativeCompletion failed (${e.message}), falling back to managed factual engine")
             }

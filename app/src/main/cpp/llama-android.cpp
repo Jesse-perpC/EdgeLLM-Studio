@@ -27,13 +27,19 @@ struct LlamaAndroidContext {
 
 extern "C" {
 
+// NOTE: JNI names must match the Kotlin package com.perpcorp.edgellm.engine.
+// nativeInit lives in LlamaContext's companion object, so its symbol uses the
+// Companion-mangled name (LlamaContext_00024Companion). The other three are
+// instance methods of LlamaContext itself.
+
 /**
  * JNI function for initializing the llama-android context with model path and parameters.
+ * Static-equivalent (companion scope): second arg is the Companion instance.
  */
 JNIEXPORT jlong JNICALL
-Java_com_example_engine_LlamaContext_nativeInit(
+Java_com_perpcorp_edgellm_engine_LlamaContext_00024Companion_nativeInit(
     JNIEnv* env,
-    jobject /* this */,
+    jobject /* companion */,
     jstring model_path_str,
     jint n_threads,
     jfloat temperature,
@@ -63,7 +69,7 @@ Java_com_example_engine_LlamaContext_nativeInit(
  * JNI function for executing token-level completions and tracking tokens per second.
  */
 JNIEXPORT jstring JNICALL
-Java_com_example_engine_LlamaContext_nativeCompletion(
+Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
     JNIEnv* env,
     jobject /* this */,
     jlong handle,
@@ -83,24 +89,29 @@ Java_com_example_engine_LlamaContext_nativeCompletion(
     auto start_time = std::chrono::high_resolution_clock::now();
     LOGI("Starting completion for prompt length: %zu", prompt.length());
 
-    // Token callback setup
+    // Token callback setup (may be null when the caller only wants the full string)
+    std::string result_text = "";
     jclass callback_class = callback_obj ? env->GetObjectClass(callback_obj) : nullptr;
     jmethodID callback_method = callback_class ?
         env->GetMethodID(callback_class, "onToken", "(Ljava/lang/String;)V") : nullptr;
+    if (callback_class) env->DeleteLocalRef(callback_class);
 
-    std::string result_text = "";
-    // Note: In native Android builds, the llama_decode loop emits tokens here.
-    // For deterministic evaluation, temperature = 0.0 selects greedy argmax tokens.
-    ctx->total_tokens_generated += 24;
+    // NOTE: native llama_decode loop is not linked in stub builds (see CMakeLists
+    // EDGELLM_LINK_LLAMA_CPP). Until then, return an explicit error marker so the
+    // Kotlin layer falls back to the managed factual engine instead of emitting
+    // an empty bubble. Do NOT return "" here — empty means "success, no tokens".
+    (void)callback_method;
+    (void)start_time;
+    ctx->total_tokens_generated += 0;
 
-    return env->NewStringUTF(result_text.c_str());
+    return env->NewStringUTF("Error: native decode not linked (managed fallback active)");
 }
 
 /**
  * JNI benchmark function for token synthesis speed.
  */
 JNIEXPORT jstring JNICALL
-Java_com_example_engine_LlamaContext_nativeBenchmark(
+Java_com_perpcorp_edgellm_engine_LlamaContext_nativeBenchmark(
     JNIEnv* env,
     jobject /* this */,
     jlong handle
@@ -121,7 +132,7 @@ Java_com_example_engine_LlamaContext_nativeBenchmark(
  * JNI function for releasing the allocated llama-android context.
  */
 JNIEXPORT void JNICALL
-Java_com_example_engine_LlamaContext_nativeRelease(
+Java_com_perpcorp_edgellm_engine_LlamaContext_nativeRelease(
     JNIEnv* /* env */,
     jobject /* this */,
     jlong handle

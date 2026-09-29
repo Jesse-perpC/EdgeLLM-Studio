@@ -49,6 +49,8 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
           echo "Ensuring Android SDK platform 36 is present..."
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" 2>/dev/null || true
+          echo "Installing NDK + CMake for llama-android JNI bridge..."
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "cmake;3.22.1" 2>/dev/null || true
 
       - name: Prepare Environment & Keystores
         run: |

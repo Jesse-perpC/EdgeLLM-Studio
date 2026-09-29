@@ -11,6 +11,7 @@ plugins {
 
 android {
   namespace = "com.perpcorp.edgellm"
+  ndkVersion = "27.3.13750724"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
@@ -22,6 +23,11 @@ android {
     versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.$buildNumber"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    ndk {
+      // llama.cpp reference kernels target NEON-capable ARM64; keep x86_64 for emulator runs
+      abiFilters += listOf("arm64-v8a", "x86_64")
+    }
   }
 
   signingConfigs {
@@ -66,6 +72,12 @@ android {
   buildFeatures {
     compose = true
     buildConfig = true
+  }
+  externalNativeBuild {
+    cmake {
+      path = file("src/main/cpp/CMakeLists.txt")
+      version = "3.22.1"
+    }
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
@@ -128,6 +140,9 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  // Real on-device weight inference for Gemma/LiteRT .task models (MediaPipe LLM Inference API).
+  // If manifest merger ever reports a minSdk conflict from this AAR, raise app minSdk to 26.
+  implementation(libs.mediapipe.tasks.genai)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
