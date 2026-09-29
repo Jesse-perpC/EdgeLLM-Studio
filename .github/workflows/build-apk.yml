@@ -21,7 +21,11 @@ jobs:
 
     env:
       CI: "false"
-      GRADLE_OPTS: "-Xmx3584m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8"
+      # packageDebug OOMs below ~4GB once the tasks-genai native libs (.so set)
+      # join the APK; ubuntu-latest runners have 16GB so 6GB is safe.
+      # (Local sandbox default stays 1536m in gradle.properties for 2GB cgroups;
+      # CI runs --no-daemon so this GRADLE_OPTS governs the build JVM.)
+      GRADLE_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8"
       BUILD_NUMBER: ${{ github.run_number }}
       APP_VERSION_NAME: "1.0.${{ github.run_number }}"
 
