@@ -148,6 +148,15 @@ dependencies {
   // Real on-device weight inference for Gemma/LiteRT .task models (MediaPipe LLM Inference API).
   // If manifest merger ever reports a minSdk conflict from this AAR, raise app minSdk to 26.
   implementation(libs.mediapipe.tasks.genai)
+  // Real ONNX Runtime for .onnx decoder models. Ships CPU + NNAPI + XNNPACK.
+  // Replaces the previous ONNX branch, which produced canned text because no
+  // ONNX runtime was ever on the classpath.
+  implementation(libs.onnxruntime.android)
+  // Real LiteRT runtime + API for .tflite classifiers (MobileBERT). Both live on
+  // Google Maven. Replaces the path that answered classification prompts from
+  // the hardcoded knowledge engine.
+  implementation(libs.litert)
+  implementation(libs.litert.api)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

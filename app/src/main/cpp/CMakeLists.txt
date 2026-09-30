@@ -1,32 +1,145 @@
 cmake_minimum_required(VERSION 3.22.1)
-project("llama-android")
+project("llama-android" C CXX)
 
-# Set to ON once the llama.cpp submodule is initialized AND you want the real
-# llama_decode loop linked in (longer builds, needs full NDK toolchain).
-# Default OFF: builds the lightweight JNI stub so the APK compiles everywhere;
-# the Kotlin layer (LlamaContext) detects the unlinked decoder and serves the
-# managed factual engine instead of emitting empty bubbles.
-option(EDGELLM_LINK_LLAMA_CPP "Link real llama.cpp decode loop" OFF)
+# ---------------------------------------------------------------------------
+# REAL llama.cpp BUILD
+#
+# There is deliberately no stub fallback here. The previous version of this
+# file defaulted EDGELLM_LINK_LLAMA_CPP to OFF, which compiled a JNI shim that
+# never called llama_decode() and silently returned a hardcoded string. That
+# made the app appear to do on-device inference while running a lookup table.
+#
+# A missing submodule is now a hard build error. If you see one, run:
+#     git submodule update --init --recursive
+#     bash scripts/setup-llama-cpp.sh
+# ---------------------------------------------------------------------------
 
-# Add the llama-android JNI shared library
+set(LLAMA_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../llama.cpp")
+
+if(NOT EXISTS "${LLAMA_CPP_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR
+        "llama.cpp not found at: ${LLAMA_CPP_DIR}\n"
+        "The GGUF engine cannot be built without it. Run:\n"
+        "    git submodule update --init --recursive\n"
+        "or:\n"
+        "    bash scripts/setup-llama-cpp.sh")
+endif()
+
+# --- GPU backends -----------------------------------------------------------
+# Both are OFF by default because neither toolchain ships with the Android NDK:
+#
+#   GGML_OPENCL -> ggml/src/ggml-opencl/CMakeLists.txt runs
+#                  find_package(OpenCL REQUIRED). The NDK provides no
+#                  libOpenCL; you need an ICD + headers from the Adreno or
+#                  Mali SDK, linked via ANDROID_STL/extra libs.
+#
+#   GGML_VULKAN  -> ggml/src/ggml-vulkan/CMakeLists.txt runs
+#                  find_package(Vulkan COMPONENTS glslc REQUIRED) plus
+#                  find_package(SPIRV-Headers REQUIRED). That needs the
+#                  Vulkan SDK (glslc) and SPIRV-Headers on the build host.
+#
+# GGML_HEXAGON (Qualcomm HTP NPU) is worse still: it requires a licensed
+# Hexagon SDK and an HTP signing certificate.
+#
+# The default CPU backend (NEON + dotprod/i8mm on ARM64) is the only
+# configuration that builds from a stock NDK. It is also the most reliable
+# path on real devices, so it stays the default. Flip these on only once you
+# have provisioned the corresponding toolchain.
+option(EDGELLM_GPU_OPENCL "Enable ggml OpenCL backend (requires an OpenCL ICD for the target GPU)" OFF)
+option(EDGELLM_GPU_VULKAN "Enable ggml Vulkan backend (requires Vulkan SDK glslc + SPIRV-Headers)"   OFF)
+option(EDGELLM_NPU_HEXAGON "Enable ggml Hexagon/HTP backend (requires licensed Hexagon SDK)"         OFF)
+
+# --- llama.cpp / ggml build options ----------------------------------------
+# These must be set BEFORE add_subdirectory() because llama.cpp caches them.
+#
+# BUILD_SHARED_LIBS=OFF keeps llama + ggml as static archives so the whole
+# runtime links into the single libllama-android.so. Otherwise the APK has to
+# ship several .so files that must agree on ABI.
+set(BUILD_SHARED_LIBS          OFF CACHE BOOL "" FORCE)
+
+# Android-specific: subprocess spawning is not sandbox friendly, and llama.cpp
+# disables it for us, but be explicit.
+set(LLAMA_SUBPROCESS           OFF CACHE BOOL "" FORCE)
+
+# LLAMA_STANDALONE is OFF under add_subdirectory, so these already default
+# OFF. Set them anyway so a stale CMake cache cannot re-enable them and drag
+# curl/openssl/CLI tools into an Android build.
+set(LLAMA_BUILD_TESTS          OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS          OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES       OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_SERVER         OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_APP            OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON         OFF CACHE BOOL "" FORCE)   # we build our own sampler chain
+set(LLAMA_BUILD_MTMD           OFF CACHE BOOL "" FORCE)
+set(LLAMA_CURL                 OFF CACHE BOOL "" FORCE)
+set(LLAMA_OPENSSL              OFF CACHE BOOL "" FORCE)
+set(LLAMA_LLGUIDANCE           OFF CACHE BOOL "" FORCE)
+set(LLAMA_CCACHE               OFF CACHE BOOL "" FORCE)
+
+# GGML_NATIVE must be OFF: we are cross-compiling, so -march=native would
+# target the build machine's CPU rather than the phone.
+set(GGML_NATIVE                OFF CACHE BOOL "" FORCE)
+set(GGML_LTO                   OFF CACHE BOOL "" FORCE)
+set(GGML_CCACHE                OFF CACHE BOOL "" FORCE)
+set(GGML_BACKEND_DL            OFF CACHE BOOL "" FORCE)
+
+# Android has no libgomp in the NDK; ggml-cpu falls back to its own thread
+# pool if OpenMP is unavailable, so keep this OFF.
+set(GGML_OPENMP                OFF CACHE BOOL "" FORCE)
+set(GGML_BLAS                  OFF CACHE BOOL "" FORCE)
+set(GGML_ACCELERATE            OFF CACHE BOOL "" FORCE)   # Apple only
+set(GGML_METAL                 OFF CACHE BOOL "" FORCE)   # Apple only
+set(GGML_RPC                   OFF CACHE BOOL "" FORCE)
+
+set(GGML_OPENCL                ${EDGELLM_GPU_OPENCL}  CACHE BOOL "" FORCE)
+set(GGML_VULKAN                ${EDGELLM_GPU_VULKAN}  CACHE BOOL "" FORCE)
+set(GGML_HEXAGON               ${EDGELLM_NPU_HEXAGON} CACHE BOOL "" FORCE)
+
+# Quiet the build: llama.cpp's own -W warnings drown out ours.
+set(LLAMA_ALL_WARNINGS         OFF CACHE BOOL "" FORCE)
+set(GGML_ALL_WARNINGS          OFF CACHE BOOL "" FORCE)
+set(GGML_FATAL_WARNINGS        OFF CACHE BOOL "" FORCE)
+set(LLAMA_FATAL_WARNINGS       OFF CACHE BOOL "" FORCE)
+
+add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build")
+
+# ---------------------------------------------------------------------------
+# JNI bridge
+# ---------------------------------------------------------------------------
 add_library(llama-android SHARED
     llama-android.cpp
 )
 
-# Link standard Android NDK logging libraries
+target_compile_features(llama-android PRIVATE cxx_std_17)
+
+# llama is a static archive; PIC is required for it to link into a shared lib.
+set_target_properties(llama-android PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
+# llama.cpp sets CMAKE_LIBRARY_OUTPUT_DIRECTORY in its own scope. Pin the
+# output explicitly or the Android Gradle Plugin fails to find the .so.
+set_target_properties(llama-android PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY              "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG        "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE      "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_RELOCATABLE  "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL   "${CMAKE_BINARY_DIR}"
+)
+
+# PUBLIC on `llama` puts include/ and ggml/include/ on our path, so
+# llama.h / ggml.h / ggml-backend.h resolve without manual include_directories.
+# `llama` -> `ggml` -> `ggml-base`, so ggml_backend_load_all() comes along.
 target_link_libraries(llama-android
+    llama
     android
     log
 )
 
-if(EDGELLM_LINK_LLAMA_CPP)
-    # Expects the submodule at <repo-root>/llama.cpp (see scripts/setup-llama-cpp.sh)
-    set(LLAMA_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../llama.cpp")
-    if(EXISTS "${LLAMA_CPP_DIR}/CMakeLists.txt")
-        add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build")
-        target_link_libraries(llama-android llama common)
-        target_compile_definitions(llama-android PRIVATE EDGELLM_REAL_DECODE=1)
-    else()
-        message(WARNING "EDGELLM_LINK_LLAMA_CPP=ON but ${LLAMA_CPP_DIR}/CMakeLists.txt not found; building stub")
-    endif()
-endif()
+message(STATUS "---------------------------------------------------------")
+message(STATUS "llama.cpp      : ${LLAMA_CPP_DIR}")
+message(STATUS "CPU backend    : ON (ARM NEON)")
+message(STATUS "OpenCL backend : ${EDGELLM_GPU_OPENCL}")
+message(STATUS "Vulkan backend : ${EDGELLM_GPU_VULKAN}")
+message(STATUS "Hexagon backend: ${EDGELLM_NPU_HEXAGON}")
+message(STATUS "---------------------------------------------------------")
