@@ -78,13 +78,6 @@ class LocalInferenceEngine(private val context: Context? = null) {
                 ComputeBackend.CPU_NEON -> MediaPipeInferenceEngine.MediaPipeDelegate.CPU
                 else -> MediaPipeInferenceEngine.MediaPipeDelegate.GPU
             }
-            val options = MediaPipeInferenceEngine.MediaPipeLlmOptions(
-                modelPath = model.localFilePath,
-                maxTokens = params.maxNewTokens,
-                topK = params.topK,
-                temperature = params.temperature,
-                delegate = delegate
-            )
             // Build full prompt with persona and attached document context
             val systemPrompt = persona?.systemPrompt ?: params.systemPrompt
             val context = attachedDoc?.content ?: ""
@@ -93,6 +86,18 @@ class LocalInferenceEngine(private val context: Context? = null) {
             } else {
                 "$systemPrompt\n\nUser: $prompt"
             }
+            // Estimate prompt tokens (rough: ~1.3 tokens per word) and set maxTokens = prompt + maxNewTokens
+            // to avoid MediaPipe treating maxTokens as combined context limit.
+            val promptTokens = fullPrompt.split(" ", "\n").filter { it.isNotBlank() }.size
+            val estimatedPromptTokens = (promptTokens * 1.3).toInt()
+            val maxTokensForMediaPipe = (estimatedPromptTokens + params.maxNewTokens).coerceAtLeast(params.maxNewTokens + 50)
+            val options = MediaPipeInferenceEngine.MediaPipeLlmOptions(
+                modelPath = model.localFilePath,
+                maxTokens = maxTokensForMediaPipe,
+                topK = params.topK,
+                temperature = params.temperature,
+                delegate = delegate
+            )
             var realText: String? = null
             val inferenceStartTime = System.currentTimeMillis()
             try {
