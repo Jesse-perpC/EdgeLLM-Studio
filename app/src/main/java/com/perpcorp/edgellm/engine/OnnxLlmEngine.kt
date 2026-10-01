@@ -122,7 +122,15 @@ class OnnxLlmEngine {
         val plan = loaded.plan
         val all = tokenizer.encode(prompt)
         if (all.isEmpty()) {
-            Log.e(TAG, "Prompt tokenized to zero ids; nothing to decode")
+            Log.e(TAG, "Prompt tokenized to zero ids; nothing to run")
+            return
+        }
+
+        // Encoder graphs (MiniLM-style) have no validated vocab head, so token
+        // generation is unreachable for them by construction. They take a
+        // single forward pass and report the embedding instead.
+        if (!plan.isDecoder) {
+            emitEmbedding(loaded, all, emit)
             return
         }
 
@@ -251,6 +259,84 @@ class OnnxLlmEngine {
 
     private fun backendLabel(loaded: LoadedOnnxModel): String =
         "ONNX Runtime ${loaded.backendLabel} • ${loaded.plan.modeLabel}"
+
+    /**
+     * Single forward pass for encoder graphs. Mean-pools a [1, seq, H] sequence
+     * output over the (unpadded, fully-masked) sequence, or uses a pooled
+     * vector as-is. Never samples: there is no vocabulary distribution here,
+     * only hidden states, and treating them as logits is the bug this path
+     * replaces.
+     */
+    private fun emitEmbedding(
+        loaded: LoadedOnnxModel,
+        ids: IntArray,
+        emit: (StreamTokenChunk) -> Unit
+    ) {
+        val plan = loaded.plan
+        val outputName = plan.embeddingOutput
+            ?: throw IllegalStateException("Encoder plan has no embedding output")
+        val started = System.nanoTime()
+        val inputs = buildInputs(loaded, ids, pastLen = 0)
+        val raw = try {
+            loaded.session.run(inputs).use { result ->
+                val value = result.get(outputName)
+                if (!value.isPresent) {
+                    throw IllegalStateException(
+                        "Model has no output named '$outputName'; " +
+                            "present outputs: ${loaded.outputNames}"
+                    )
+                }
+                value.get().value as? FloatArray
+                    ?: throw IllegalStateException(
+                        "Output '$outputName' is not a float tensor; cannot embed."
+                    )
+            }
+        } catch (e: OrtException) {
+            throw IllegalStateException("ONNX encoder run failed: ${e.message}", e)
+        }
+        val elapsedMs = ((System.nanoTime() - started) / 1_000_000).coerceAtLeast(1L)
+
+        // [1, seq, H] -> mean over seq. Inputs carry no padding (mask is all
+        // ones), so a plain mean is the correct pool. Anything else is already
+        // a single vector and is used as-is.
+        val vector: FloatArray = if (ids.size > 1 && raw.size % ids.size == 0) {
+            val h = raw.size / ids.size
+            FloatArray(h) { j ->
+                var sum = 0f
+                for (i in ids.indices) sum += raw[i * h + j]
+                sum / ids.size
+            }
+        } else {
+            raw
+        }
+        var norm = 0.0
+        for (v in vector) norm += (v * v).toDouble()
+        norm = kotlin.math.sqrt(norm)
+        val preview = vector.take(8).joinToString(", ") { "%.4f".format(it) }
+        val text = buildString {
+            append("Encoder embedding (${vector.size} dims, L2 norm ${"%.3f".format(norm)}, ")
+            append("${elapsedMs} ms, ${ids.size} tokens):\n")
+            append("[$preview${if (vector.size > 8) ", …" else ""}]\n")
+            append("This model is a sentence encoder, not a generator: it maps text ")
+            append("to vectors for similarity and retrieval. Use the vector above ")
+            append("(or a retrieval index over it) rather than expecting chat output.")
+        }
+        emit(
+            StreamTokenChunk(
+                token = text,
+                accumulatedText = text,
+                tokenCount = 0,
+                tokensPerSecond = 0f,
+                timeToFirstTokenMs = elapsedMs,
+                isComplete = true,
+                backendUsed = backendLabel(loaded),
+                samplerName = "N/A (encoder)",
+                grammarModeUsed = GrammarMode.NONE,
+                kvCacheSavedPercent = 0f,
+                isTurboBoost = false
+            )
+        )
+    }
 
     /**
      * Builds one step's input map. Names come from the graph so this works for
@@ -416,7 +502,7 @@ class OnnxLlmEngine {
         modelFile: File,
         settings: HardwareAccelerationSettings
     ): LoadedOnnxModel {
-        val tokenizer = HuggingFaceByteLevelTokenizer.load(resolveTokenizer(modelFile))
+        val tokenizer = loadTokenizer(modelFile)
 
         val options = OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(settings.threadCount.coerceIn(1, 16))
@@ -430,9 +516,27 @@ class OnnxLlmEngine {
             }
         }
         val session = env.createSession(modelFile.absolutePath, options)
-        val plan = OnnxGraphPlan.from(session)
+        val plan = OnnxGraphPlan.from(session, tokenizer.vocabSize)
         Log.i(TAG, "Loaded ${modelFile.name}: ${plan.describe()}")
         return LoadedOnnxModel(env, session, tokenizer, plan, options, session.outputInfo.keys.toList())
+    }
+
+    /**
+     * Byte-level BPE first; MiniLM-style bundles declare a WordPiece
+     * tokenizer.json and ship vocab.txt instead.
+     */
+    private fun loadTokenizer(modelFile: File): LlmTokenizer {
+        val tokenizerFile = resolveTokenizer(modelFile)
+        try {
+            return HuggingFaceByteLevelTokenizer.load(tokenizerFile)
+        } catch (e: UnsupportedOperationException) {
+            val vocab = modelFile.parentFile?.let { File(it, "vocab.txt") }
+            if (vocab != null && vocab.isFile) {
+                Log.i(TAG, "tokenizer.json is not byte-level BPE; using vocab.txt WordPiece for ${modelFile.name}")
+                return WordPieceTokenizer.load(vocab)
+            }
+            throw e
+        }
     }
 
     private fun resolveTokenizer(modelFile: File): File {
@@ -490,26 +594,44 @@ private class OnnxGraphPlan(
     val pastInputs: List<String>,
     val pastShapes: Map<String, LongArray>,
     val logitsOutput: String,
-    val maxPositions: Int
+    val maxPositions: Int,
+    /**
+     * True only when a float output was validated as a generative head: static
+     * shape ending in the tokenizer vocab size. A MiniLM-style encoder exposes
+     * `last_hidden_state` ([1, seq, 384]) instead; sampling token ids from
+     * those embedding values is what produced garbage output, so generation is
+     * gated on this flag and encoders take the single-forward embedding path.
+     */
+    val isDecoder: Boolean,
+    /** Present exactly when [isDecoder] is false: the output to mean-pool. */
+    val embeddingOutput: String?
 ) {
-    val usesPast: Boolean get() = pastInputs.isNotEmpty() && pastShapes.size == pastInputs.size
-    val modeLabel: String get() = if (usesPast) "KV-cache" else "full-prefix"
+    val usesPast: Boolean get() = isDecoder && pastInputs.isNotEmpty() && pastShapes.size == pastInputs.size
+    val modeLabel: String
+        get() = when {
+            !isDecoder -> "encoder"
+            usesPast -> "KV-cache"
+            else -> "full-prefix"
+        }
 
     fun describe(): String = buildString {
         append(modeLabel)
         append(" in=").append(inputIds)
-        append(" out=").append(logitsOutput)
+        append(" out=").append(if (isDecoder) logitsOutput else (embeddingOutput ?: "?"))
         append(" past=").append(pastInputs.size)
         if (maxPositions > 0) append(" ctx=").append(maxPositions)
     }
 
     companion object {
-        fun from(session: OrtSession): OnnxGraphPlan {
+        fun from(session: OrtSession, vocabSize: Int): OnnxGraphPlan {
             val inputs: Map<String, NodeInfo> = session.inputInfo
             val outputs: Map<String, NodeInfo> = session.outputInfo
 
             fun pick(candidates: List<String>): String? =
                 candidates.firstOrNull { inputs.containsKey(it) }
+
+            fun outputShape(name: String): LongArray? =
+                (outputs[name]?.info as? TensorInfo)?.shape
 
             val inputIds = pick(listOf("input_ids"))
                 ?: inputs.keys.firstOrNull()
@@ -527,11 +649,47 @@ private class OnnxGraphPlan(
                 pastShapes[name] = LongArray(shape.size) { if (shape[it] < 0) 0L else shape[it] }
             }
 
-            val logitsOutput = when {
-                outputs.containsKey("logits") -> "logits"
-                else -> outputs.keys.firstOrNull { key -> outputs[key]?.let { isFloat(it) } == true }
-                    ?: outputs.keys.firstOrNull()
-                    ?: throw IllegalStateException("Model declares no outputs")
+            fun isLogitsShape(shape: LongArray): Boolean {
+                // [batch, seq, vocab] or [batch, vocab]. Batch/seq may be
+                // symbolic (-1); vocab is always concrete in real exports and
+                // must equal the tokenizer size, otherwise this output is not a
+                // head over our vocabulary (e.g. an encoder hidden state).
+                if (shape.size < 2) return false
+                val last = shape.last()
+                return last > 0 && last == vocabSize.toLong()
+            }
+
+            var logitsName: String? = null
+            outputShape("logits")?.let { shape ->
+                if (isFloat(outputs["logits"]!!) && isLogitsShape(shape)) logitsName = "logits"
+            }
+            if (logitsName == null) {
+                for (key in outputs.keys) {
+                    val info = outputs[key] ?: continue
+                    if (!isFloat(info)) continue
+                    val shape = (info.info as? TensorInfo)?.shape ?: continue
+                    if (isLogitsShape(shape)) {
+                        logitsName = key
+                        break
+                    }
+                }
+            }
+
+            val isDecoder = logitsName != null
+            val embeddingOutput = if (isDecoder) {
+                null
+            } else {
+                // Prefer an explicitly pooled vector, else the sequence output
+                // (mean-pooled at inference), else any float output.
+                listOf("pooler_output", "sentence_embedding", "last_hidden_state")
+                    .firstOrNull { outputs.containsKey(it) }
+                    ?: outputs.keys.firstOrNull { key ->
+                        outputs[key]?.let { isFloat(it) } == true
+                    }
+                    ?: throw IllegalStateException(
+                        "Model declares no float outputs; neither a decoder head " +
+                            "nor an encoder embedding is available."
+                    )
             }
 
             val maxPositions = run {
@@ -545,8 +703,10 @@ private class OnnxGraphPlan(
                 positionIds = pick(listOf("position_ids", "cache_position")),
                 pastInputs = pastInputs,
                 pastShapes = pastShapes,
-                logitsOutput = logitsOutput,
-                maxPositions = maxPositions
+                logitsOutput = logitsName ?: "",
+                maxPositions = maxPositions,
+                isDecoder = isDecoder,
+                embeddingOutput = embeddingOutput
             )
         }
 

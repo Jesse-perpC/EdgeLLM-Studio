@@ -21,8 +21,16 @@ class WordPieceTokenizer private constructor(
     val clsId: Int,
     val sepId: Int,
     val padId: Int
-) {
-    val vocabSize: Int get() = vocab.size
+) : LlmTokenizer {
+    override val vocabSize: Int get() = vocab.size
+
+    /**
+     * Encoders never generate, so no id stops generation. Deliberately empty
+     * rather than mapping SEP: the decoder path is unreachable for encoder
+     * graphs (see OnnxGraphPlan.isDecoder), and inventing a stop token would
+     * silently truncate a real decoder that happened to use this tokenizer.
+     */
+    override val eosTokenIds: Set<Int> get() = emptySet()
 
     companion object {
         private const val MAX_INPUT_CHARS_PER_WORD = 200
@@ -58,7 +66,7 @@ class WordPieceTokenizer private constructor(
     }
 
     /** Full BERT input preparation: `[CLS] pieces [SEP]`, no padding. */
-    fun encode(text: String): IntArray {
+    override fun encode(text: String): IntArray {
         val out = ArrayList<Int>(32)
         out.add(clsId)
         for (token in basicTokenize(text)) {
@@ -68,7 +76,7 @@ class WordPieceTokenizer private constructor(
         return out.toIntArray()
     }
 
-    fun decode(ids: IntArray): String {
+    override fun decode(ids: IntArray): String {
         val sb = StringBuilder()
         for (id in ids) {
             if (id == clsId || id == sepId || id == padId) continue
@@ -81,6 +89,15 @@ class WordPieceTokenizer private constructor(
             }
         }
         return sb.toString()
+    }
+
+    /** Raw bytes for one id. Only meaningful for decoder streaming; the encoder
+     * path never calls it (it emits one summary chunk, not per-token deltas). */
+    override fun decodeTokenBytes(id: Int): ByteArray {
+        if (id == clsId || id == sepId || id == padId) return ByteArray(0)
+        val token = vocab.getOrNull(id) ?: return ByteArray(0)
+        val text = if (token.startsWith("##")) token.substring(2) else token
+        return text.toByteArray(Charsets.UTF_8)
     }
 
     private fun basicTokenize(text: String): List<String> {

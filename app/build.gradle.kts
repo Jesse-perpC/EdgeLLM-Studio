@@ -152,9 +152,8 @@ dependencies {
   // Replaces the previous ONNX branch, which produced canned text because no
   // ONNX runtime was ever on the classpath.
   implementation(libs.onnxruntime.android)
-  // Real LiteRT runtime + API for .tflite classifiers (MobileBERT). Both live on
-  // Google Maven. Replaces the path that answered classification prompts from
-  // the hardcoded knowledge engine.
+  // Real LiteRT runtime for .tflite classifiers (MobileBERT). Declared once:
+  // `litert` already pulls `litert-api` transitively (compile scope).
   // NOTE: Do not add the separate litert-api artifact here. It declares the same
   // namespace as litert and causes Android manifest merger failures in CI.
   implementation(libs.litert)

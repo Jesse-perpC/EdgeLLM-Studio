@@ -262,7 +262,11 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return@flow
         }
 
-        // 5. ONNX Runtime Routing
+        // 5. ONNX Runtime Routing. The engine splits on the graph itself:
+        // validated decoder heads (float output ending in the tokenizer vocab)
+        // generate tokens; anything else (MiniLM-style encoders) takes the
+        // single-forward embedding path. Token generation is unreachable
+        // without a validated logits output (see OnnxGraphPlan.isDecoder).
         if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.ONNX) {
             onnxLlmEngine.streamOnnxResponse(
                 prompt = effectivePrompt,
