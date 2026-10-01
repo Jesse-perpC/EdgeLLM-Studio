@@ -163,6 +163,9 @@ fun ModelSelectorChip(
         ModelFormat.GGUF -> Color(0xFF06B6D4)
         ModelFormat.TFLITE -> Color(0xFFF59E0B)
         ModelFormat.ONNX -> Color(0xFFA855F7)
+        ModelFormat.MEDIAPIPE_TASK -> Color(0xFF10B981)
+        ModelFormat.MNN_LLM -> Color(0xFFF472B6)
+        ModelFormat.ANDROID_AICORE -> Color(0xFF60A5FA)
     }
 
     Surface(

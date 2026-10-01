@@ -167,6 +167,9 @@ class ModelDownloadManager(
                 ModelFormat.GGUF -> "gguf"
                 ModelFormat.ONNX -> "onnx"
                 ModelFormat.TFLITE -> "tflite"
+                ModelFormat.MEDIAPIPE_TASK -> "task"
+                ModelFormat.MNN_LLM -> "mnn"
+                ModelFormat.ANDROID_AICORE -> "aicore"
             }
             val targetFile = File(modelsDir, "${m.id}.$ext")
             if (m.isDownloaded && !targetFile.exists()) {
@@ -185,6 +188,9 @@ class ModelDownloadManager(
                             ModelFormat.GGUF -> "gguf"
                             ModelFormat.ONNX -> "onnx"
                             ModelFormat.TFLITE -> "tflite"
+                            ModelFormat.MEDIAPIPE_TASK -> "task"
+                            ModelFormat.MNN_LLM -> "mnn"
+                            ModelFormat.ANDROID_AICORE -> "aicore"
                         }
                         m.copy(localFilePath = File(modelsDir, "${m.id}.$ext").absolutePath)
                     }
@@ -806,6 +812,9 @@ class ModelDownloadManager(
                         ModelFormat.GGUF -> "gguf"
                         ModelFormat.ONNX -> "onnx"
                         ModelFormat.TFLITE -> "tflite"
+                        ModelFormat.MEDIAPIPE_TASK -> "task"
+                        ModelFormat.MNN_LLM -> "mnn"
+                        ModelFormat.ANDROID_AICORE -> "aicore"
                     }
                     val currentPath = File(modelsDir, "$modelId.$ext").absolutePath
                     repository.updateModelDownloadStatus(modelId, false, currentPercent, currentPath, totalBytes)
@@ -826,6 +835,9 @@ class ModelDownloadManager(
                 ModelFormat.GGUF -> "gguf"
                 ModelFormat.ONNX -> "onnx"
                 ModelFormat.TFLITE -> "tflite"
+                ModelFormat.MEDIAPIPE_TASK -> "task"
+                ModelFormat.MNN_LLM -> "mnn"
+                ModelFormat.ANDROID_AICORE -> "aicore"
             }
             val modelFile = File(modelsDir, "$modelId.$ext")
             if (!modelFile.exists()) {
@@ -983,6 +995,9 @@ class ModelDownloadManager(
             ModelFormat.GGUF -> "gguf"
             ModelFormat.ONNX -> "onnx"
             ModelFormat.TFLITE -> "tflite"
+            ModelFormat.MEDIAPIPE_TASK -> "task"
+            ModelFormat.MNN_LLM -> "mnn"
+            ModelFormat.ANDROID_AICORE -> "aicore"
         }
         val sizeBytes = fileSizeMb * 1024L * 1024L
         val ramRequired = (sizeBytes * 1.35).toLong()
@@ -1039,6 +1054,9 @@ class ModelDownloadManager(
                 ModelFormat.GGUF -> "gguf"
                 ModelFormat.ONNX -> "onnx"
                 ModelFormat.TFLITE -> "tflite"
+                ModelFormat.MEDIAPIPE_TASK -> "task"
+                ModelFormat.MNN_LLM -> "mnn"
+                ModelFormat.ANDROID_AICORE -> "aicore"
             }
             val candidateFiles = listOf(
                 File(model.localFilePath),
