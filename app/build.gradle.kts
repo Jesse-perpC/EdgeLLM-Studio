@@ -155,8 +155,9 @@ dependencies {
   // Real LiteRT runtime + API for .tflite classifiers (MobileBERT). Both live on
   // Google Maven. Replaces the path that answered classification prompts from
   // the hardcoded knowledge engine.
+  // NOTE: Do not add the separate litert-api artifact here. It declares the same
+  // namespace as litert and causes Android manifest merger failures in CI.
   implementation(libs.litert)
-  implementation(libs.litert.api)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
