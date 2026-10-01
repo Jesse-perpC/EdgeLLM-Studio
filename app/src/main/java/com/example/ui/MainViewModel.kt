@@ -751,5 +751,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         voiceSpeechManager.shutdown()
+        inferenceEngine.close()
     }
 }

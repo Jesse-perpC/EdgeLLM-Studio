@@ -46,6 +46,10 @@ class LocalInferenceEngine(private val context: Context? = null) {
                 if (supportsRealWeights(model)) " [real weights]" else " [simulated fallback]"
     }
 
+    fun close() {
+        mediaPipeEngine.close()
+    }
+
     fun generateStreamingResponse(
         prompt: String,
         model: ModelSpec,
