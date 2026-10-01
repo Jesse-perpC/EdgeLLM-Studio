@@ -667,8 +667,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val totalRam = _hardwareInfo.value.totalRamBytes
         val modelBytes = activeModel?.requiredRamBytes ?: (750L * 1024L * 1024L)
         val contextTokens = _telemetryState.value.activeContextTokens
-        // ~256KB per token in FP16 KV cache for standard 32 layers
-        val kvBytes = (contextTokens * 256L * 1024L).coerceIn(128L * 1024L * 1024L, 1024L * 1024L * 1024L)
+        // ~32KB per token for typical mobile LLMs (16-24 layers, 16-32 heads, 64-128 dim, FP16)
+        val kvBytes = (contextTokens * 32L * 1024L).coerceIn(128L * 1024L * 1024L, 1024L * 1024L * 1024L)
         val osBytes = (2100L * 1024L * 1024L).coerceAtMost(totalRam / 3)
         val headroom = (totalRam - modelBytes - kvBytes - osBytes).coerceAtLeast(300L * 1024L * 1024L)
 
