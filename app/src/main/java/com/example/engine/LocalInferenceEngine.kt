@@ -85,10 +85,18 @@ class LocalInferenceEngine(private val context: Context? = null) {
                 temperature = params.temperature,
                 delegate = delegate
             )
+            // Build full prompt with persona and attached document context
+            val systemPrompt = persona?.systemPrompt ?: params.systemPrompt
+            val context = attachedDoc?.content ?: ""
+            val fullPrompt = if (context.isNotBlank()) {
+                "$systemPrompt\n\nContext: $context\n\nUser: $prompt"
+            } else {
+                "$systemPrompt\n\nUser: $prompt"
+            }
             var realText: String? = null
             val inferenceStartTime = System.currentTimeMillis()
             try {
-                realText = mediaPipeEngine.tryRealLlmInference(prompt, options)
+                realText = mediaPipeEngine.tryRealLlmInference(fullPrompt, options)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Throwable) {
