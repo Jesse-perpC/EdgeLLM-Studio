@@ -64,7 +64,7 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         if (!File(path).exists()) return null
         var session: LlmInferenceSession? = null
         return try {
-            val llm = getOrCreateLlm(appContext, options, path)
+            val llm = withContext(Dispatchers.IO) { getOrCreateLlm(appContext, options, path) }
             val sessionOpts = LlmInferenceSession.LlmInferenceSessionOptions.builder()
                 .setTopK(options.topK)
                 .setTemperature(options.temperature)
