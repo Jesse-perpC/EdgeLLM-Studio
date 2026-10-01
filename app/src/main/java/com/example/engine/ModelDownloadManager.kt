@@ -493,6 +493,7 @@ class ModelDownloadManager(
                 lower.endsWith(".tflite") ||
                 lower.endsWith(".onnx") ||
                 lower.endsWith(".bin") ||
+                lower.endsWith(".task") ||
                 lower.endsWith(".pt") ||
                 lower.endsWith(".safetensors")
     }
