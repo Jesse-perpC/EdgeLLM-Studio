@@ -172,11 +172,8 @@ class ModelDownloadManager(
                 ModelFormat.ANDROID_AICORE -> "aicore"
             }
             val targetFile = File(modelsDir, "${m.id}.$ext")
-            if (m.isDownloaded && !targetFile.exists()) {
-                try {
-                    targetFile.writeText("EdgeLLM Model: ${m.name}")
-                } catch (_: Exception) {}
-            }
+            // Do not create placeholder files for downloaded models; real weights
+            // must be fetched by startDownload() or provided by the user.
         }
 
         // Seed Room Database with initial models if empty
@@ -330,9 +327,8 @@ class ModelDownloadManager(
         for ((filename, size) in demoFiles) {
             val f = File(sampleFolder, filename)
             if (!f.exists()) {
-                try {
-                    f.writeText("EdgeLLM Demo Model Container: $filename ($size bytes)")
-                } catch (_: Exception) {}
+                // Demo models need real weights; do not write placeholder text.
+                // The file will remain empty and the model will fall back to simulated inference.
             }
             discovered.add(DiscoveredModelFile(null, f, filename, size))
             directSpecs.add(parseModelSpecFromFileName(filename, size, f.absolutePath, "Sample Models Folder"))
