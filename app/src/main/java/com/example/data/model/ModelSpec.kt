@@ -3,7 +3,14 @@ package com.example.data.model
 enum class ModelFormat(val displayName: String, val badgeColor: Long) {
     GGUF("GGUF", 0xFF06B6D4),
     TFLITE("TensorFlow Lite", 0xFFF59E0B),
-    ONNX("ONNX Runtime", 0xFF8B5CF6)
+    ONNX("ONNX Runtime", 0xFF8B5CF6),
+    // Chat-capable MediaPipe / LiteRT LLM (.task / .bin). Runs real weights via tasks-genai.
+    // Plain classifier .tflite files stay on TFLITE and never enter the LLM path.
+    MEDIAPIPE_TASK("MediaPipe LLM", 0xFF10B981),
+    // Reserved for future native runtimes. No native lib bundled yet — routed to
+    // honest simulated fallback in LocalInferenceEngine until JNI is linked.
+    MNN_LLM("MNN-LLM", 0xFFF472B6),
+    ANDROID_AICORE("AICore Gemini Nano", 0xFF60A5FA)
 }
 
 enum class CompatibilityRating(val label: String, val description: String, val color: Long) {

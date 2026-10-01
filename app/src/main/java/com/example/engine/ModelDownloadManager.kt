@@ -505,11 +505,12 @@ class ModelDownloadManager(
     ): ModelSpec {
         val lower = fileName.lowercase(Locale.ROOT)
 
-        val format = when {
-            lower.endsWith(".gguf") -> ModelFormat.GGUF
-            lower.endsWith(".tflite") -> ModelFormat.TFLITE
-            lower.endsWith(".onnx") -> ModelFormat.ONNX
-            else -> ModelFormat.GGUF
+        val format = try {
+            InferenceFactory.determineModelType(fileName)
+        } catch (_: IllegalArgumentException) {
+            // Unknown extension: fall back to GGUF label so the UI still shows the
+            // file, but LocalInferenceEngine will serve an honest simulated fallback.
+            ModelFormat.GGUF
         }
 
         val quantization = when {

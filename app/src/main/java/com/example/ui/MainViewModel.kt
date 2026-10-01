@@ -147,7 +147,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val database = AppDatabase.getInstance(application)
         repository = EdgeLLMRepository(database)
         hardwareDetector = HardwareCapabilityDetector(application)
-        inferenceEngine = LocalInferenceEngine()
+        inferenceEngine = LocalInferenceEngine(application.applicationContext)
         downloadManager = ModelDownloadManager(application)
         cryptoManager = CryptoManager()
         shareManager = TemporaryShareManager()

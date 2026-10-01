@@ -15,7 +15,8 @@ android {
 
   defaultConfig {
     applicationId = "com.aistudio.edgellm.qvmxrp"
-    minSdk = 24
+    // MediaPipe LLM Inference API requires API 26+ (native GenAI runtime).
+    minSdk = 26
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
@@ -117,6 +118,8 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  // Real on-device weight inference for Gemma/LiteRT .task models (MediaPipe LLM Inference API).
+  implementation(libs.mediapipe.tasks.genai)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
