@@ -347,7 +347,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 tokensPerSecond = chunk.tokensPerSecond,
                                 timeToFirstTokenMs = chunk.timeToFirstTokenMs,
                                 executionBackend = chunk.backendUsed,
-                                modelId = activeModel.name
+                                modelId = activeModel.name,
+                                isSimulated = chunk.isSimulated
                             )
                             repository.insertMessage(assistantMessage)
                             _streamingChunk.value = null
@@ -408,7 +409,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 tokensPerSecond = chunk.tokensPerSecond,
                                 timeToFirstTokenMs = chunk.timeToFirstTokenMs,
                                 executionBackend = chunk.backendUsed,
-                                modelId = activeModel.name
+                                modelId = activeModel.name,
+                                isSimulated = chunk.isSimulated
                             )
                             repository.insertMessage(assistantMessage)
                             _streamingChunk.value = null
@@ -442,7 +444,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     tokensPerSecond = current.tokensPerSecond,
                     timeToFirstTokenMs = current.timeToFirstTokenMs,
                     executionBackend = current.backendUsed,
-                    modelId = downloadManager.getActiveModel().name
+                    modelId = downloadManager.getActiveModel().name,
+                    isSimulated = current.isSimulated
                 )
                 repository.insertMessage(partialMessage)
             }

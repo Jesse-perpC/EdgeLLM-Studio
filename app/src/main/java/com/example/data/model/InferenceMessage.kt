@@ -9,7 +9,8 @@ data class InferenceMessage(
     val tokensPerSecond: Float = 0f,
     val timeToFirstTokenMs: Long = 0L,
     val executionBackend: String = "",
-    val modelId: String = ""
+    val modelId: String = "",
+    val isSimulated: Boolean = false
 )
 
 enum class MessageSender {
