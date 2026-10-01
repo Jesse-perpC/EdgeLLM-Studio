@@ -360,6 +360,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 } catch (e: Exception) {
+                    val errorMessage = InferenceMessage(
+                        id = UUID.randomUUID().toString(),
+                        sender = MessageSender.ASSISTANT,
+                        text = "Error: ${e.message}",
+                        timestamp = System.currentTimeMillis()
+                    )
+                    repository.insertMessage(errorMessage)
                     _isGenerating.value = false
                     _streamingChunk.value = null
                 }
@@ -422,6 +429,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 } catch (e: Exception) {
+                    val errorMessage = InferenceMessage(
+                        id = UUID.randomUUID().toString(),
+                        sender = MessageSender.ASSISTANT,
+                        text = "Error: ${e.message}",
+                        timestamp = System.currentTimeMillis()
+                    )
+                    repository.insertMessage(errorMessage)
                     _isGenerating.value = false
                     _streamingChunk.value = null
                 }
