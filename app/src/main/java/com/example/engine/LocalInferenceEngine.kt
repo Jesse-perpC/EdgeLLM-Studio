@@ -70,6 +70,8 @@ class LocalInferenceEngine(private val context: Context? = null) {
             var realText: String? = null
             try {
                 realText = mediaPipeEngine.tryRealLlmInference(prompt, options)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Throwable) {
                 realText = null
             }
