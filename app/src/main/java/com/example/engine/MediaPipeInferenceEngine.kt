@@ -91,13 +91,18 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
 
     @Synchronized
     private fun getOrCreateLlm(appContext: Context, options: MediaPipeLlmOptions, modelPath: String): LlmInference {
-        val key = "$modelPath|${options.maxTokens}"
+        val delegateValue = when (options.delegate) {
+            MediaPipeDelegate.GPU -> LlmInference.LlmInferenceOptions.PreferredBackend.GPU
+            MediaPipeDelegate.CPU -> LlmInference.LlmInferenceOptions.PreferredBackend.CPU
+        }
+        val key = "$modelPath|${options.maxTokens}|${delegateValue}"
         val existing = cachedLlm
         if (existing != null && cachedKey == key) return existing
         closeQuietly()
         val llmOptions = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath)
             .setMaxTokens(options.maxTokens)
+            .setPreferredBackend(delegateValue)
             .build()
         val created = LlmInference.createFromOptions(appContext, llmOptions)
         cachedLlm = created
