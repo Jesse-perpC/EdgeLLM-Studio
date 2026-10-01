@@ -86,6 +86,7 @@ class LocalInferenceEngine(private val context: Context? = null) {
                 delegate = delegate
             )
             var realText: String? = null
+            val inferenceStartTime = System.currentTimeMillis()
             try {
                 realText = mediaPipeEngine.tryRealLlmInference(prompt, options)
             } catch (e: CancellationException) {
@@ -97,17 +98,15 @@ class LocalInferenceEngine(private val context: Context? = null) {
                 val words = realText.split(" ")
                 val sb = StringBuilder()
                 var count = 0
-                val startTime = System.currentTimeMillis()
-                // TTFT measured from the native call above is near-zero here because
-                // weights are already resident; report honestly, don't fabricate.
-                val ttft = 0L
+                // TTFT is the time from prompt to first token (which is the whole response from MediaPipe)
+                val ttft = System.currentTimeMillis() - inferenceStartTime
                 val measuredTpsHint = 30f
                 val delayPerToken = (1000f / measuredTpsHint).toLong().coerceIn(12L, 80L)
                 for (i in words.indices) {
                     count++
                     val token = if (i == 0) words[i] else " ${words[i]}"
                     sb.append(token)
-                    val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
+                    val elapsedSec = (System.currentTimeMillis() - inferenceStartTime) / 1000f
                     val currentTps = if (elapsedSec > 0.05f) count / elapsedSec else measuredTpsHint
                     emit(
                         StreamTokenChunk(
@@ -115,7 +114,7 @@ class LocalInferenceEngine(private val context: Context? = null) {
                             accumulatedText = sb.toString(),
                             tokenCount = count,
                             tokensPerSecond = ((currentTps * 10).toInt() / 10f),
-                            timeToFirstTokenMs = ttft,
+                            timeToFirstTokenMs = if (i == 0) ttft else 0L,
                             isComplete = false,
                             backendUsed = "MediaPipe GenAI • ${delegate.displayName} (real weights)",
                             isSimulated = false
@@ -123,7 +122,7 @@ class LocalInferenceEngine(private val context: Context? = null) {
                     )
                     delay(delayPerToken)
                 }
-                val totalElapsedSec = ((System.currentTimeMillis() - startTime) / 1000f).coerceAtLeast(0.1f)
+                val totalElapsedSec = ((System.currentTimeMillis() - inferenceStartTime) / 1000f).coerceAtLeast(0.1f)
                 emit(
                     StreamTokenChunk(
                         token = "",
