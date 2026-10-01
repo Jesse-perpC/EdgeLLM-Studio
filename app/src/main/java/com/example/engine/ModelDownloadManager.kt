@@ -414,14 +414,29 @@ class ModelDownloadManager(
             )
 
             // Persist model weight container if needed
-            val modelBinFile = File(modelsDir, "${parsedSpec.id}.bin")
-            if (!modelBinFile.exists()) {
+            val importedCacheDir = File(context.cacheDir, "imported_models")
+            importedCacheDir.mkdirs()
+            val modelCacheFile = File(importedCacheDir, "${parsedSpec.id}.bin")
+            if (!modelCacheFile.exists()) {
                 try {
-                    modelBinFile.writeText("Imported model weights link: ${parsedSpec.name} (${parsedSpec.format})")
-                } catch (_: Exception) {}
+                    // Copy the actual model file from the URI instead of writing placeholder text
+                    item.uri?.let { uri ->
+                        context.contentResolver.openInputStream(uri).use { input ->
+                            input?.copyTo(modelCacheFile.outputStream())
+                        }
+                    } ?: item.file?.let { file ->
+                        file.copyTo(modelCacheFile)
+                    }
+                } catch (_: Exception) {
+                    // Fallback to placeholder if copy fails
+                    modelCacheFile.writeText("Imported model weights link: ${parsedSpec.name} (${parsedSpec.format})")
+                }
             }
 
-            newImportedSpecs.add(parsedSpec)
+            // Update the spec with the cached file path for real inference
+            val updatedSpec = parsedSpec.copy(localFilePath = modelCacheFile.absolutePath)
+
+            newImportedSpecs.add(updatedSpec)
             importedNames.add(parsedSpec.name)
 
             _importProgressState.value = _importProgressState.value.copy(

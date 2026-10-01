@@ -37,7 +37,21 @@ class LocalInferenceEngine(private val context: Context? = null) {
     fun supportsRealWeights(model: ModelSpec): Boolean {
         if (context == null) return false
         if (!InferenceFactory.canRunRealWeights(model)) return false
-        return File(model.localFilePath).exists()
+        val path = model.localFilePath
+        return if (path.startsWith("content://")) {
+            // Content URIs need to be resolved through ContentResolver
+            // For now, check if we have a cached file copy
+            try {
+                val uri = android.net.Uri.parse(path)
+                val fileName = uri.lastPathSegment
+                val cachedFile = File(context!!.cacheDir, "imported_models/$fileName")
+                cachedFile.exists()
+            } catch (_: Exception) {
+                false
+            }
+        } else {
+            File(path).exists()
+        }
     }
 
     fun describeRoute(model: ModelSpec): String {
