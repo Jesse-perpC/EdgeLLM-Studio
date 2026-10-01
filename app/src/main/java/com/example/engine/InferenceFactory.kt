@@ -64,6 +64,7 @@ object InferenceFactory {
         val backend = backendForFormat(spec.format, spec.category)
         if (backend != InferenceBackend.MEDIAPIPE_LITERT) return false
         val path = spec.localFilePath.ifBlank { return false }
-        return path.lowercase().endsWith(".task") || path.lowercase().endsWith(".bin")
+        val lower = path.lowercase()
+        return lower.endsWith(".task") || lower.endsWith(".bin") || (lower.endsWith(".tflite") && spec.category == ModelCategory.CHAT_REASONING)
     }
 }
