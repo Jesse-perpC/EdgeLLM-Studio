@@ -192,8 +192,13 @@ class LocalInferenceEngine(private val context: Context? = null) {
             InferenceBackend.TFLITE_CLASSIFIER ->
                 "TFLite classifier [SIMULATED — non-chat model]"
             InferenceBackend.MEDIAPIPE_LITERT ->
-                // Reached here only when the .task file is missing or Context is null.
-                "MediaPipe [SIMULATED — no valid .task file loaded]"
+                // Reached here when the .task file is missing or Context is null,
+                // or when native initialization failed despite a valid file path.
+                if (model.localFilePath.isNotBlank() && File(model.localFilePath).exists()) {
+                    "MediaPipe [SIMULATED — failed to initialize GenAI runtime. Check logs for details.]"
+                } else {
+                    "MediaPipe [SIMULATED — no valid .task file loaded]"
+                }
             InferenceBackend.UNSUPPORTED ->
                 "${model.format.displayName} [SIMULATED — native runtime not bundled]"
         }
