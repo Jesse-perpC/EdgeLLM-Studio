@@ -152,11 +152,10 @@ dependencies {
   // Replaces the previous ONNX branch, which produced canned text because no
   // ONNX runtime was ever on the classpath.
   implementation(libs.onnxruntime.android)
-  // Real LiteRT runtime for .tflite classifiers (MobileBERT). Declared once:
-  // `litert` already pulls `litert-api` transitively (compile scope).
-  // NOTE: Do not add the separate litert-api artifact here. It declares the same
-  // namespace as litert and causes Android manifest merger failures in CI.
-  implementation(libs.litert)
+  // Real TensorFlow Lite runtime for .tflite classifiers (MobileBERT).
+  // Replaces the path that answered classification prompts from the
+  // hardcoded knowledge engine.
+  implementation(libs.tensorflow.lite)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

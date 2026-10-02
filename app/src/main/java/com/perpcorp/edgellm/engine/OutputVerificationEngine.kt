@@ -58,7 +58,7 @@ class OutputVerificationEngine {
          * detects factual token loops (n-grams), detects off-topic triggers,
          * and strips conversational preamble fluff.
          */
-        fun verifyAndCleanOutput(rawOutput: String): VerificationResult {
+        fun verifyAndCleanOutput(rawOutput: String, isKnowledgeBase: Boolean = true): VerificationResult {
             // 1. Detect loops or repetitive token patterns
             if (hasTokenLoop(rawOutput)) {
                 return VerificationResult(

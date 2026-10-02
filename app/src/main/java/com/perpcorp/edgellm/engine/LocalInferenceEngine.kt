@@ -52,7 +52,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
     // unavailable rather than routing to them. See scripts/setup-mnn.md.
     val llamaCppEngine by lazy { LlamaCppEngine(context) }
     val onnxLlmEngine by lazy { OnnxLlmEngine() }
-    val liteRtClassifierEngine by lazy { LiteRtClassifierEngine() }
+    val tfliteClassifierEngine by lazy { TfliteClassifierEngine() }
 
     fun generateStreamingResponse(
         prompt: String,
@@ -240,24 +240,61 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             attachedImageUri == null && attachedImageLabel == null &&
             !params.enforceJsonSchema) {
             val useGbnf = params.grammarMode == GrammarMode.GBNF_STRICT_FACTUAL
-            llamaCppEngine.streamLlamaCppResponse(
-                prompt = effectivePrompt,
-                model = model,
-                settings = settings,
-                params = params,
-                useGbnfGrammar = useGbnf
-            ).collect { chunk ->
-                if (useGbnf && params.enforceJsonSchema) {
-                    // Raw grammar output, passed through untouched.
-                    emit(chunk)
-                } else if (useGbnf) {
-                    // LlamaCppEngine already streams the "answer" field as it is
-                    // decoded, so no re-extraction is needed here.
-                    emit(chunk)
-                } else {
-                    val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
-                    emit(chunk.copy(accumulatedText = displayText))
+            var emittedAny = false
+            var failure: Throwable? = null
+            try {
+                llamaCppEngine.streamLlamaCppResponse(
+                    prompt = effectivePrompt,
+                    model = model,
+                    settings = settings,
+                    params = params,
+                    useGbnfGrammar = useGbnf
+                ).collect { chunk ->
+                    emittedAny = true
+                    if (useGbnf && params.enforceJsonSchema) {
+                        // Raw grammar output, passed through untouched.
+                        emit(chunk)
+                    } else if (useGbnf) {
+                        // LlamaCppEngine already streams the "answer" field as it is
+                        // decoded, so no re-extraction is needed here.
+                        emit(chunk)
+                    } else {
+                        val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
+                        emit(chunk.copy(accumulatedText = displayText))
+                    }
                 }
+            } catch (t: Throwable) {
+                Log.e(TAG, "GGUF inference failed for ${model.localFilePath}", t)
+                failure = t
+            }
+            if (!emittedAny) {
+                // The engine emits nothing on blank paths, missing files, or
+                // unavailable native contexts. Silence here used to surface as
+                // an empty chat bubble; report the cause instead.
+                val reason = failure?.message?.takeIf { it.isNotBlank() }
+                    ?: when {
+                        model.localFilePath.isBlank() ->
+                            "no model file configured (localFilePath is blank)"
+                        !java.io.File(model.localFilePath).isFile ->
+                            "model file not found: ${model.localFilePath}"
+                        else ->
+                            "native decode produced no output " +
+                                "(UnsatisfiedLinkError means libllama-android.so is missing; " +
+                                "otherwise see logcat for $TAG)"
+                    }
+                emit(
+                    StreamTokenChunk(
+                        token = "",
+                        accumulatedText = "GGUF inference failed: $reason",
+                        tokenCount = 0,
+                        tokensPerSecond = 0f,
+                        timeToFirstTokenMs = 0L,
+                        isComplete = true,
+                        backendUsed = "GGUF (failed)",
+                        samplerName = "N/A",
+                        grammarModeUsed = GrammarMode.NONE
+                    )
+                )
             }
             return@flow
         }
@@ -283,9 +320,10 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         // model produced instead of falling through to synthesized text.
         if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.TFLITE &&
             model.category == ModelCategory.EMBEDDINGS_CLASSIFICATION) {
-            liteRtClassifierEngine.classifyFlow(
+            tfliteClassifierEngine.classifyFlow(
                 text = effectivePrompt,
-                model = model
+                model = model,
+                settings = settings
             ).collect { chunk -> emit(chunk) }
             return@flow
         }

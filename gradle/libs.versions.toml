@@ -43,10 +43,10 @@ credentials = "1.5.0"
 googleid = "1.1.1"
 mediapipeTasksGenai = "0.10.27"
 onnxRuntime = "1.22.0"
-# LiteRT 2.2.0 lives on Google Maven (google()), not Maven Central. litert is the
-# runtime AAR; litert-api carries com.google.ai.edge.litert (CompiledModel,
-# Environment, TensorBuffer) used by LiteRtClassifierEngine.
-liteRt = "2.2.0"
+# TensorFlow Lite (Maven Central, org.tensorflow) for .tflite classifiers.
+# LiteRT was evaluated first but its 2.2.0 runtime and api AARs declare the
+# same manifest namespace, which fails the build, and no fixed release exists.
+tensorflowLite = "2.16.1"
 
 
 [libraries]
@@ -109,8 +109,7 @@ mediapipe-tasks-genai = { group = "com.google.mediapipe", name = "tasks-genai", 
 # the reduced mobile build excludes NNAPI and the ExecutionProvider APIs the
 # engine uses to report which backend actually served each node.
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxRuntime" }
-litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "liteRt" }
-litert-api = { group = "com.google.ai.edge.litert", name = "litert-api", version.ref = "liteRt" }
+tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflowLite" }
 
 
 [plugins]
