@@ -47,6 +47,10 @@ struct LlamaAndroidContext {
     llama_model         * model   = nullptr;
     llama_context       * ctx     = nullptr;
     const llama_vocab   * vocab   = nullptr;
+    // Owned sampler chain, rebuilt by rebuild_sampler_chain() whenever sampling
+    // config or grammar changes. Guarded by decode_mutex; freed on rebuild and
+    // on context destroy. Never null during decode.
+    llama_sampler       * sampler = nullptr;
 
     std::string          model_path;
     std::string          grammar;

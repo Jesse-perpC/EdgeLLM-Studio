@@ -36,6 +36,12 @@ jobs:
           lfs: true
           fetch-depth: 0
 
+      - name: Init llama.cpp submodule (pinned, shallow)
+        # The native GGUF engine builds against this exact commit; the full
+        # llama.cpp history is ~1GB, so only the pinned commit is fetched.
+        # CMakeLists.txt fails the build if this directory is empty.
+        run: git submodule update --init --depth 1 -- llama.cpp
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
