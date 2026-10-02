@@ -68,7 +68,6 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Chip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -992,20 +991,19 @@ fun ChatMessageBubble(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (message.isSimulated) {
-                                Chip(
+                                Surface(
                                     modifier = Modifier.padding(end = 4.dp),
-                                    onClick = null,
-                                    label = {
-                                        Text(
-                                            text = "Simulated",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                    },
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    shape = RoundedCornerShape(4.dp)
-                                )
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.errorContainer
+                                ) {
+                                    Text(
+                                        text = "Simulated",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                             Text(
                                 text = "${message.tokensGenerated} tok • ${message.tokensPerSecond} t/s • ${message.timeToFirstTokenMs}ms",
