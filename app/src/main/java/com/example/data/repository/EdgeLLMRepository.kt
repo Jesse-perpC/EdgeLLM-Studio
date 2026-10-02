@@ -35,7 +35,8 @@ class EdgeLLMRepository(private val database: AppDatabase) {
                 tokensPerSecond = entity.tokensPerSecond,
                 timeToFirstTokenMs = entity.timeToFirstTokenMs,
                 executionBackend = entity.executionBackend,
-                modelId = entity.modelId
+                modelId = entity.modelId,
+                isSimulated = entity.isSimulated
             )
         }
     }
@@ -92,7 +93,8 @@ class EdgeLLMRepository(private val database: AppDatabase) {
                 tokensPerSecond = message.tokensPerSecond,
                 timeToFirstTokenMs = message.timeToFirstTokenMs,
                 executionBackend = message.executionBackend,
-                modelId = message.modelId
+                modelId = message.modelId,
+                isSimulated = message.isSimulated
             )
         )
     }

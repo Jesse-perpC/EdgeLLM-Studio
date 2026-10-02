@@ -20,7 +20,7 @@ import com.example.data.local.entity.LocalModelEntity
         EncryptedExportEntity::class,
         LocalModelEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
