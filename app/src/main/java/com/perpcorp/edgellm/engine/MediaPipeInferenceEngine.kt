@@ -145,7 +145,7 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
                 Log.w(TAG, "Native returned empty text; using grounded fallback")
                 null
             } else {
-                OutputVerificationEngine.verifyAndSanitizeText(text)
+                OutputVerificationEngine.verifyAndSanitizeText(text, isKnowledgeBase = false)
             }
         } catch (e: Throwable) {
             Log.w(TAG, "Real inference unavailable (${e.message}); using grounded fallback")
@@ -300,7 +300,8 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         // runtime/telemetry footer in chat text (metadata travels via chunk fields).
         if (model != null) {
             return OutputVerificationEngine.verifyAndSanitizeText(
-                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona),
+                isKnowledgeBase = true
             )
         }
 

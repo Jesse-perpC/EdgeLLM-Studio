@@ -89,21 +89,24 @@ class OutputVerificationEngine {
                 }
             }
 
-            // 2b. Scan for leaked system/jargon template text (non-GGUF engines).
-            // This is the post-decoder screen for LiteRT / ONNX / MNN which cannot
-            // enforce GBNF token-level constraints.
-            for (trigger in systemJargonTriggers) {
-                if (rawOutput.contains(trigger, ignoreCase = true)) {
-                    return VerificationResult(
-                        isValid = false,
-                        cleanedText = "I do not have enough precise internal information to answer this offline.",
-                        verifiedText = "I do not have enough precise internal information to answer this offline.",
+            // 2b. Scan for leaked system/jargon template text. Only for
+            // knowledge-base text: real engines do not echo the strict-prompt
+            // jail, and their legitimate use of the same words ("core
+            // mechanism", "strict correctness") must not be censored.
+            if (isKnowledgeBase) {
+                for (trigger in systemJargonTriggers) {
+                    if (rawOutput.contains(trigger, ignoreCase = true)) {
+                        return VerificationResult(
+                            isValid = false,
+                            cleanedText = "I do not have enough precise internal information to answer this offline.",
+                            verifiedText = "I do not have enough precise internal information to answer this offline.",
                         trustScore = 0.20f,
                         correctionsApplied = listOf("Intercepted system-jargon leak: $trigger"),
                         verificationFlags = listOf("SYSTEM_JARGON_LEAK_DETECTED", trigger),
                         factualAccuracyScore = 0.20f,
                         topicAdherenceScore = 0.10f
                     )
+                    }
                 }
             }
 
@@ -144,13 +147,20 @@ class OutputVerificationEngine {
          * - Plain-text input -> jargon-leak screen for LiteRT / ONNX / MNN which
          *   cannot natively read GBNF grammar files.
          */
-        fun verifyAndSanitizeText(rawModelOutput: String): String {
+        fun verifyAndSanitizeText(rawModelOutput: String, isKnowledgeBase: Boolean = true): String {
             val trimmedOutput = rawModelOutput.trim()
 
-            // 1. Edge Case Protection: Check if the model leaked system keywords
-            for (trigger in systemJargonTriggers) {
-                if (trimmedOutput.contains(trigger, ignoreCase = true)) {
-                    return "I do not have enough precise internal information to answer this offline."
+            // 1. Edge Case Protection: Check if the model leaked system keywords.
+            // Runs only for knowledge-base text. Real engines do not echo the
+            // strict-prompt jail, so screening their output for our own
+            // phrasing ("core mechanism", "strict correctness") censors
+            // legitimate answers. Loop/off-topic/preamble checks below are
+            // generic and still apply to all output.
+            if (isKnowledgeBase) {
+                for (trigger in systemJargonTriggers) {
+                    if (trimmedOutput.contains(trigger, ignoreCase = true)) {
+                        return "I do not have enough precise internal information to answer this offline."
+                    }
                 }
             }
 
@@ -401,13 +411,14 @@ class OutputVerificationEngine {
     }
 
     // Instance method delegates for callers using instance pattern
-    fun verifyAndCleanOutput(rawOutput: String): VerificationResult =
-        Companion.verifyAndCleanOutput(rawOutput)
+    fun verifyAndCleanOutput(rawOutput: String, isKnowledgeBase: Boolean = true): VerificationResult =
+        Companion.verifyAndCleanOutput(rawOutput, isKnowledgeBase)
 
     fun hasTokenLoop(text: String): Boolean = Companion.hasTokenLoop(text)
     fun stripPreamble(text: String): String = Companion.stripPreamble(text)
     fun verifyAndSanitize(rawJsonOutput: String): String = Companion.verifyAndSanitize(rawJsonOutput)
-    fun verifyAndSanitizeText(rawModelOutput: String): String = Companion.verifyAndSanitizeText(rawModelOutput)
+    fun verifyAndSanitizeText(rawModelOutput: String, isKnowledgeBase: Boolean = true): String =
+        Companion.verifyAndSanitizeText(rawModelOutput, isKnowledgeBase)
     fun verifyAndRefine(
         rawOutput: String,
         query: String,

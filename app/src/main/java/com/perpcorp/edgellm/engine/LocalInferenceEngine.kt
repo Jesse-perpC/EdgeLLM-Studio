@@ -417,8 +417,10 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         val effectiveTurbo = isTurbo && !isOfflineFallback
         val effectivePrefixHit = isPrefixHit && !isOfflineFallback
 
-        // 1. Intercept loops, off-topic triggers, and strip preamble via strict Chain-of-Verification
-        val cleanCheck = OutputVerificationEngine.verifyAndCleanOutput(responseText)
+        // 1. Intercept loops, off-topic triggers, and strip preamble via strict Chain-of-Verification.
+        // The jail-phrasing screen runs only for offline knowledge text; real
+        // Cloud output must not be censored for containing ordinary phrases.
+        val cleanCheck = OutputVerificationEngine.verifyAndCleanOutput(responseText, isKnowledgeBase = isOfflineFallback)
         val textToProcess = if (!cleanCheck.isValid) cleanCheck.cleanedText else responseText
 
         // 2. Apply Post-Generation Verification & Quality Guardrails (CoVe, Arithmetic, Code fence balance)
@@ -623,8 +625,12 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         // Apply Grammar Mode Constraints (GBNF Automaton simulation)
         val body = when (params.grammarMode) {
             GrammarMode.JSON_STRICT -> {
+                // Structural wrapper only. It previously claimed
+                // "verified": true and attributed the text to the model;
+                // neither is true for offline text, so both are gone. Shape
+                // without false provenance.
                 val safePrompt = prompt.replace("\"", "\\\"").take(60)
-                "{\n  \"status\": \"success\",\n  \"model\": \"${model.name}\",\n  \"query\": \"$safePrompt\",\n  \"verified\": true,\n  \"offline_execution\": true,\n  \"grammar_mode\": \"JSON_STRICT\",\n  \"data\": {\n    \"content\": \"${rawBody.lines().firstOrNull()?.replace("\"", "\\\"") ?: "Processed"}\"\n  }\n}"
+                "{\n  \"status\": \"success\",\n  \"query\": \"$safePrompt\",\n  \"grammar_mode\": \"JSON_STRICT\",\n  \"data\": {\n    \"content\": \"${rawBody.lines().firstOrNull()?.replace("\"", "\\\"") ?: "Processed"}\"\n  }\n}"
             }
             GrammarMode.PYTHON_CODE -> {
                 if (rawBody.contains("```python")) rawBody else "```python\n# Constrained Python 3 Output\ndef solution():\n    \"\"\"Generated on-device without cloud API\"\"\"\n    return True\n```"
@@ -684,7 +690,11 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             .replace("[/USER_QUERY]", "")
             .trim()
         // Unified post-sanitization (jargon + out-of-scope guardrails).
-        return OutputVerificationEngine.verifyAndSanitizeText(display)
+        // isKnowledgeBase=false: this text came from a real engine, so the
+        // strict-prompt jargon screen (which matches our own jail phrasing
+        // like "core mechanism") is skipped to avoid censoring legitimate
+        // model output. Loop/off-topic/preamble checks still apply.
+        return OutputVerificationEngine.verifyAndSanitizeText(display, isKnowledgeBase = false)
     }
 
     /**
