@@ -117,16 +117,21 @@ add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build
 # LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
 # ---------------------------------------------------------------------------
 if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET ggml-vulkan)
-    set(_ndk_sysroot_lib "${ANDROID_NDK}/toolchains/llvm/prebuilt/${CMAKE_HOST_SYSTEM_NAME}-x86_64/sysroot/usr/lib/${ANDROID_TOOLCHAIN_NAME}")
+    # Layout: <sysroot>/usr/lib/<triple>/<api>/libvulkan.so. Take the newest
+    # stub >= API 28 (Vulkan 1.1 arrived in API 28).
+    file(GLOB _vulkan_stub_candidates "${ANDROID_SYSROOT}/usr/lib/*/libvulkan.so" "${ANDROID_SYSROOT}/usr/lib/*/*/libvulkan.so")
     set(_vulkan_stub "")
-    foreach(_lvl RANGE 35 28 -1)
-        if(EXISTS "${_ndk_sysroot_lib}/${_lvl}/libvulkan.so")
-            set(_vulkan_stub "${_ndk_sysroot_lib}/${_lvl}/libvulkan.so")
-            break()
+    set(_vulkan_stub_api 0)
+    foreach(_cand IN LISTS _vulkan_stub_candidates)
+        get_filename_component(_cand_api "${_cand}" DIRECTORY)
+        get_filename_component(_cand_api "${_cand_api}" NAME)
+        if(_cand_api MATCHES "^[0-9]+$" AND _cand_api GREATER_EQUAL 28 AND _cand_api GREATER _vulkan_stub_api)
+            set(_vulkan_stub "${_cand}")
+            set(_vulkan_stub_api ${_cand_api})
         endif()
     endforeach()
     if(_vulkan_stub STREQUAL "")
-        message(FATAL_ERROR "No NDK libvulkan.so stub >= API 28 under ${_ndk_sysroot_lib}; cannot link ggml-vulkan")
+        message(FATAL_ERROR "No NDK libvulkan.so stub >= API 28 under ${ANDROID_SYSROOT}/usr/lib; cannot link ggml-vulkan")
     endif()
     get_target_property(_ggml_vk_link ggml-vulkan LINK_LIBRARIES)
     list(REMOVE_ITEM _ggml_vk_link "Vulkan::Vulkan")
