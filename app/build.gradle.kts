@@ -170,6 +170,9 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  // Cloud Hub (opt-in): hardware-backed EncryptedSharedPreferences for third-party API keys.
+  // No cloud call is ever made unless the user configures a key AND selects cloud mode.
+  implementation(libs.security.crypto)
   // Real on-device weight inference for Gemma/LiteRT .task models (MediaPipe LLM Inference API).
   // If manifest merger ever reports a minSdk conflict from this AAR, raise app minSdk to 26.
   implementation(libs.mediapipe.tasks.genai)
