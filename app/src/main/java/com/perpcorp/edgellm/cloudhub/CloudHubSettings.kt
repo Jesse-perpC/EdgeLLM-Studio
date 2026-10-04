@@ -66,7 +66,9 @@ fun CloudHubStore.inferenceMode(): InferenceMode =
     InferenceMode.fromId(getString(CloudHubKeys.INFERENCE_MODE, InferenceMode.LOCAL.id))
 
 fun CloudHubStore.provider(): CloudProvider =
-    CloudProviders.byId(getString(CloudHubKeys.PROVIDER, CloudHubDefaults.PROVIDER))
+    CloudProviders.byId(
+        getString(CloudHubKeys.PROVIDER, CloudHubDefaults.PROVIDER) ?: CloudHubDefaults.PROVIDER,
+    )
 
 fun CloudHubStore.apiKeyFor(providerId: String): String =
     getString(CloudHubKeys.apiKeyFor(providerId), "").orEmpty()
