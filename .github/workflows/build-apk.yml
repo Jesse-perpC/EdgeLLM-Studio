@@ -104,12 +104,13 @@ jobs:
 
       - name: Install Vulkan build deps (vulkan flavor only)
         # ggml's Vulkan backend needs the loader headers, SPIRV-Headers, and
-        # glslc at CMake time. Ubuntu provides all three without third-party
-        # repos: libvulkan-dev (loader+headers), spirv-headers, shaderc (glslc).
-        # The default `cpu` flavor does not need any of this.
+        # glslc at CMake time. Ubuntu 24.04 provides all three without
+        # third-party repos: libvulkan-dev (loader+headers), spirv-headers,
+        # glslc (shader compiler binary). The default `cpu` flavor does not
+        # need any of this.
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libvulkan-dev spirv-headers shaderc
+          sudo apt-get install -y -qq libvulkan-dev spirv-headers glslc
           glslc --version
           ls /usr/include/vulkan/vulkan.h
 
