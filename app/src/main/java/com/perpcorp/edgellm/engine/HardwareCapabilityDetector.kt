@@ -57,7 +57,11 @@ class HardwareCapabilityDetector(private val context: Context) {
 
         val packageManager = context.packageManager
         val hasVulkan = packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)
-        val hasNpu = is64Bit && cpuCores >= 4 // Modern 64-bit multi-core SoCs include NNAPI HTP/NPU acceleration
+        // NNAPI is part of the Android framework from API 27, so its *presence*
+        // is factual on such devices. Whether a real NPU/HTP driver sits behind
+        // it (vs. CPU fallback) is not queryable from Java — ORT/TFLite report
+        // actual delegation per run, so this flag only gates UI hints.
+        val hasNpu = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1
 
         return DeviceHardwareInfo(
             totalRamBytes = totalRam,

@@ -1,0 +1,47 @@
+# Normalize text files to LF in the repo; checkout converts per-platform.
+* text=auto
+
+# Explicit text types (belt and suspenders for Windows contributors).
+*.kts text
+*.kt text
+*.java text
+*.xml text
+*.gradle text
+*.toml text
+*.properties text
+*.md text
+*.json text
+*.yml text
+*.yaml text
+*.sh text eol=lf
+*.gbnf text
+
+# Binary: models, weights, archives, keystores, media.
+*.gguf binary
+*.task binary
+*.bin binary
+*.onnx binary
+*.ort binary
+*.mnn binary
+*.tflite binary
+*.lite binary
+*.safetensors binary
+*.ckpt binary
+*.pt binary
+*.so binary
+*.aar binary
+*.jar binary
+*.apk binary
+*.aab binary
+*.zip binary
+*.jks binary
+*.keystore binary
+*.p8 binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.wav binary
+*.m4a binary
+*.mp3 binary
+*.pdf binary

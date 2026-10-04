@@ -102,8 +102,28 @@ jobs:
           # 4. Make gradlew executable
           chmod +x gradlew
 
+      - name: Install Vulkan build deps (vulkan flavor only)
+        # ggml's Vulkan backend needs the loader headers, SPIRV-Headers, and
+        # glslc at CMake time. Ubuntu 24.04 provides all three without
+        # third-party repos: libvulkan-dev (loader+headers), spirv-headers,
+        # glslc (shader compiler binary). The default `cpu` flavor does not
+        # need any of this.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libvulkan-dev spirv-headers glslc cmake g++
+          glslc --version
+          ls /usr/include/vulkan/vulkan.h
+          # Ubuntu's spirv-headers ships headers but no CMake package config,
+          # which ggml-vulkan's find_package(SPIRV-Headers) requires. Build the
+          # header-only upstream once (~1 min) and install the config to
+          # /usr/local; headers themselves keep coming from the apt package.
+          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/SPIRV-Headers
+          cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
+          sudo cmake --install /tmp/SPIRV-Headers/build
+          ls /usr/local/lib/cmake/SPIRV-Headers/ 2>/dev/null || ls /usr/local/share/cmake/SPIRV-Headers/ 2>/dev/null || echo "SPIRV-Headers cmake config check done"
+
       - name: Build Debug and Release APKs with Gradle
-        run: ./gradlew assembleDebug assembleRelease --no-daemon --no-configuration-cache --stacktrace
+        run: ./gradlew assembleCpuDebug assembleCpuRelease assembleVulkanDebug assembleVulkanRelease --no-daemon --no-configuration-cache --stacktrace
 
       - name: Locate & Rename Generated APKs
         id: locate-apk
@@ -115,26 +135,37 @@ jobs:
           VERSION="1.0.${{ github.run_number }}"
           echo "Processing artifacts for Version: $VERSION"
 
-          DEBUG_APK=$(find app/build/outputs/apk/debug -type f -name "*.apk" | head -n 1)
-          RELEASE_APK=$(find app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
-
-          if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
-            echo "Found Release APK at: $RELEASE_APK"
-            cp "$RELEASE_APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk"
-            cp "$RELEASE_APK" "dist-apks/EdgeLLM-Studio-release-latest.apk"
-            echo "release_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
-            echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
-          fi
-
-          if [ -n "$DEBUG_APK" ] && [ -f "$DEBUG_APK" ]; then
-            echo "Found Debug APK at: $DEBUG_APK"
-            cp "$DEBUG_APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk"
-            cp "$DEBUG_APK" "dist-apks/EdgeLLM-Studio-debug-latest.apk"
-            echo "debug_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
-            if [ -z "$RELEASE_APK" ]; then
-              echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
-            fi
-          fi
+          # With productFlavors the outputs live under apk/<flavor>/<buildType>/.
+          # Name every combination explicitly; the cpu release stays the
+          # default `-latest` artifact so existing installs keep updating.
+          for FLAVOR in cpu vulkan; do
+            for TYPE in debug release; do
+              APK=$(find "app/build/outputs/apk/$FLAVOR/$TYPE" -type f -name "*.apk" | head -n 1)
+              if [ -n "$APK" ] && [ -f "$APK" ]; then
+                echo "Found $FLAVOR/$TYPE APK at: $APK"
+                cp "$APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-${FLAVOR}-${TYPE}.apk"
+                if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "release" ]; then
+                  cp "$APK" "dist-apks/EdgeLLM-Studio-release-latest.apk"
+                  cp "$APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk"
+                  echo "release_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
+                  echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
+                fi
+                if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "debug" ]; then
+                  cp "$APK" "dist-apks/EdgeLLM-Studio-debug-latest.apk"
+                  cp "$APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk"
+                  echo "debug_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
+                  if [ -z "${RELEASE_SEEN:-}" ]; then
+                    echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
+                  fi
+                fi
+                if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "release" ]; then
+                  RELEASE_SEEN=1
+                fi
+              else
+                echo "WARNING: no $FLAVOR/$TYPE APK produced"
+              fi
+            done
+          done
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -198,9 +229,11 @@ jobs:
             - **Commit**: `${{ github.sha }}`
             - **Version Code**: `${{ github.run_number }}`
             - **Version Name**: `1.0.${{ github.run_number }}`
-            - **Release APK**: Included below (Self-contained, installable directly on Android 7.0+)
+            - **Release APK (cpu)**: Default install. GGUF decodes on CPU (ARM NEON); ONNX/TFLite/MediaPipe use NNAPI delegates where the device provides them. Self-contained, installable directly on Android 7.0+.
+            - **Release APK (vulkan)**: Same app with the ggml Vulkan backend compiled in (separate `com.aistudio.edgellm.qvmxrp.vulkan` package, installs side-by-side). Needs a device with a Vulkan driver; falls back to CPU otherwise.
             - **Debug APK**: Included below for ADB logcat diagnostics
             - **Windows Desktop Bundle**: Included below with WSA launcher script
+            - **Not included**: Hexagon HTP/NPU offload (licensed Hexagon SDK, not shippable from CI), MNN-LLM runtime (no Maven artifact — see `scripts/setup-mnn.md`), AICore/Gemini Nano (no public SDK).
           files: |
             dist-apks/*.apk
             EdgeLLM-Studio-Windows-Desktop.zip

@@ -188,7 +188,7 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 - **Governor Profiles**: Max Performance, Dynamic Balanced, and Eco Battery Saver modes with automatic thread, frequency-cap, and energy-saving adjustments.
 - **Manual Thread Override**: Pin compute threads (1–8) from the sheet slider; automatically locked above 42°C to protect hardware, with one-tap return to auto.
 - **Multi-Core Thread Allocation**: Allocate compute threads between Big, Middle, and Little CPU clusters.
-- **Compute Backend Delegation**: Switch on-the-fly between **Vulkan 1.3 GPU Shaders**, **Qualcomm Hexagon NPU (NNAPI / HTP)**, and **ARM NEON SIMD**.
+- **Compute Backend Delegation**: Switch on-the-fly between **ARM NEON SIMD** (always available), **Vulkan GPU Shaders** (requires the `vulkan` APK flavor *and* a device Vulkan driver — falls back to CPU otherwise), and **NNAPI delegates** for ONNX/TFLite/MediaPipe where the device provides them. Hexagon HTP direct offload is not shipped (licensed SDK).
 - **Attention Sink & KV Compaction**: Compresses Key-Value attention states to prevent out-of-memory errors during long conversations.
 - **Thermal Throttling Protection**: Live monitoring of battery temperature, SoC thermal zone envelope, and automatic token throttle guards.
 
@@ -207,6 +207,8 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 | **Google Tensor G3 / G4** | Eden TPU (Edge AI) | Immortalis-G715 / Mali | Gemma 2, SmolLM, Qwen 2.5, MediaPipe | 🟢 Verified Optimized |
 | **MediaTek Dimensity 9300**| APU 790 (Generative AI) | Immortalis-G720 (Vulkan 1.3)| Gemma 2, Llama 3.2, SmolLM, TinyLlama | 🟢 Verified High-Speed |
 | **Universal ARM64 Devices**| ARM NEON (SIMD Fallback)| Standard OpenCL / Vulkan | SmolLM-135M, Qwen2.5-0.5B, TinyLlama-1.1B | 🟡 Universal Compatibility |
+
+> **Build flavors:** the default APK (`cpu` flavor) runs GGUF on ARM NEON; a separate `vulkan` flavor APK (own package id, installs side-by-side) compiles the ggml Vulkan backend for GPU offload on driver-capable devices. Direct Hexagon HTP, MNN-LLM, and AICore runtimes are not bundled — see `INSTALL.md`.
 
 ---
 
@@ -275,18 +277,20 @@ app/src/main/java/com/perpcorp/edgellm/
 - Android SDK Platform 34+
 - Android device running Android 10+ (Android 14+ recommended for NPU acceleration)
 
-### Compile Debug APK
+### Compile Debug APKs (cpu + vulkan flavors)
 ```bash
-./gradlew assembleDebug
+git submodule update --init --depth 1 -- llama.cpp
+./gradlew assembleCpuDebug assembleVulkanDebug
 ```
-The output APK will be generated at:
+The output APKs will be generated at:
 ```
-app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/cpu/debug/app-cpu-debug.apk
+app/build/outputs/apk/vulkan/debug/app-vulkan-debug.apk
 ```
 
 ### Install onto Device via ADB
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/cpu/debug/app-cpu-debug.apk
 ```
 
 ---
