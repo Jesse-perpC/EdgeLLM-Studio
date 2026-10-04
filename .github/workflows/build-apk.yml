@@ -110,9 +110,17 @@ jobs:
         # need any of this.
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libvulkan-dev spirv-headers glslc
+          sudo apt-get install -y -qq libvulkan-dev spirv-headers glslc cmake g++
           glslc --version
           ls /usr/include/vulkan/vulkan.h
+          # Ubuntu's spirv-headers ships headers but no CMake package config,
+          # which ggml-vulkan's find_package(SPIRV-Headers) requires. Build the
+          # header-only upstream once (~1 min) and install the config to
+          # /usr/local; headers themselves keep coming from the apt package.
+          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/SPIRV-Headers
+          cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
+          sudo cmake --install /tmp/SPIRV-Headers/build
+          ls /usr/local/lib/cmake/SPIRV-Headers/ 2>/dev/null || ls /usr/local/share/cmake/SPIRV-Headers/ 2>/dev/null || echo "SPIRV-Headers cmake config check done"
 
       - name: Build Debug and Release APKs with Gradle
         run: ./gradlew assembleCpuDebug assembleCpuRelease assembleVulkanDebug assembleVulkanRelease --no-daemon --no-configuration-cache --stacktrace
