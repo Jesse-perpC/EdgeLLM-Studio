@@ -118,8 +118,10 @@ add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build
 # ---------------------------------------------------------------------------
 if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET ggml-vulkan)
     # Layout: <sysroot>/usr/lib/<triple>/<api>/libvulkan.so. Take the newest
-    # stub >= API 28 (Vulkan 1.1 arrived in API 28).
-    file(GLOB _vulkan_stub_candidates "${ANDROID_SYSROOT}/usr/lib/*/libvulkan.so" "${ANDROID_SYSROOT}/usr/lib/*/*/libvulkan.so")
+    # stub >= API 28 (Vulkan 1.1 arrived in API 28). NOTE: the sysroot comes
+    # from CMAKE_SYSROOT (set by the NDK toolchain file) — ANDROID_SYSROOT
+    # is not a thing and expands empty.
+    file(GLOB _vulkan_stub_candidates "${CMAKE_SYSROOT}/usr/lib/*/libvulkan.so" "${CMAKE_SYSROOT}/usr/lib/*/*/libvulkan.so")
     set(_vulkan_stub "")
     set(_vulkan_stub_api 0)
     foreach(_cand IN LISTS _vulkan_stub_candidates)
@@ -131,7 +133,7 @@ if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET ggml-vulkan)
         endif()
     endforeach()
     if(_vulkan_stub STREQUAL "")
-        message(FATAL_ERROR "No NDK libvulkan.so stub >= API 28 under ${ANDROID_SYSROOT}/usr/lib; cannot link ggml-vulkan")
+        message(FATAL_ERROR "No NDK libvulkan.so stub >= API 28 under ${CMAKE_SYSROOT}/usr/lib; cannot link ggml-vulkan")
     endif()
     get_target_property(_ggml_vk_link ggml-vulkan LINK_LIBRARIES)
     list(REMOVE_ITEM _ggml_vk_link "Vulkan::Vulkan")
