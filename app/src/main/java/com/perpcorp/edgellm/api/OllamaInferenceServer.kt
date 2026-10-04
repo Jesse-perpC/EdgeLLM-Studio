@@ -43,6 +43,10 @@ class OllamaInferenceServer(
     companion object {
         private const val TAG = "OllamaInferenceServer"
         const val DEFAULT_PORT = 11434
+        private const val PREFS_NAME = "edgellm_server_prefs"
+        private const val KEY_AUTH_TOKEN = "api_token"
+        /** Retired hardcoded default. Treated as "not provisioned", never accepted. */
+        private const val LEGACY_DEFAULT_TOKEN = "sk-edgellm-local-tensor-token"
     }
 
     private val isRunning = AtomicBoolean(false)
@@ -68,11 +72,50 @@ class OllamaInferenceServer(
         config = newConfig
     }
 
+    /**
+     * Returns true when the request carries this server's bearer token.
+     * Fails closed: a blank configured token authorizes nothing.
+     */
+    private fun isAuthorized(headers: Map<String, String>): Boolean {
+        val expected = config.authToken
+        if (expected.isBlank()) return false
+        return headers["authorization"] == "Bearer $expected"
+    }
+
+    private fun ensureAuthToken() {
+        val current = config.authToken
+        if (current.isNotBlank() && current != LEGACY_DEFAULT_TOKEN) return
+        try {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            var token = prefs.getString(KEY_AUTH_TOKEN, "")
+            if (token.isNullOrBlank() || token == LEGACY_DEFAULT_TOKEN) {
+                token = "sk-edgellm-" + UUID.randomUUID().toString().replace("-", "")
+                prefs.edit().putString(KEY_AUTH_TOKEN, token).apply()
+                Log.i(TAG, "Provisioned a new random API bearer token")
+            }
+            config = config.copy(authToken = token)
+        } catch (e: Throwable) {
+            // Last resort for a single run: random per-process token. The app
+            // settings screen shows whatever is active, so the user is never
+            // locked out, and nothing falls back to a public default.
+            Log.w(TAG, "Token persistence failed; using per-process token: ${e.message}")
+            config = config.copy(
+                authToken = "sk-edgellm-" + UUID.randomUUID().toString().replace("-", "")
+            )
+        }
+    }
+
     fun start(port: Int = config.port, bindToLan: Boolean = config.bindToLan): Boolean {
         if (isRunning.get()) {
             Log.w(TAG, "Server already running on port ${_serverStats.value.port}")
             return true
         }
+
+        // Provision the bearer token before accepting a single connection. A
+        // blank or legacy-hardcoded token is replaced with a random one
+        // persisted in private prefs, so every running server enforces a
+        // secret only this device knows.
+        ensureAuthToken()
 
         try {
             val bindAddress = if (bindToLan) {
@@ -214,6 +257,23 @@ class OllamaInferenceServer(
         var targetModel = ""
 
         try {
+            // Auth gate: everything except the CORS preflight, the health
+            // probe, and the HTML shell requires this server's bearer token.
+            // The shell itself stays open (it carries no token and makes no
+            // calls without one typed in); all inference and model routes are
+            // protected. Fails closed when no token is provisioned. Rejected
+            // attempts still hit the finally block below and get logged.
+            val isOpenRoute = method == "OPTIONS" ||
+                (method == "GET" && (path == "/health" || path == "/" || path == "/ui" || path == "/chat"))
+            if (!isOpenRoute && !isAuthorized(headers)) {
+                statusCode = 401
+                sendJsonResponse(
+                    out, 401,
+                    "{\"error\":\"unauthorized: valid Bearer token required. " +
+                        "Copy it from the app's API server settings.\"}"
+                )
+                return
+            }
             when {
                 // CORS preflight
                 method == "OPTIONS" -> {
@@ -224,11 +284,15 @@ class OllamaInferenceServer(
                 method == "GET" && (path == "/" || path == "/ui" || path == "/chat") -> {
                     val acceptHeader = headers["accept"] ?: ""
                     if (path == "/ui" || path == "/chat" || acceptHeader.contains("text/html") || !acceptHeader.contains("application/json")) {
+                        // The served page must never embed the bearer token:
+                        // anyone who can load the shell is not yet authorized.
+                        // Users paste it from the app's API server settings;
+                        // the page already sends it as Authorization: Bearer.
                         val html = OllamaWebUiGenerator.generateHtml(
                             stats = _serverStats.value,
                             activeModel = activeModelProvider(),
                             models = modelProvider(),
-                            apiToken = config.authToken
+                            apiToken = ""
                         )
                         sendHtmlResponse(out, 200, html)
                     } else {

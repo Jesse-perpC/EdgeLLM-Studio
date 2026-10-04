@@ -9,13 +9,22 @@ import java.util.TimeZone
 
 data class ApiServerConfig(
     val port: Int = 11434,
-    val bindToLan: Boolean = true,
+    /**
+     * Loopback-only by default. LAN binding exposes unauthenticated inference
+     * to the whole network and must be an explicit user choice in settings.
+     */
+    val bindToLan: Boolean = false,
     val allowCors: Boolean = true,
     val enableOpenAiCompat: Boolean = true,
     val batteryProtectionThreshold: Int = 15,
     val maxConcurrentRequests: Int = 4,
     val defaultModelId: String? = null,
-    val authToken: String = "sk-edgellm-local-tensor-token"
+    /**
+     * Bearer token enforced on all API routes. Blank means "not provisioned
+     * yet": the server generates a random token on start and persists it.
+     * Never ship a hardcoded default; anyone reading the APK would know it.
+     */
+    val authToken: String = ""
 )
 
 data class ApiServerStats(

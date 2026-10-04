@@ -50,6 +50,14 @@ android {
       externalNativeBuild {
         cmake {
           arguments += "-DEDGELLM_GPU_VULKAN=ON"
+          // Cross-compiling with the NDK sets FIND_ROOT_PATH_MODE_PACKAGE=ONLY,
+          // so find_package(SPIRV-Headers) never sees host paths like
+          // /usr/local. An explicit <pkg>_DIR bypasses re-rooting. CI exports
+          // SPIRV_HEADERS_DIR after building the config; local builds without
+          // it fail with a clear CMake error naming the variable.
+          System.getenv("SPIRV_HEADERS_DIR")?.takeIf { it.isNotBlank() }?.let {
+            arguments += "-DSPIRV-Headers_DIR=$it"
+          }
         }
       }
     }
@@ -64,13 +72,21 @@ android {
         storePassword = System.getenv("STORE_PASSWORD")
         keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
         keyPassword = System.getenv("KEY_PASSWORD")
-      } else {
-        // Safe fallback to debug.keystore when custom release key is not supplied
-        // Guarantees assembleRelease builds and signs successfully in CI without breaking the workflow
+      } else if (System.getenv("ALLOW_DEBUG_SIGNED_RELEASE") == "true") {
+        // CI ONLY, explicitly opted in via env. A debug-signed "release" APK
+        // must never be published: it carries the publicly known android
+        // debug key and Play will reject it. Local release builds without a
+        // real key fail below instead of silently producing one.
         storeFile = file("${rootDir}/debug.keystore")
         storePassword = "android"
         keyAlias = "androiddebugkey"
         keyPassword = "android"
+      } else {
+        throw GradleException(
+          "Release keystore not found at $keystorePath. Provide a real upload key " +
+            "via KEYSTORE_PATH (+ STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD), or set " +
+            "ALLOW_DEBUG_SIGNED_RELEASE=true for CI-only debug-signed artifacts."
+        )
       }
     }
     create("debugConfig") {

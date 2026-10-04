@@ -563,7 +563,7 @@ object OllamaWebUiGenerator {
 
           <div class="param-group">
             <div class="param-label"><span>Bearer API Token</span></div>
-            <input type="text" id="apiTokenInput" value="$apiToken" placeholder="Leave empty for open LAN">
+            <input type="text" id="apiTokenInput" value="$apiToken" placeholder="Paste Bearer token from app settings">
           </div>
 
           <div style="display:flex; gap:8px; margin-top:auto;">

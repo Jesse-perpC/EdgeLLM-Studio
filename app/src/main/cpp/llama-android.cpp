@@ -792,13 +792,20 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeRelease(
 ) {
     auto * ctx = reinterpret_cast<LlamaAndroidContext *>(handle);
     if (ctx == nullptr) return;
-    // Waits out any in-flight decode so the model and context are not freed
-    // while llama_decode() is still walking them.
+    // Two-phase teardown. Phase 1 takes the mutex, which waits out any
+    // in-flight decode holding it, then releases the lock BEFORE destroying.
+    // Destroying while the guard is alive (the old code) deletes the mutex
+    // out from under lock_guard's destructor: heap-use-after-free on every
+    // release that follows a decode. Phase 2 is safe because Kotlin nulled
+    // the handle before calling here, so no new native entry can arrive via
+    // this context once phase 1 has drained the in-flight work.
+    std::string path;
     {
         std::lock_guard<std::mutex> lock(ctx->decode_mutex);
-        LOGI("releasing llama context for model: %s", ctx->model_path.c_str());
-        destroy_context(ctx);
+        path = ctx->model_path;
     }
+    LOGI("releasing llama context for model: %s", path.c_str());
+    destroy_context(ctx);
 }
 
 } // extern "C"

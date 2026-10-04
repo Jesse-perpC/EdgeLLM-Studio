@@ -328,7 +328,10 @@ class LlamaContext private constructor(
         data class Complete(val text: String, val stats: Stats?) : TokensEvent
     }
 
-    /** Free the native context and model. Idempotent. */
+    /** Free the native context and model. Idempotent. Synchronized: two racing
+     * releases must not both observe a non-zero handle and double-free it in
+     * native code. */
+    @Synchronized
     fun release() {
         val ptr = nativePtr
         if (ptr == 0L) return

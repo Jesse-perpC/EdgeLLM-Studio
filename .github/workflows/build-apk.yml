@@ -21,6 +21,9 @@ jobs:
 
     env:
       CI: "false"
+      # CI-only: permit debug-signed release artifacts (no upload key on runners).
+      # These must never be published to Play; see app/build.gradle.kts.
+      ALLOW_DEBUG_SIGNED_RELEASE: "true"
       # packageDebug OOMs below ~4GB once the tasks-genai native libs (.so set)
       # join the APK; ubuntu-latest runners have 16GB so 6GB is safe.
       # (Local sandbox default stays 1536m in gradle.properties for 2GB cgroups;
@@ -121,6 +124,17 @@ jobs:
           cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
           sudo cmake --install /tmp/SPIRV-Headers/build
           ls /usr/local/lib/cmake/SPIRV-Headers/ 2>/dev/null || ls /usr/local/share/cmake/SPIRV-Headers/ 2>/dev/null || echo "SPIRV-Headers cmake config check done"
+          # Export the config dir for the vulkan flavor: NDK cross-builds hide
+          # host paths from find_package, so Gradle passes this as an explicit
+          # -DSPIRV-Headers_DIR (see app/build.gradle.kts).
+          SPIRV_CFG=$(find /usr/local -name "SPIRV-HeadersConfig.cmake" 2>/dev/null | head -1)
+          if [ -n "$SPIRV_CFG" ]; then
+            echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")" >> $GITHUB_ENV
+            echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")"
+          else
+            echo "ERROR: SPIRV-HeadersConfig.cmake not found after install" >&2
+            exit 1
+          fi
 
       - name: Build Debug and Release APKs with Gradle
         run: ./gradlew assembleCpuDebug assembleCpuRelease assembleVulkanDebug assembleVulkanRelease --no-daemon --no-configuration-cache --stacktrace
