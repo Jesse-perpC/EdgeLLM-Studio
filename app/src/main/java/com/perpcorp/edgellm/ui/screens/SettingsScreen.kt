@@ -8,6 +8,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -861,6 +865,14 @@ fun SettingsScreen(
 
         // Privacy & Security Guarantee
         item {
+            var showPrivacyPolicy by remember { mutableStateOf(false) }
+            val privacyText = remember {
+                try {
+                    context.assets.open("privacy_policy.md").bufferedReader().readText()
+                } catch (_: Exception) {
+                    "Privacy policy asset missing."
+                }
+            }
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -877,11 +889,34 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "All model execution, weights inference, and batch queues operate strictly on device silicon. No telemetry, prompt logs, or model parameters are ever transmitted to any remote server.",
+                        text = "On-device engines run strictly on device silicon with no " +
+                            "transmission. Prompts leave the device only through " +
+                            "features you explicitly enable (Cloud Assist, Cloud " +
+                            "Hub providers, LAN server binding).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    TextButton(onClick = { showPrivacyPolicy = true }) {
+                        Text("Read full privacy policy")
+                    }
                 }
+            }
+            if (showPrivacyPolicy) {
+                AlertDialog(
+                    onDismissRequest = { showPrivacyPolicy = false },
+                    confirmButton = {
+                        TextButton(onClick = { showPrivacyPolicy = false }) {
+                            Text("Close")
+                        }
+                    },
+                    title = { Text("Privacy Policy") },
+                    text = {
+                        Text(
+                            text = privacyText,
+                            modifier = Modifier.verticalScroll(rememberScrollState())
+                        )
+                    }
+                )
             }
         }
 
