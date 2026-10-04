@@ -123,18 +123,24 @@ jobs:
           git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/SPIRV-Headers
           cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
           sudo cmake --install /tmp/SPIRV-Headers/build
-          ls /usr/local/lib/cmake/SPIRV-Headers/ 2>/dev/null || ls /usr/local/share/cmake/SPIRV-Headers/ 2>/dev/null || echo "SPIRV-Headers cmake config check done"
-          # Export the config dir for the vulkan flavor: NDK cross-builds hide
-          # host paths from find_package, so Gradle passes this as an explicit
-          # -DSPIRV-Headers_DIR (see app/build.gradle.kts).
+          # Export the config dir for the vulkan flavor (Gradle reads
+          # SPIRV_HEADERS_DIR with a hardcoded /usr/local fallback).
           SPIRV_CFG=$(find /usr/local -name "SPIRV-HeadersConfig.cmake" 2>/dev/null | head -1)
           if [ -n "$SPIRV_CFG" ]; then
             echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")" >> $GITHUB_ENV
-            echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")"
-          else
-            echo "ERROR: SPIRV-HeadersConfig.cmake not found after install" >&2
-            exit 1
           fi
+          ls /usr/local/share/cmake/SPIRV-Headers/
+          # Pinned near the llama.cpp submodule date: vulkan_core.h includes
+          # vk_video/* video-codec headers, which must be staged alongside.
+          # The NDK sysroot ships vulkan.h (C) but NOT vulkan.hpp (C++), so
+          # stage ONLY the vulkan headers into an isolated dir (never
+          # -I/usr/include wholesale: host glibc headers would shadow the NDK
+          # sysroot) and hand it to the vulkan flavor via CMAKE_CXX_FLAGS.
+          git clone --depth 1 --branch v1.4.365 https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/Vulkan-Headers
+          cmake -S /tmp/Vulkan-Headers -B /tmp/Vulkan-Headers/build -DCMAKE_INSTALL_PREFIX=/usr
+          sudo cmake --install /tmp/Vulkan-Headers/build
+          mkdir -p /tmp/vkinc && cp -r /usr/include/vulkan /usr/include/vk_video /tmp/vkinc/
+          ls /tmp/vkinc/vulkan/vulkan.hpp /tmp/vkinc/vk_video/vulkan_video_codec_av1std.h
 
       - name: Build Debug and Release APKs with Gradle
         run: ./gradlew assembleCpuDebug assembleCpuRelease assembleVulkanDebug assembleVulkanRelease --no-daemon --no-configuration-cache --stacktrace

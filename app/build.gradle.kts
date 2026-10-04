@@ -50,14 +50,19 @@ android {
       externalNativeBuild {
         cmake {
           arguments += "-DEDGELLM_GPU_VULKAN=ON"
-          // Cross-compiling with the NDK sets FIND_ROOT_PATH_MODE_PACKAGE=ONLY,
-          // so find_package(SPIRV-Headers) never sees host paths like
-          // /usr/local. An explicit <pkg>_DIR bypasses re-rooting. CI exports
-          // SPIRV_HEADERS_DIR after building the config; local builds without
-          // it fail with a clear CMake error naming the variable.
-          System.getenv("SPIRV_HEADERS_DIR")?.takeIf { it.isNotBlank() }?.let {
-            arguments += "-DSPIRV-Headers_DIR=$it"
-          }
+          // ggml-vulkan does find_package(SPIRV-Headers), whose CMake config
+          // is NOT shipped by Ubuntu's spirv-headers package. An explicit
+          // <pkg>_DIR bypasses the NDK toolchain's host-path hiding. CI
+          // exports SPIRV_HEADERS_DIR (see build-apk.yml); otherwise fall back
+          // to the documented /usr/local install prefix.
+          val spirvDir = System.getenv("SPIRV_HEADERS_DIR")?.takeIf { it.isNotBlank() }
+            ?: "/usr/local/share/cmake/SPIRV-Headers"
+          arguments += "-DSPIRV-Headers_DIR=$spirvDir"
+          // The NDK sysroot has vulkan.h (C) but not vulkan.hpp (C++), which
+          // ggml-vulkan includes. CI stages a vulkan-headers-only copy at
+          // /tmp/vkinc (see build-apk.yml); local Vulkan builds must provide
+          // it too (or adjust this path to a Vulkan SDK include dir).
+          arguments += "-DCMAKE_CXX_FLAGS=-I/tmp/vkinc"
         }
       }
     }
@@ -186,6 +191,9 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  // Cloud Hub (opt-in): hardware-backed EncryptedSharedPreferences for third-party API keys.
+  // No cloud call is ever made unless the user configures a key AND selects cloud mode.
+  implementation(libs.security.crypto)
   // Real on-device weight inference for Gemma/LiteRT .task models (MediaPipe LLM Inference API).
   // If manifest merger ever reports a minSdk conflict from this AAR, raise app minSdk to 26.
   implementation(libs.mediapipe.tasks.genai)
