@@ -104,6 +104,38 @@ set(LLAMA_FATAL_WARNINGS       OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build")
 
 # ---------------------------------------------------------------------------
+# Android Vulkan link fix (vulkan flavor only)
+#
+# ggml-vulkan links Vulkan::Vulkan, which the NDK toolchain resolves to the
+# minSdk (API 24) libvulkan.so stub. That stub exports Vulkan 1.0 symbols
+# only, while ggml unconditionally calls Vulkan 1.1 entry points
+# (vkGetPhysicalDeviceFeatures2, ...), so the final .so fails to link with
+# "undefined symbol". Fix: relink ggml-vulkan against the newest NDK stub >=
+# API 28 (Vulkan 1.1 arrived in API 28). Bionic lazily binds function symbols,
+# so pre-28 devices still load the library; Vulkan entry points are only ever
+# called when a 1.1-capable driver is present (see
+# LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
+# ---------------------------------------------------------------------------
+if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET ggml-vulkan)
+    set(_ndk_sysroot_lib "${ANDROID_NDK}/toolchains/llvm/prebuilt/${CMAKE_HOST_SYSTEM_NAME}-x86_64/sysroot/usr/lib/${ANDROID_TOOLCHAIN_NAME}")
+    set(_vulkan_stub "")
+    foreach(_lvl RANGE 35 28 -1)
+        if(EXISTS "${_ndk_sysroot_lib}/${_lvl}/libvulkan.so")
+            set(_vulkan_stub "${_ndk_sysroot_lib}/${_lvl}/libvulkan.so")
+            break()
+        endif()
+    endforeach()
+    if(_vulkan_stub STREQUAL "")
+        message(FATAL_ERROR "No NDK libvulkan.so stub >= API 28 under ${_ndk_sysroot_lib}; cannot link ggml-vulkan")
+    endif()
+    get_target_property(_ggml_vk_link ggml-vulkan LINK_LIBRARIES)
+    list(REMOVE_ITEM _ggml_vk_link "Vulkan::Vulkan")
+    list(APPEND _ggml_vk_link "${_vulkan_stub}")
+    set_target_properties(ggml-vulkan PROPERTIES LINK_LIBRARIES "${_ggml_vk_link}")
+    message(STATUS "ggml-vulkan relinked against ${_vulkan_stub}")
+endif()
+
+# ---------------------------------------------------------------------------
 # JNI bridge
 # ---------------------------------------------------------------------------
 add_library(llama-android SHARED
