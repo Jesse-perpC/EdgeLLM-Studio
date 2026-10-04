@@ -28,9 +28,20 @@ EdgeLLM Studio is an on-device private LLM and ML runtime for Android featuring 
 ## 📁 Native llama.android JNI Files
 
 - **`app/src/main/cpp/logging.h`**: Android NDK logger macros (`LOGI`, `LOGW`, `LOGE`, `LOGD`).
-- **`app/src/main/cpp/llama-android.cpp`**: JNI bridge implementing `nativeInit`, `nativeCompletion`, `nativeBenchmark`, and `nativeRelease`. Symbols follow the `com.perpcorp.edgellm` package (`..._LlamaContext_00024Companion_nativeInit` for the companion factory). Until the real `llama_decode` loop is linked (`EDGELLM_LINK_LLAMA_CPP=ON`), completion returns an explicit error marker so Kotlin falls back to the managed engine — never an empty bubble.
-- **`app/src/main/cpp/CMakeLists.txt`**: Builds the `llama-android` stub (links `libandroid`/`liblog`); real llama.cpp linkage is opt-in via `EDGELLM_LINK_LLAMA_CPP`.
-- **`app/src/main/java/com/perpcorp/edgellm/engine/LlamaContext.kt`**: High-level Kotlin wrapper with graceful native loading and managed fallback.
+- **`app/src/main/cpp/llama-android.cpp`**: Real JNI bridge — `nativeInit`, `nativeCompletion` (token-by-token `llama_decode` loop with GBNF grammar sampling), `nativeSetSampling`/`nativeSetGrammar`/`nativeSetCancelled`, `nativeGetChatTemplate`, `nativeGetStats`, `nativeListBackends`, `nativeRelease`. Symbols follow the `com.perpcorp.edgellm` package (`..._LlamaContext_00024Companion_nativeInit` for the companion factory).
+- **`app/src/main/cpp/CMakeLists.txt`**: Builds `libllama-android.so` against the pinned `llama.cpp` submodule (hard build error if missing — no stub fallback). CPU (ARM NEON) always; Vulkan/OpenCL/Hexagon are opt-in CMake flags, see flavors below.
+- **`app/src/main/java/com/perpcorp/edgellm/engine/LlamaContext.kt`**: Kotlin wrapper owning the native `llama_context`, with measured per-completion stats and streaming via `completionStream`.
+- **`app/src/main/java/com/perpcorp/edgellm/engine/OnnxLlmEngine.kt`**: Real ONNX Runtime decoder (graph-inspected KV-cache vs full-prefix, encoder-safe). Needs the `.onnx` file plus its `tokenizer.json` sidecar.
+- **`app/src/main/java/com/perpcorp/edgellm/engine/TfliteClassifierEngine.kt`**: Real TFLite BERT classifier (needs `vocab.txt`, optional `labels.txt` next to the `.tflite`).
+
+## 🎛️ Compute Backends & APK Flavors
+
+| Flavor | Native backend | Installs as | When to use |
+|---|---|---|---|
+| `cpu` (default) | ARM NEON | `com.aistudio.edgellm.qvmxrp` | Every ARM64 device. GGUF on CPU; ONNX/TFLite/MediaPipe use NNAPI delegates where present. |
+| `vulkan` | ggml Vulkan + CPU fallback | `...qvmxrp.vulkan` (side-by-side) | Adreno/Mali devices with a Vulkan driver for GPU-offloaded GGUF. Falls back to CPU otherwise. |
+
+Not shipped (and why): **Hexagon HTP** needs a licensed Hexagon SDK; **MNN-LLM** has no Maven artifact (manual steps in `scripts/setup-mnn.md`); **AICore/Gemini Nano** has no public third-party SDK — both report `Unavailable` instead of fake output.
 
 ---
 
@@ -42,14 +53,15 @@ EdgeLLM Studio is an on-device private LLM and ML runtime for Android featuring 
 git clone https://github.com/Jesse-perpC/EdgeLLM-Studio.git
 cd EdgeLLM-Studio
 
-# 2. Setup llama.cpp native submodule (optional for native C++ build)
-./scripts/setup-llama-cpp.sh
+# 2. Setup llama.cpp native submodule (REQUIRED for the GGUF build)
+git submodule update --init --depth 1 -- llama.cpp
+# (or: ./scripts/setup-llama-cpp.sh)
 
-# 3. Build Debug APK
-./gradlew assembleDebug
+# 3. Build Debug APKs (cpu default + vulkan GPU flavor)
+./gradlew assembleCpuDebug assembleVulkanDebug
 
-# 4. Run unit and Robolectric tests
-./gradlew testDebugUnitTest
+# 4. Run unit and Robolectric tests (per flavor)
+./gradlew testCpuDebugUnitTest
 ```
 
 ### GitHub Actions (Automated CI/CD)

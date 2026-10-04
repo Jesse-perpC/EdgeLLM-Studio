@@ -2,6 +2,7 @@ package com.perpcorp.edgellm.engine
 
 import android.content.Context
 import android.util.Log
+import com.perpcorp.edgellm.BuildConfig
 import com.perpcorp.edgellm.data.model.ComputeBackend
 import com.perpcorp.edgellm.data.model.GenerationParameters
 import com.perpcorp.edgellm.data.model.HardwareAccelerationSettings
@@ -350,18 +351,34 @@ escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]
      * layers when no GPU backend was compiled in is the honest answer: the
      * weights stay on the CPU instead of the UI claiming Vulkan offload that
      * never happens.
+     *
+     * Which APK you installed matters: only the `vulkan` product flavor
+     * compiles the ggml Vulkan backend (BuildConfig.GGML_VULKAN_COMPILED).
+     * The default `cpu` flavor can never offload, even on a Vulkan-capable
+     * device — and on a `vulkan` build running on a driverless device we still
+     * fall back to CPU instead of failing.
      */
     private fun resolveGpuLayers(ctx: LlamaContext, settings: HardwareAccelerationSettings): Int {
         if (settings.computeBackend == ComputeBackend.CPU_NEON) return 0
+        if (!BuildConfig.GGML_VULKAN_COMPILED) {
+            Log.w(
+                TAG,
+                "${settings.computeBackend.shortName} requested but this APK was built " +
+                    "CPU-only (flavor=${BuildConfig.FLAVOR}); running on CPU. Install the " +
+                    "`vulkan` flavor build for GPU offload."
+            )
+            return 0
+        }
         val gpuPresent = runCatching { ctx.availableBackends().any { it.isGpu } }.getOrDefault(false)
         if (!gpuPresent) {
             Log.w(
                 TAG,
-                "${settings.computeBackend.shortName} requested but no GPU backend is registered; " +
-                    "running on CPU. Rebuild with -DEDGELLM_GPU_OPENCL=ON or -DEDGELLM_GPU_VULKAN=ON."
+                "${settings.computeBackend.shortName} requested and this APK has the Vulkan " +
+                    "backend, but no GPU device registered on this phone; running on CPU."
             )
             return 0
         }
+        Log.i(TAG, "GPU offload active (flavor=${BuildConfig.FLAVOR}): offloading all layers")
         return -1 // offload all layers
     }
 
