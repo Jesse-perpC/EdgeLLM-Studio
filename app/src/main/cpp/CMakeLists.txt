@@ -116,11 +116,16 @@ add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build
 # called when a 1.1-capable driver is present (see
 # LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
 # ---------------------------------------------------------------------------
-if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET ggml-vulkan)
-    # Layout: <sysroot>/usr/lib/<triple>/<api>/libvulkan.so. Take the newest
-    # stub >= API 28 (Vulkan 1.1 arrived in API 28). NOTE: the sysroot comes
-    # from CMAKE_SYSROOT (set by the NDK toolchain file) — ANDROID_SYSROOT
-    # is not a thing and expands empty.
+if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET Vulkan::Vulkan)
+    # FindVulkan resolves to the minSdk (API 24) NDK stub, which exports
+    # Vulkan 1.0 symbols only — ggml unconditionally calls Vulkan 1.1 entry
+    # points (vkGetPhysicalDeviceFeatures2, ...), so the final .so fails to
+    # link. Repoint the imported target at the newest NDK stub >= API 28
+    # (Vulkan 1.1 arrived in API 28). Bionic lazily binds function symbols,
+    # so pre-28 devices still load the library; Vulkan entry points are only
+    # ever called when a 1.1-capable driver is present (see
+    # LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
+    # Layout: <sysroot>/usr/lib/<triple>/<api>/libvulkan.so.
     file(GLOB _vulkan_stub_candidates "${CMAKE_SYSROOT}/usr/lib/*/libvulkan.so" "${CMAKE_SYSROOT}/usr/lib/*/*/libvulkan.so")
     set(_vulkan_stub "")
     set(_vulkan_stub_api 0)
@@ -133,13 +138,12 @@ if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET ggml-vulkan)
         endif()
     endforeach()
     if(_vulkan_stub STREQUAL "")
-        message(FATAL_ERROR "No NDK libvulkan.so stub >= API 28 under ${CMAKE_SYSROOT}/usr/lib; cannot link ggml-vulkan")
+        message(FATAL_ERROR "EDGELLM_VULKAN_STUB: no NDK libvulkan.so stub >= API 28 under ${CMAKE_SYSROOT}/usr/lib; cannot link ggml-vulkan")
     endif()
-    get_target_property(_ggml_vk_link ggml-vulkan LINK_LIBRARIES)
-    list(REMOVE_ITEM _ggml_vk_link "Vulkan::Vulkan")
-    list(APPEND _ggml_vk_link "${_vulkan_stub}")
-    set_target_properties(ggml-vulkan PROPERTIES LINK_LIBRARIES "${_ggml_vk_link}")
-    message(STATUS "ggml-vulkan relinked against ${_vulkan_stub}")
+    set_target_properties(Vulkan::Vulkan PROPERTIES
+        IMPORTED_LOCATION "${_vulkan_stub}"
+        INTERFACE_LINK_LIBRARIES "${_vulkan_stub}")
+    message(WARNING "EDGELLM_VULKAN_STUB: linking Vulkan against ${_vulkan_stub}")
 endif()
 
 # ---------------------------------------------------------------------------
