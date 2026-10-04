@@ -132,6 +132,11 @@ jobs:
           sudo cmake --install /tmp/Vulkan-Headers/build
           mkdir -p /tmp/vkinc && cp -r /usr/include/vulkan /usr/include/vk_video /tmp/vkinc/
           ls /tmp/vkinc/vulkan/vulkan.hpp /tmp/vkinc/vk_video/vulkan_video_codec_av1std.h
+          # ggml-vulkan also includes <spirv/unified1/spirv.hpp>; the headers
+          # installed above went to /usr/local/include (outside the NDK
+          # include path), so stage them into the same isolated dir.
+          cp -r /usr/local/include/spirv /tmp/vkinc/
+          ls /tmp/vkinc/spirv/unified1/spirv.hpp
 
       - name: Build Debug and Release APKs with Gradle
         run: ./gradlew assembleCpuDebug assembleCpuRelease assembleVulkanDebug assembleVulkanRelease --no-daemon --no-configuration-cache --stacktrace
