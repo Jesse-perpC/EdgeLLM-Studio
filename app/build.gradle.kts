@@ -50,6 +50,18 @@ android {
       externalNativeBuild {
         cmake {
           arguments += "-DEDGELLM_GPU_VULKAN=ON"
+          // ggml-vulkan does find_package(SPIRV-Headers), whose CMake config
+          // is NOT shipped by Ubuntu's spirv-headers package. CI installs it
+          // to /usr/local from source (see build-apk.yml); pass the exact
+          // dir because the Android toolchain file does not search host
+          // prefixes. Local Vulkan builds: install SPIRV-Headers to /usr/local
+          // or point this at your own prefix.
+          arguments += "-DSPIRV-Headers_DIR=/usr/local/share/cmake/SPIRV-Headers"
+          // The NDK sysroot has vulkan.h (C) but not vulkan.hpp (C++), which
+          // ggml-vulkan includes. CI stages a vulkan-headers-only copy at
+          // /tmp/vkinc (see build-apk.yml); local Vulkan builds must provide
+          // it too (or adjust this path to a Vulkan SDK include dir).
+          arguments += "-DCMAKE_CXX_FLAGS=-I/tmp/vkinc"
         }
       }
     }
