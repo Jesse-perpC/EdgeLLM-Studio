@@ -116,6 +116,14 @@ add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build
 # called when a 1.1-capable driver is present (see
 # LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
 # ---------------------------------------------------------------------------
+if(ANDROID)
+    if(TARGET Vulkan::Vulkan)
+        set(_edgellm_tgt YES)
+    else()
+        set(_edgellm_tgt NO)
+    endif()
+    message(FATAL_ERROR "EDGELLM_PROBE2: GPU=[${EDGELLM_GPU_VULKAN}] TGT=[${_edgellm_tgt}] SYSROOT=[${CMAKE_SYSROOT}]")
+endif()
 if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET Vulkan::Vulkan)
     # FindVulkan resolves to the minSdk (API 24) NDK stub, which exports
     # Vulkan 1.0 symbols only — ggml unconditionally calls Vulkan 1.1 entry
