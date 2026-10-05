@@ -34,7 +34,28 @@ class ModelDownloadManager(
 
     private val modelsDir = File(context.filesDir, "models").apply { mkdirs() }
     private val importedRegistryFile = File(context.filesDir, "imported_models.json")
-    private val memorySafetyManager = MemorySafetyManager(context)
+    // Resolve content URIs (from system file picker) to absolute filesystem paths
+    // by copying the file to the app's private files directory.
+    private val resolver: (String) -> String = { uriOrPath ->
+        val path = uriOrPath.trim()
+        // Already a filesystem absolute path
+        if (path.isNotBlank() && java.io.File(path).isAbsolute) return path
+        // Try content URI resolution
+        if (path.startsWith("content://") || path.startsWith("file://")) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(android.net.Uri.parse(path))
+                if (inputStream != null) {
+                    val dest = File(modelsDir, java.io.File(path).name)
+                    dest.parentFile.mkdirs()
+                    inputStream.use { outputStream -> outputStream.copyTo(dest.outputStream) }
+                    return dest.absolutePath
+                }
+            } catch (_: Exception) {
+                // fall through
+            }
+        }
+        return path
+    }
     private val activeDownloadJobs = mutableMapOf<String, Job>()
     private var activeImportJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -736,7 +757,7 @@ class ModelDownloadManager(
             downloadStatusText = "Imported • Ready to load",
             isActive = false,
             isImported = true,
-            localFilePath = filePathOrUri,
+            localFilePath = resolver(filePathOrUri),
             sourceFolder = folderName
         )
     }
