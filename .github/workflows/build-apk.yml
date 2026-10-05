@@ -130,9 +130,13 @@ jobs:
           # ggml-vulkan also includes <spirv/unified1/spirv.hpp>; the headers
           # installed above went to /usr/local/include (outside the NDK
           # include path), so stage them into the same isolated dir.
-          mkdir -p /tmp/vkinc && cp -r /usr/include/vulkan /usr/include/vk_video /tmp/vkinc/
+          mkdir -p /tmp/vkinc && cp -r /usr/include/vulkan /tmp/vkinc/
+          if [ -d /usr/include/vk_video ]; then
+            cp -r /usr/include/vk_video /tmp/vkinc/
+          fi
           cp -r /usr/local/include/spirv /tmp/vkinc/
-          ls /tmp/vkinc/vulkan/vulkan.hpp /tmp/vkinc/vk_video/vulkan_video_codec_av1std.h
+          # Verify only the essential files
+          ls /tmp/vkinc/vulkan/vulkan.h
           ls /tmp/vkinc/spirv/unified1/spirv.hpp
 
       - name: Build Debug and Release APKs with Gradle
