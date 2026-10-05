@@ -46,6 +46,11 @@ android {
       dimension = "backend"
       applicationIdSuffix = ".vulkan"
       versionNameSuffix = "-vulkan"
+      // ggml-vulkan calls Vulkan 1.1 entry points (vkGetPhysicalDeviceFeatures2)
+      // absent from the android-24 link stub, so this flavor requires API 29+
+      // (Android 10 mandates Vulkan 1.1). The cpu flavor stays at minSdk 24.
+      // Note: shipping both flavors to Play needs distinct versionCodes.
+      minSdk = 29
       buildConfigField("boolean", "GGML_VULKAN_COMPILED", "true")
       externalNativeBuild {
         cmake {
