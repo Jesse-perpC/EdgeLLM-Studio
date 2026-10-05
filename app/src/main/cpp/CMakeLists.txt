@@ -104,24 +104,18 @@ set(LLAMA_FATAL_WARNINGS       OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build")
 
 # ---------------------------------------------------------------------------
-# Android Vulkan link fix (vulkan flavor only)
+# Android Vulkan linking (vulkan flavor only).
 #
-# ggml-vulkan links Vulkan::Vulkan, which the NDK toolchain resolves to the
-# minSdk (API 24) libvulkan.so stub. That stub exports Vulkan 1.0 symbols
-# only, while ggml unconditionally calls Vulkan 1.1 entry points
-# (vkGetPhysicalDeviceFeatures2, ...), so the final .so fails to link with
-# "undefined symbol". Fix: relink ggml-vulkan against the newest NDK stub >=
-# API 28 (Vulkan 1.1 arrived in API 28). Bionic lazily binds function symbols,
-# so pre-28 devices still load the library; Vulkan entry points are only ever
-# called when a 1.1-capable driver is present (see
-# LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
+# ggml-vulkan unconditionally calls Vulkan 1.1 entry points
+# (vkGetPhysicalDeviceFeatures2, ...), but the NDK's API-24 libvulkan stub
+# exports Vulkan 1.0 symbols only — linking against it fails with
+# "undefined symbol". The vulkan flavor therefore sets minSdk 28 (see
+# app/build.gradle.kts), so the toolchain links the API-28 stub, which has
+# the 1.1 symbols. No CMake link surgery needed. Devices below API 28 cannot
+# install that APK flavor at all (and have no Vulkan 1.1 driver anyway); on
+# API 28+ devices without a driver, LlamaCppEngine.resolveGpuLayers falls
+# back to CPU at runtime.
 # ---------------------------------------------------------------------------
-# NOTE: no Vulkan link surgery here on purpose. The vulkan flavor sets
-# minSdk 28 (see app/build.gradle.kts), so the NDK toolchain links the
-# API-28 libvulkan stub, which already exports the Vulkan 1.1 entry points
-# ggml calls. Devices below API 28 cannot install that APK flavor at all
-# (and have no Vulkan 1.1 driver anyway); on API 28+ devices without a
-# driver, LlamaCppEngine.resolveGpuLayers falls back to CPU at runtime.
 
 # ---------------------------------------------------------------------------
 # JNI bridge
