@@ -143,7 +143,7 @@ if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET Vulkan::Vulkan)
     set_target_properties(Vulkan::Vulkan PROPERTIES
         IMPORTED_LOCATION "${_vulkan_stub}"
         INTERFACE_LINK_LIBRARIES "${_vulkan_stub}")
-    message(WARNING "EDGELLM_VULKAN_STUB: linking Vulkan against ${_vulkan_stub}")
+    message(FATAL_ERROR "EDGELLM_PROBE: vulkan block ran, stub=${_vulkan_stub} api=${_vulkan_stub_api}")
 endif()
 
 # ---------------------------------------------------------------------------
