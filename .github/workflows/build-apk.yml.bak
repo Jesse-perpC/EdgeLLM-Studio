@@ -56,7 +56,7 @@ jobs:
         with:
           cache-read-only: false
 
-      - name: Setup Android SDK & Accept Licenses
+      - name: Set up Android SDK & Accept Licenses
         run: |
           echo "Accepting Android SDK licenses..."
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
@@ -75,6 +75,9 @@ jobs:
           fi
 
           # 2. Provide debug.keystore required by signingConfigs.debugConfig
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
+          fi
           if [ ! -f debug.keystore ]; then
             echo "Generating fallback debug.keystore..."
             keytool -genkey -v -keystore debug.keystore \
@@ -102,7 +105,7 @@ jobs:
           # 4. Make gradlew executable
           chmod +x gradlew
 
-      - name: Install Vulkan / CPU build deps
+      - name: Install Vulkan build deps (vulkan flavor only)
         # ggml's Vulkan backend needs the loader headers, SPIRV-Headers, and
         # glslc at CMake time. Ubuntu 24.04 provides all three without
         # third-party repos: libvulkan-dev (loader+headers), spirv-headers,
@@ -127,12 +130,21 @@ jobs:
             echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")" >> $GITHUB_ENV
           fi
           ls /usr/local/share/cmake/SPIRV-Headers/
+          # Pinned near the llama.cpp submodule date: vulkan_core.h includes
+          # vk_video/* video-codec headers, which must be staged alongside.
+          # The NDK sysroot ships vulkan.h (C) but NOT vulkan.hpp (C++), so
+          # stage ONLY the vulkan headers into an isolated dir (never
+          # -I/usr/include wholesale: host glibc headers would shadow the NDK
+          # sysroot) and hand it to the vulkan flavor via CMAKE_CXX_FLAGS.
+          git clone --depth 1 --branch v1.4.365 https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/Vulkan-Headers
+          cmake -S /tmp/Vulkan-Headers -B /tmp/Vulkan-Headers/build -DCMAKE_INSTALL_PREFIX=/usr
+          sudo cmake --install /tmp/Vulkan-Headers/build
+          mkdir -p /tmp/vkinc && cp -r /usr/include/vulkan /usr/include/vk_video /tmp/vkinc/
+          ls /tmp/vkinc/vulkan/vulkan.hpp /tmp/vkinc/vk_video/vulkan_video_codec_av1std.h
           # ggml-vulkan also includes <spirv/unified1/spirv.hpp>; the headers
           # installed above went to /usr/local/include (outside the NDK
           # include path), so stage them into the same isolated dir.
-          mkdir -p /tmp/vkinc && cp -r /usr/include/vulkan /usr/include/vk_video /tmp/vkinc/
           cp -r /usr/local/include/spirv /tmp/vkinc/
-          ls /tmp/vkinc/vulkan/vulkan.hpp /tmp/vkinc/vk_video/vulkan_video_codec_av1std.h
           ls /tmp/vkinc/spirv/unified1/spirv.hpp
 
       - name: Build Debug and Release APKs with Gradle
@@ -166,25 +178,57 @@ jobs:
                 if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "debug" ]; then
                   cp "$APK" "dist-apks/EdgeLLM-Studio-debug-latest.apk"
                   cp "$APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk"
+                  echo "debug_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
+                  if [ -z "${RELEASE_SEEN:-}" ]; then
+                    echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
+                  fi
                 fi
+                if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "release" ]; then
+                  RELEASE_SEEN=1
+                fi
+              else
+                echo "WARNING: no $FLAVOR/$TYPE APK produced"
               fi
             done
           done
 
-      - name: Upload Debug APKs
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Upload Release APK Artifact
+        if: steps.locate-apk.outputs.release_apk_path != ''
         uses: actions/upload-artifact@v4
         with:
-          name: EdgeLLM-Studio-APKs-debug
+          name: EdgeLLM-Studio-v1.0.${{ github.run_number }}-Release-APK
+          path: dist-apks/*release*.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EdgeLLM-Studio-v1.0.${{ github.run_number }}-Debug-APK
           path: dist-apks/*debug*.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Release APKs
+      - name: Package Windows Desktop Bundle
+        if: always() && steps.locate-apk.outputs.primary_apk_path != ''
+        run: |
+          mkdir -p dist-windows
+          cp "${{ steps.locate-apk.outputs.primary_apk_path }}" dist-windows/EdgeLLM-Studio.apk
+          if [ -d scripts/windows ]; then
+            cp scripts/windows/* dist-windows/ 2>/dev/null || true
+          fi
+          cd dist-windows && zip -r ../EdgeLLM-Studio-Windows-Desktop.zip ./* && cd ..
+          ls -lh EdgeLLM-Studio-Windows-Desktop.zip
+
+      - name: Upload Windows Desktop Artifact
+        if: always() && steps.locate-apk.outputs.primary_apk_path != ''
         uses: actions/upload-artifact@v4
         with:
-          name: EdgeLLM-Studio-APKs-release
-          path: dist-apks/*release*.apk
-          if-no-files-found: error
+          name: EdgeLLM-Studio-Windows-Desktop-Bundle
+          path: EdgeLLM-Studio-Windows-Desktop.zip
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Publish GitHub Release (Tagged Push)
@@ -193,6 +237,7 @@ jobs:
         with:
           files: |
             dist-apks/*.apk
+            EdgeLLM-Studio-Windows-Desktop.zip
           name: "EdgeLLM Studio ${{ github.ref_name }}"
           generate_release_notes: true
         env:
@@ -212,20 +257,12 @@ jobs:
             - **Release APK (cpu)**: Default install. GGUF decodes on CPU (ARM NEON); ONNX/TFLite/MediaPipe use NNAPI delegates where the device provides them. Self-contained, installable directly on Android 7.0+.
             - **Release APK (vulkan)**: Same app with the ggml Vulkan backend compiled in (separate `com.aistudio.edgellm.qvmxrp.vulkan` package, installs side-by-side). Needs a device with a Vulkan driver; falls back to CPU otherwise.
             - **Debug APK**: Included below for ADB logcat diagnostics
+            - **Windows Desktop Bundle**: Included below with WSA launcher script
             - **Not included**: Hexagon HTP/NPU offload (licensed Hexagon SDK, not shippable from CI), MNN-LLM runtime (no Maven artifact — see `scripts/setup-mnn.md`), AICore/Gemini Nano (no public SDK).
           files: |
             dist-apks/*.apk
+            EdgeLLM-Studio-Windows-Desktop.zip
           prerelease: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify APKs (optional sanity)
-        run: |
-          echo "=== APK listing ==="
-          find dist-apks -type f -name "*.apk" | sort
-          for f in dist-apks/*.apk; do
-            echo "--- $f ==="
-            "${ANDROID_HOME}/platform-tools/adb" version 2>/dev/null || true
-            # Quick aapt dump for package name verification
-            "${ANDROID_HOME}/platform-tools/aapt" dump badging "$f" 2>/dev/null | head -3 || true
