@@ -102,17 +102,7 @@ jobs:
           # 4. Make gradlew executable
           chmod +x gradlew
 
-      - name: Install CPU build deps (required for all flavors)
-        # ggml's CPU backend requires NEON-enabled ARM64 or x86_64; the NDK
-        # provides the toolchain. No extra system packages are required beyond
-        # what the SDK setup step already installs.
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake g++ 2>/dev/null || true
-          cmake --version
-          g++ --version | head -1
-
-      - name: Install Vulkan / CPU build deps (vulkan flavor only)
+      - name: Install Vulkan / CPU build deps
         # ggml's Vulkan backend needs the loader headers, SPIRV-Headers, and
         # glslc at CMake time. Ubuntu 24.04 provides all three without
         # third-party repos: libvulkan-dev (loader+headers), spirv-headers,
@@ -147,7 +137,6 @@ jobs:
 
       - name: Build Debug and Release APKs with Gradle
         run: ./gradlew assembleCpuDebug assembleCpuRelease assembleVulkanDebug assembleVulkanRelease --no-daemon --no-configuration-cache --stacktrace
-        timeout-minutes: 300
 
       - name: Locate & Rename Generated APKs
         id: locate-apk
