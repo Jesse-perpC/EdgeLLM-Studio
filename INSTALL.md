@@ -39,7 +39,7 @@ EdgeLLM Studio is an on-device private LLM and ML runtime for Android featuring 
 | Flavor | Native backend | Installs as | When to use |
 |---|---|---|---|
 | `cpu` (default) | ARM NEON | `com.aistudio.edgellm.qvmxrp` | Every ARM64 device. GGUF on CPU; ONNX/TFLite/MediaPipe use NNAPI delegates where present. |
-| `vulkan` | ggml Vulkan + CPU fallback | `...qvmxrp.vulkan` (side-by-side) | Adreno/Mali devices with a Vulkan driver for GPU-offloaded GGUF. Falls back to CPU otherwise. |
+| `vulkan` | ggml Vulkan + CPU fallback | `...qvmxrp.vulkan` (side-by-side, Android 9+/API 28+ only) | Adreno/Mali devices with a Vulkan driver for GPU-offloaded GGUF. Falls back to CPU otherwise. |
 
 Not shipped (and why): **Hexagon HTP** needs a licensed Hexagon SDK; **MNN-LLM** has no Maven artifact (manual steps in `scripts/setup-mnn.md`); **AICore/Gemini Nano** has no public third-party SDK — both report `Unavailable` instead of fake output.
 

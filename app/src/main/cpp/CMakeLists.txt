@@ -116,43 +116,12 @@ add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build
 # called when a 1.1-capable driver is present (see
 # LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
 # ---------------------------------------------------------------------------
-if(ANDROID)
-    if(TARGET Vulkan::Vulkan)
-        set(_edgellm_tgt YES)
-    else()
-        set(_edgellm_tgt NO)
-    endif()
-    message(FATAL_ERROR "EDGELLM_PROBE2: GPU=[${EDGELLM_GPU_VULKAN}] TGT=[${_edgellm_tgt}] SYSROOT=[${CMAKE_SYSROOT}]")
-endif()
-if(EDGELLM_GPU_VULKAN AND ANDROID AND TARGET Vulkan::Vulkan)
-    # FindVulkan resolves to the minSdk (API 24) NDK stub, which exports
-    # Vulkan 1.0 symbols only — ggml unconditionally calls Vulkan 1.1 entry
-    # points (vkGetPhysicalDeviceFeatures2, ...), so the final .so fails to
-    # link. Repoint the imported target at the newest NDK stub >= API 28
-    # (Vulkan 1.1 arrived in API 28). Bionic lazily binds function symbols,
-    # so pre-28 devices still load the library; Vulkan entry points are only
-    # ever called when a 1.1-capable driver is present (see
-    # LlamaCppEngine.resolveGpuLayers), and the CPU path never touches them.
-    # Layout: <sysroot>/usr/lib/<triple>/<api>/libvulkan.so.
-    file(GLOB _vulkan_stub_candidates "${CMAKE_SYSROOT}/usr/lib/*/libvulkan.so" "${CMAKE_SYSROOT}/usr/lib/*/*/libvulkan.so")
-    set(_vulkan_stub "")
-    set(_vulkan_stub_api 0)
-    foreach(_cand IN LISTS _vulkan_stub_candidates)
-        get_filename_component(_cand_api "${_cand}" DIRECTORY)
-        get_filename_component(_cand_api "${_cand_api}" NAME)
-        if(_cand_api MATCHES "^[0-9]+$" AND _cand_api GREATER_EQUAL 28 AND _cand_api GREATER _vulkan_stub_api)
-            set(_vulkan_stub "${_cand}")
-            set(_vulkan_stub_api ${_cand_api})
-        endif()
-    endforeach()
-    if(_vulkan_stub STREQUAL "")
-        message(FATAL_ERROR "EDGELLM_VULKAN_STUB: no NDK libvulkan.so stub >= API 28 under ${CMAKE_SYSROOT}/usr/lib; cannot link ggml-vulkan")
-    endif()
-    set_target_properties(Vulkan::Vulkan PROPERTIES
-        IMPORTED_LOCATION "${_vulkan_stub}"
-        INTERFACE_LINK_LIBRARIES "${_vulkan_stub}")
-    message(FATAL_ERROR "EDGELLM_PROBE: vulkan block ran, stub=${_vulkan_stub} api=${_vulkan_stub_api}")
-endif()
+# NOTE: no Vulkan link surgery here on purpose. The vulkan flavor sets
+# minSdk 28 (see app/build.gradle.kts), so the NDK toolchain links the
+# API-28 libvulkan stub, which already exports the Vulkan 1.1 entry points
+# ggml calls. Devices below API 28 cannot install that APK flavor at all
+# (and have no Vulkan 1.1 driver anyway); on API 28+ devices without a
+# driver, LlamaCppEngine.resolveGpuLayers falls back to CPU at runtime.
 
 # ---------------------------------------------------------------------------
 # JNI bridge

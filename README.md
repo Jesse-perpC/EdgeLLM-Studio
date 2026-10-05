@@ -208,7 +208,7 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 | **MediaTek Dimensity 9300**| APU 790 (Generative AI) | Immortalis-G720 (Vulkan 1.3)| Gemma 2, Llama 3.2, SmolLM, TinyLlama | 🟢 Verified High-Speed |
 | **Universal ARM64 Devices**| ARM NEON (SIMD Fallback)| Standard OpenCL / Vulkan | SmolLM-135M, Qwen2.5-0.5B, TinyLlama-1.1B | 🟡 Universal Compatibility |
 
-> **Build flavors:** the default APK (`cpu` flavor) runs GGUF on ARM NEON; a separate `vulkan` flavor APK (own package id, installs side-by-side) compiles the ggml Vulkan backend for GPU offload on driver-capable devices. Direct Hexagon HTP, MNN-LLM, and AICore runtimes are not bundled — see `INSTALL.md`.
+> **Build flavors:** the default APK (`cpu` flavor, Android 7.0+) runs GGUF on ARM NEON; a separate `vulkan` flavor APK (own package id, installs side-by-side, Android 9.0+) compiles the ggml Vulkan backend for GPU offload on driver-capable devices. Direct Hexagon HTP, MNN-LLM, and AICore runtimes are not bundled — see `INSTALL.md`.
 
 ---
 

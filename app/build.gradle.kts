@@ -46,6 +46,13 @@ android {
       dimension = "backend"
       applicationIdSuffix = ".vulkan"
       versionNameSuffix = "-vulkan"
+      // Vulkan 1.1 (which ggml unconditionally calls) needs Android 9+.
+      // Besides Play filtering, this makes the NDK link the API-28
+      // libvulkan stub (which exports the 1.1 symbols) instead of the
+      // API-24 stub (1.0 only) that breaks the link. Pre-28 devices use
+      // the cpu flavor; API 28+ devices without a driver fall back to CPU
+      // at runtime (LlamaCppEngine.resolveGpuLayers).
+      minSdk = 28
       buildConfigField("boolean", "GGML_VULKAN_COMPILED", "true")
       externalNativeBuild {
         cmake {
