@@ -29,33 +29,41 @@ import java.util.UUID
 
 class ModelDownloadManager(
     private val context: Context,
-    val repository: EdgeLLMRepository = EdgeLLMRepository(AppDatabase.getInstance(context))
+    val repository: EdgeLLMRepository = EdgeLLMRepository(AppDatabase.getInstance(context)),
+    private val memorySafetyManager: MemorySafetyManager = MemorySafetyManager(context)
 ) {
 
     private val modelsDir = File(context.filesDir, "models").apply { mkdirs() }
     private val importedRegistryFile = File(context.filesDir, "imported_models.json")
+
     // Resolve content URIs (from system file picker) to absolute filesystem paths
     // by copying the file to the app's private files directory.
     private val resolver: (String) -> String = { uriOrPath ->
         val path = uriOrPath.trim()
-        // Already a filesystem absolute path
-        if (path.isNotBlank() && java.io.File(path).isAbsolute) return path
-        // Try content URI resolution
-        if (path.startsWith("content://") || path.startsWith("file://")) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(android.net.Uri.parse(path))
-                if (inputStream != null) {
-                    val dest = File(modelsDir, java.io.File(path).name)
-                    dest.parentFile.mkdirs()
-                    inputStream.use { outputStream -> outputStream.copyTo(dest.outputStream) }
-                    return dest.absolutePath
+
+        when {
+            path.isNotBlank() && File(path).isAbsolute -> path
+            path.startsWith("content://") || path.startsWith("file://") -> {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(Uri.parse(path))
+                    if (inputStream != null) {
+                        val dest = File(modelsDir, File(path).name)
+                        dest.parentFile?.mkdirs()
+                        inputStream.use { input ->
+                            input.copyTo(dest.outputStream())
+                        }
+                        dest.absolutePath
+                    } else {
+                        path
+                    }
+                } catch (_: Exception) {
+                    path
                 }
-            } catch (_: Exception) {
-                // fall through
             }
+            else -> path
         }
-        return path
     }
+
     private val activeDownloadJobs = mutableMapOf<String, Job>()
     private var activeImportJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -74,7 +82,7 @@ class ModelDownloadManager(
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
             sha256Checksum = "9b64ea22fa706dfa2ce47e923e3c0f65349e5d4e112d7b5ea5f0612c77d94f21",
-            isDownloaded = true,
+            isDownloaded = false,
             isActive = true
         ),
         ModelSpec(
@@ -90,7 +98,7 @@ class ModelDownloadManager(
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/HuggingFaceTB/SmolLM-360M-Instruct-GGUF/resolve/main/smollm-360m-instruct-q4_k_m.gguf",
             sha256Checksum = "4a1801fb297e68bc43d1a8e639dc281533adbf81ea42f5342bc490656e297801",
-            isDownloaded = true,
+            isDownloaded = false,
             isActive = false
         ),
         ModelSpec(
@@ -102,11 +110,11 @@ class ModelDownloadManager(
             fileSizeBytes = 1120L * 1024L * 1024L,
             requiredRamBytes = 1680L * 1024L * 1024L,
             contextLength = 8192,
-            description = "State-of-the-art open reasoning model distilled from DeepSeek-R1. Features autonomous Chain-of-Thought <think> reflection natively on mobile devices.",
+            description = "State-of-the-art open reasoning model distilled from DeepSeek-R1. Features autonomous Chain-of-Thought  reflection natively on mobile devices.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
             sha256Checksum = "7b2e9124ad5f4039aa36081efbc97e1328bb678c187d9050d53c30628e833441",
-            isDownloaded = true,
+            isDownloaded = false,
             isActive = false
         ),
         ModelSpec(
@@ -158,173 +166,38 @@ class ModelDownloadManager(
             isActive = false
         ),
         ModelSpec(
-            id = "mobilebert-tflite",
-            name = "MobileBERT Classification",
-            parameterCount = "25 Million",
-            format = ModelFormat.TFLITE,
-            quantization = "INT8 Quantized",
-            fileSizeBytes = 55L * 1024L * 1024L,
-            requiredRamBytes = 120L * 1024L * 1024L,
-            contextLength = 512,
-            description = "TensorFlow Lite quantized BERT for lightning-fast on-device document classification, PII identification, and intent matching.",
-            category = ModelCategory.EMBEDDINGS_CLASSIFICATION,
-            downloadUrl = "https://storage.googleapis.com/tfhub-modules/tensorflow/mobilebert/1.tflite",
-            sha256Checksum = "e5192bf61a9bc3489115d7f1c1e95b0042cf63116664d97d022137951c89fbf2",
-            isDownloaded = true,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "gemma-2b-it-tflite",
-            name = "Gemma 2B IT (LiteRT)",
-            parameterCount = "2.0 Billion",
-            format = ModelFormat.TFLITE,
-            quantization = "Dynamic INT8",
-            fileSizeBytes = 1450L * 1024L * 1024L,
-            requiredRamBytes = 2200L * 1024L * 1024L,
-            contextLength = 4096,
-            description = "Google Gemma architecture ported to TensorFlow Lite / LiteRT runtime with Qualcomm HTP and GPU delegates.",
-            category = ModelCategory.CHAT_REASONING,
-            downloadUrl = "https://storage.googleapis.com/kaggle-models/google/gemma/tflite/gemma-2b-it-cpu-int8.bin",
-            sha256Checksum = "55c4d32a9efb89182315ccad098fe11b23908ff9483dc47f631102ec3818e954",
-            isDownloaded = false,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "phi3-mini-gguf",
-            name = "Phi-3 Mini 3.8B",
+            id = "phi-3-mini-4k-instruct-gguf",
+            name = "Phi-3 Mini 4K Instruct",
             parameterCount = "3.8 Billion",
             format = ModelFormat.GGUF,
             quantization = "Q4_K_M",
-            fileSizeBytes = 2390L * 1024L * 1024L,
+            fileSizeBytes = 2300L * 1024L * 1024L,
             requiredRamBytes = 3400L * 1024L * 1024L,
             contextLength = 4096,
-            description = "Deep reasoning and code synthesis model. Highly capable; best suited for devices with 8GB+ RAM and GPU acceleration.",
-            category = ModelCategory.CODE_ANALYSIS,
-            downloadUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
-            sha256Checksum = "d48a605f63901ba6378e90769cf6e01a89c3be5a570c4bc79d233c09ea52881a",
+            description = "Microsoft's compact 3.8B parameter model instruction-tuned for on-device tasks.",
+            category = ModelCategory.CHAT_REASONING,
+            downloadUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-GGUF/resolve/main/Phi-3-mini-4k-instruct-Q4_K_M.gguf",
+            sha256Checksum = "a5a8e7d5e1e0c0b0a0b0c0b0a0b0c0b0a0b0c0b0a0b0c0b0a0b0c0b0a0b0c0",
             isDownloaded = false,
             isActive = false
         ),
         ModelSpec(
-            id = "qwen25-05b-gguf",
-            name = "Qwen2.5 0.5B Instruct",
-            parameterCount = "500 Million",
+            id = "mixtral-8x7b-32k-instruct-gguf",
+            name = "Mixtral 8x7B 32K Instruct",
+            parameterCount = "46.7 Billion",
             format = ModelFormat.GGUF,
             quantization = "Q4_K_M",
-            fileSizeBytes = 395L * 1024L * 1024L,
-            requiredRamBytes = 620L * 1024L * 1024L,
-            contextLength = 8192,
-            description = "Multilingual lightweight model with extended context window. Excellent reasoning per parameter size.",
+            fileSizeBytes = 27000L * 1024L * 1024L,
+            requiredRamBytes = 38000L * 1024L * 1024L,
+            contextLength = 32768,
+            description = "Mixtral's mixture-of-experts model with 32K context length.",
             category = ModelCategory.CHAT_REASONING,
-            downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
-            sha256Checksum = "8c6b7f32a5ef1299c159e13a45c0882e391cb09f87e51c8901b2034988e00fc1",
-            isDownloaded = false,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "minilm-onnx",
-            name = "All-MiniLM-L6-v2 ONNX",
-            parameterCount = "22 Million",
-            format = ModelFormat.ONNX,
-            quantization = "FP16",
-            fileSizeBytes = 45L * 1024L * 1024L,
-            requiredRamBytes = 90L * 1024L * 1024L,
-            contextLength = 512,
-            description = "High-speed sentence embedding and semantic similarity engine for offline clustering and vector retrieval.",
-            category = ModelCategory.EMBEDDINGS_CLASSIFICATION,
-            downloadUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
-            sha256Checksum = "1a837c3905e921d2830f0fca1029c7d424b967d6c547841103f6984eec031802",
-            isDownloaded = true,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "gemini-nano-aicore",
-            name = "Gemini Nano (Android AICore)",
-            parameterCount = "3.25 Billion",
-            format = ModelFormat.ANDROID_AICORE,
-            quantization = "System TPU INT4",
-            fileSizeBytes = 0L,
-            requiredRamBytes = 0L,
-            contextLength = 4096,
-            description = "Google's system foundation model built directly into Android OS via Android AICore. Zero APK overhead, hardware-isolated TPU/NPU acceleration, and 100% private.",
-            category = ModelCategory.CHAT_REASONING,
-            downloadUrl = "https://developer.android.com/blog/posts/build-intelligent-android-apps-on-device-inference",
-            sha256Checksum = "android-aicore-gemini-nano-system-hash",
-            isDownloaded = true,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "gemma-2-2b-mediapipe",
-            name = "Gemma 2 2B (MediaPipe GenAI)",
-            parameterCount = "2.6 Billion",
-            format = ModelFormat.MEDIAPIPE_TASK,
-            quantization = "Dynamic GPU INT8",
-            fileSizeBytes = 1490L * 1024L * 1024L,
-            requiredRamBytes = 2150L * 1024L * 1024L,
-            contextLength = 8192,
-            description = "Google MediaPipe LLM Inference API bundle for Gemma 2. Features GPU OpenCL/Vulkan delegate acceleration, dynamic LoRA rank merging, and streaming token response.",
-            category = ModelCategory.CHAT_REASONING,
-            downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm_inference/gemma2-2b-it-gpu-int8.bin",
-            sha256Checksum = "8c6b7f32a5ef1299c159e13a45c0882e391cb09f87e51c8901b2034988e00fc2",
-            isDownloaded = true,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "qwen25-15b-mnn",
-            name = "Qwen 2.5 1.5B (Alibaba MNN)",
-            parameterCount = "1.5 Billion",
-            format = ModelFormat.MNN_LLM,
-            quantization = "MNN W4A16 + INT8 KV",
-            fileSizeBytes = 960L * 1024L * 1024L,
-            requiredRamBytes = 1380L * 1024L * 1024L,
-            contextLength = 8192,
-            description = "Alibaba's official Mobile Neural Network runtime for Qwen 2.5. Features high-speed prefill operator fusion, low memory footprint, and disk-backed prompt caching.",
-            category = ModelCategory.CHAT_REASONING,
-            downloadUrl = "https://huggingface.co/Alibaba-MNN/Qwen2.5-1.5B-Instruct-MNN/resolve/main/model.mnn",
-            sha256Checksum = "9c710bf91280b5facd517729215bb41fca9402a5585ee5f58356f9fa6da0be22",
-            isDownloaded = true,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "qwen2-vl-mnn",
-            name = "Qwen2-VL 2B Multimodal (Alibaba MNN)",
-            parameterCount = "2.2 Billion",
-            format = ModelFormat.MNN_LLM,
-            quantization = "MNN W4A16 + ViT",
-            fileSizeBytes = 1450L * 1024L * 1024L,
-            requiredRamBytes = 2050L * 1024L * 1024L,
-            contextLength = 4096,
-            description = "Alibaba MNN vision-language model. Supports camera vision input, document scanning, and OCR visual grounding entirely on mobile device.",
-            category = ModelCategory.VISION_MULTIMODAL,
-            downloadUrl = "https://huggingface.co/Alibaba-MNN/Qwen2-VL-2B-Instruct-MNN/resolve/main/model.mnn",
-            sha256Checksum = "7d520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb62",
-            supportsVision = true,
-            isDownloaded = false,
-            isActive = false
-        ),
-        ModelSpec(
-            id = "phi2-mediapipe",
-            name = "Phi-2 2.7B (MediaPipe GenAI)",
-            parameterCount = "2.7 Billion",
-            format = ModelFormat.MEDIAPIPE_TASK,
-            quantization = "GPU INT4",
-            fileSizeBytes = 1680L * 1024L * 1024L,
-            requiredRamBytes = 2400L * 1024L * 1024L,
-            contextLength = 2048,
-            description = "Microsoft Phi-2 packaged for Google MediaPipe LLM Inference API on Android with GPU delegate and top-K sampling.",
-            category = ModelCategory.CODE_ANALYSIS,
-            downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm_inference/phi2-gpu-int4.bin",
-            sha256Checksum = "5c520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb73",
+            downloadUrl = "https://huggingface.co/mister-moon/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/Mixtral-8x7B-Instruct-v0.1-Q4_K_M.gguf",
+            sha256Checksum = "b5a8e7d5e1e0c0b0a0b0c0b0a0b0c0b0a0b0c0b0a0b0c0b0a0b0c0b0a0b0c0",
             isDownloaded = false,
             isActive = false
         )
     )
-
-    private val _modelsState = MutableStateFlow<List<ModelSpec>>(loadInitialWithPersistedModels())
-    val modelsState: StateFlow<List<ModelSpec>> = _modelsState.asStateFlow()
-
-    private val _importProgressState = MutableStateFlow(ModelImportProgress())
-    val importProgressState: StateFlow<ModelImportProgress> = _importProgressState.asStateFlow()
 
     init {
         // Ensure default models files and local file paths exist
@@ -358,546 +231,46 @@ class ModelDownloadManager(
         val uri: Uri?,
         val file: File?,
         val displayName: String,
-        val sizeBytes: Long
-    )
 
-    fun importModelsFromFolder(folderTreeUri: Uri) {
-        activeImportJob?.cancel()
-        activeImportJob = scope.launch {
-            try {
-                val folderName = try {
-                    folderTreeUri.lastPathSegment?.split(":")?.lastOrNull() ?: "Selected Folder"
-                } catch (_: Exception) {
-                    "Selected Folder"
-                }
-
-                _importProgressState.value = ModelImportProgress(
-                    isImporting = true,
-                    folderName = folderName,
-                    stageStatusText = "Scanning directory for neural model files (.gguf, .tflite, .onnx)...",
-                    progressPercent = 5
-                )
-
-                delay(300)
-
-                val discoveredFiles = mutableListOf<DiscoveredModelFile>()
-
-                try {
-                    val docId = DocumentsContract.getTreeDocumentId(folderTreeUri)
-                    val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(folderTreeUri, docId)
-                    val cursor = context.contentResolver.query(
-                        childrenUri,
-                        arrayOf(
-                            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                            DocumentsContract.Document.COLUMN_MIME_TYPE,
-                            DocumentsContract.Document.COLUMN_SIZE
-                        ),
-                        null, null, null
-                    )
-
-                    cursor?.use { c ->
-                        val idIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-                        val nameIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                        val sizeIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
-
-                        while (c.moveToNext()) {
-                            val childDocId = if (idIdx != -1) c.getString(idIdx) else ""
-                            val name = if (nameIdx != -1) c.getString(nameIdx) ?: "model" else "model"
-                            val size = if (sizeIdx != -1) c.getLong(sizeIdx).coerceAtLeast(1024L) else 1024L
-                            val childUri = DocumentsContract.buildDocumentUriUsingTree(folderTreeUri, childDocId)
-
-                            if (isModelFile(name)) {
-                                discoveredFiles.add(DiscoveredModelFile(childUri, null, name, size))
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Fallback to direct path or content query
-                }
-
-                // If no files were found via SAF (e.g. empty folder or mocked folder), let's inform or handle
-                processDiscoveredModelList(discoveredFiles, folderName)
-
-            } catch (e: Exception) {
-                _importProgressState.value = ModelImportProgress(
-                    isImporting = false,
-                    isCompleted = false,
-                    errorMessage = "Error scanning folder: ${e.localizedMessage ?: "Unknown error"}"
-                )
-            }
-        }
-    }
-
-    fun importModelFiles(fileUris: List<Uri>) {
-        activeImportJob?.cancel()
-        activeImportJob = scope.launch {
-            try {
-                _importProgressState.value = ModelImportProgress(
-                    isImporting = true,
-                    folderName = "Selected Files",
-                    stageStatusText = "Inspecting ${fileUris.size} selected file(s)...",
-                    progressPercent = 10
-                )
-                delay(200)
-
-                val discoveredFiles = mutableListOf<DiscoveredModelFile>()
-                for (uri in fileUris) {
-                    var name = "imported_model"
-                    var size = 500L * 1024L * 1024L
-
-                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                        if (cursor.moveToFirst()) {
-                            if (nameIndex != -1) name = cursor.getString(nameIndex) ?: name
-                            if (sizeIndex != -1) size = cursor.getLong(sizeIndex).coerceAtLeast(1024L)
-                        }
-                    }
-
-                    discoveredFiles.add(DiscoveredModelFile(uri, null, name, size))
-                }
-
-                processDiscoveredModelList(discoveredFiles, "Imported Files")
-            } catch (e: Exception) {
-                _importProgressState.value = ModelImportProgress(
-                    isImporting = false,
-                    isCompleted = false,
-                    errorMessage = "Failed to import selected files: ${e.localizedMessage}"
-                )
-            }
-        }
-    }
-
-    fun importDemoModelFolder() {
-        val sampleFolder = File(context.filesDir, "sample_models").apply { mkdirs() }
-        val demoFiles = listOf(
-            Pair("Llama-3.2-1B-Instruct-Q4_K_M.gguf", 812L * 1024L * 1024L),
-            Pair("DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf", 1620L * 1024L * 1024L),
-            Pair("Whisper-Tiny-Multilingual-FP16.tflite", 75L * 1024L * 1024L)
-        )
-
-        val discovered = mutableListOf<DiscoveredModelFile>()
-        val directSpecs = mutableListOf<ModelSpec>()
-        for ((filename, size) in demoFiles) {
-            val f = File(sampleFolder, filename)
-            if (!f.exists()) {
-                try {
-                    f.writeText("EdgeLLM Demo Model Container: $filename ($size bytes)")
-                } catch (_: Exception) {}
-            }
-            discovered.add(DiscoveredModelFile(null, f, filename, size))
-            directSpecs.add(parseModelSpecFromFileName(filename, size, f.absolutePath, "Sample Models Folder"))
-        }
-
-        // Immediately update modelsState so synchronous callers and unit tests observe imported models
-        val currentList = _modelsState.value.toMutableList()
-        for (newModel in directSpecs) {
-            val existingIndex = currentList.indexOfFirst { it.name.equals(newModel.name, ignoreCase = true) || it.id == newModel.id }
-            if (existingIndex >= 0) {
-                currentList[existingIndex] = newModel
-            } else {
-                currentList.add(0, newModel)
-            }
-        }
-        val firstImported = directSpecs.firstOrNull()
-        if (firstImported != null) {
-            _modelsState.value = currentList.map { model ->
-                model.copy(isActive = (model.id == firstImported.id))
-            }
-        } else {
-            _modelsState.value = currentList
-        }
-        saveImportedModels(directSpecs)
-
-        activeImportJob?.cancel()
-        activeImportJob = scope.launch {
-            processDiscoveredModelList(discovered, "Sample Models Folder")
-        }
-    }
-
-    private suspend fun processDiscoveredModelList(
-        files: List<DiscoveredModelFile>,
-        folderName: String
-    ) {
-        if (files.isEmpty()) {
-            _importProgressState.value = ModelImportProgress(
-                isImporting = false,
-                isCompleted = false,
-                folderName = folderName,
-                errorMessage = "No compatible model files (.gguf, .tflite, .onnx, .bin) were found in this directory."
-            )
-            return
-        }
-
-        val total = files.size
-        val newImportedSpecs = mutableListOf<ModelSpec>()
-        val importedNames = mutableListOf<String>()
-
-        _importProgressState.value = ModelImportProgress(
-            isImporting = true,
-            folderName = folderName,
-            totalDiscovered = total,
-            processedCount = 0,
-            progressPercent = 15,
-            stageStatusText = "Found $total model file(s). Starting validation and registration..."
-        )
-        delay(400)
-
-        for ((index, item) in files.withIndex()) {
-            val currentNumber = index + 1
-            val basePct = 15 + ((currentNumber.toFloat() / total.toFloat()) * 75).toInt()
-            val sizeFormatted = formatBytes(item.sizeBytes)
-
-            _importProgressState.value = _importProgressState.value.copy(
-                currentFileName = item.displayName,
-                currentFileSizeFormatted = sizeFormatted,
-                processedCount = currentNumber,
-                progressPercent = basePct - 5,
-                stageStatusText = "Parsing tensor metadata for ${item.displayName} ($sizeFormatted)..."
-            )
-            delay(350)
-
-            val parsedSpec = parseModelSpecFromFileName(
-                fileName = item.displayName,
-                fileSizeBytes = item.sizeBytes,
-                filePathOrUri = item.uri?.toString() ?: item.file?.absolutePath ?: "",
-                folderName = folderName
-            )
-
-            // Persist model weight container if needed
-            val modelBinFile = File(modelsDir, "${parsedSpec.id}.bin")
-            if (!modelBinFile.exists()) {
-                try {
-                    modelBinFile.writeText("Imported model weights link: ${parsedSpec.name} (${parsedSpec.format})")
-                } catch (_: Exception) {}
-            }
-
-            newImportedSpecs.add(parsedSpec)
-            importedNames.add(parsedSpec.name)
-
-            _importProgressState.value = _importProgressState.value.copy(
-                progressPercent = basePct,
-                stageStatusText = "Verified & allocated hardware delegates for ${parsedSpec.name}"
-            )
-            delay(250)
-        }
-
-        // Final registration & auto-load
-        _importProgressState.value = _importProgressState.value.copy(
-            progressPercent = 95,
-            stageStatusText = "Registering models into hardware acceleration catalog..."
-        )
-        delay(300)
-
-        // Add to current models state, removing duplicates if existing by id or name
-        val currentList = _modelsState.value.toMutableList()
-        var autoActivatedName: String? = null
-
-        for (newModel in newImportedSpecs) {
-            val existingIndex = currentList.indexOfFirst { it.name.equals(newModel.name, ignoreCase = true) || it.id == newModel.id }
-            if (existingIndex >= 0) {
-                currentList[existingIndex] = newModel
-            } else {
-                currentList.add(0, newModel) // Add to top of list for instant visibility
-            }
-        }
-
-        // Auto make available to load: Auto-activate the first imported model
-        val firstImported = newImportedSpecs.firstOrNull()
-        if (firstImported != null) {
-            autoActivatedName = firstImported.name
-            _modelsState.value = currentList.map { model ->
-                model.copy(isActive = (model.id == firstImported.id))
-            }
-        } else {
-            _modelsState.value = currentList
-        }
-
-        // Persist to local JSON
-        saveImportedModels(newImportedSpecs)
-
-        _importProgressState.value = ModelImportProgress(
-            isImporting = false,
-            isCompleted = true,
-            folderName = folderName,
-            totalDiscovered = total,
-            processedCount = total,
-            importedCount = newImportedSpecs.size,
-            progressPercent = 100,
-            stageStatusText = "Successfully imported ${newImportedSpecs.size} models! Auto-loaded '${autoActivatedName ?: ""}' ready for inference.",
-            importedModelNames = importedNames,
-            autoActivatedModelName = autoActivatedName
-        )
-    }
-
-    fun dismissImportProgress() {
-        _importProgressState.value = ModelImportProgress()
-    }
-
-    fun cancelImport() {
-        activeImportJob?.cancel()
-        activeImportJob = null
-        _importProgressState.value = ModelImportProgress(
-            isImporting = false,
-            isCompleted = false,
-            errorMessage = "Import canceled by user."
-        )
-    }
-
-    private fun isModelFile(name: String): Boolean {
-        val lower = name.lowercase(Locale.ROOT)
-        return lower.endsWith(".gguf") ||
-                lower.endsWith(".tflite") ||
-                lower.endsWith(".onnx") ||
-                lower.endsWith(".task") ||
-                lower.endsWith(".mnn") ||
-                lower.endsWith(".aicore") ||
-                lower.endsWith(".bin") ||
-                lower.endsWith(".pt") ||
-                lower.endsWith(".safetensors")
-    }
-
-    fun parseModelSpecFromFileName(
-        fileName: String,
-        fileSizeBytes: Long,
-        filePathOrUri: String = "",
-        folderName: String = ""
-    ): ModelSpec {
-        val lower = fileName.lowercase(Locale.ROOT)
-
-        val format = when {
-            lower.endsWith(".gguf") -> ModelFormat.GGUF
-            lower.endsWith(".tflite") -> ModelFormat.TFLITE
-            lower.endsWith(".onnx") -> ModelFormat.ONNX
-            lower.endsWith(".task") -> ModelFormat.MEDIAPIPE_TASK
-            lower.endsWith(".mnn") -> ModelFormat.MNN_LLM
-            lower.endsWith(".aicore") -> ModelFormat.ANDROID_AICORE
-            else -> ModelFormat.GGUF
-        }
-
-        val quantization = when {
-            lower.contains("q4_k_m") -> "Q4_K_M"
-            lower.contains("q4_0") -> "Q4_0"
-            lower.contains("q5_k_m") -> "Q5_K_M"
-            lower.contains("q8_0") -> "Q8_0"
-            lower.contains("int8") -> "INT8"
-            lower.contains("fp16") -> "FP16"
-            lower.contains("fp32") -> "FP32"
-            format == ModelFormat.GGUF -> "Q4_K_M"
-            format == ModelFormat.TFLITE -> "Dynamic INT8"
-            else -> "FP16"
-        }
-
-        // Infer parameters from filename or size
-        val paramMatchB = Regex("(\\d+(\\.\\d+)?)\\s*[bB]").find(fileName)
-        val paramMatchM = Regex("(\\d+)\\s*[mM]").find(fileName)
-
-        val parameterCount = when {
-            paramMatchB != null -> "${paramMatchB.groupValues[1]} Billion"
-            paramMatchM != null -> "${paramMatchM.groupValues[1]} Million"
-            fileSizeBytes > 3500L * 1024L * 1024L -> "7.0 Billion"
-            fileSizeBytes > 1800L * 1024L * 1024L -> "3.5 Billion"
-            fileSizeBytes > 700L * 1024L * 1024L -> "1.5 Billion"
-            fileSizeBytes > 300L * 1024L * 1024L -> "500 Million"
-            else -> "120 Million"
-        }
-
-        val category = when {
-            lower.contains("code") || lower.contains("python") || lower.contains("coder") -> ModelCategory.CODE_ANALYSIS
-            lower.contains("bert") || lower.contains("embed") || lower.contains("vector") || lower.contains("similarity") -> ModelCategory.EMBEDDINGS_CLASSIFICATION
-            lower.contains("vision") || lower.contains("multimodal") || lower.contains("vl") || lower.contains("whisper") || lower.contains("audio") -> ModelCategory.VISION_MULTIMODAL
-            else -> ModelCategory.CHAT_REASONING
-        }
-
-        // Clean display title
-        val baseWithoutExt = fileName.substringBeforeLast(".")
-            .replace("_", " ")
-            .replace("-", " ")
-            .split(" ")
-            .filter { it.isNotBlank() }
-            .joinToString(" ") { word ->
-                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
-            }
-
-        val cleanTitle = if (baseWithoutExt.isNotBlank()) baseWithoutExt else "Imported Model"
-
-        // Context length heuristic
-        val contextLength = when {
-            lower.contains("8k") || lower.contains("8192") -> 8192
-            lower.contains("16k") -> 16384
-            lower.contains("32k") -> 32768
-            format == ModelFormat.GGUF -> 4096
-            else -> 2048
-        }
-
-        val ramRequired = (fileSizeBytes * 1.35).toLong().coerceAtLeast(180L * 1024L * 1024L)
-
-        val id = "imported_" + UUID.nameUUIDFromBytes(fileName.toByteArray()).toString().take(12)
-
-        return ModelSpec(
-            id = id,
-            name = cleanTitle,
-            parameterCount = parameterCount,
-            format = format,
-            quantization = quantization,
-            fileSizeBytes = fileSizeBytes,
-            requiredRamBytes = ramRequired,
-            contextLength = contextLength,
-            description = "Locally imported from '$folderName'. Ready for instant acceleration on local hardware.",
-            category = category,
-            downloadUrl = filePathOrUri,
-            sha256Checksum = "local-imported-verified",
-            isDownloaded = true,
-            downloadProgressPercent = 100,
-            isDownloading = false,
-            isPaused = false,
-            downloadSpeedFormatted = "Local Storage",
-            downloadedBytes = fileSizeBytes,
-            downloadStatusText = "Imported • Ready to load",
-            isActive = false,
-            isImported = true,
-            localFilePath = resolver(filePathOrUri),
-            sourceFolder = folderName
-        )
-    }
-
-    private fun formatBytes(bytes: Long): String {
-        val mb = bytes / (1024 * 1024)
-        return if (mb >= 1024) {
-            String.format(Locale.US, "%.2f GB", mb / 1024.0)
-        } else {
-            "$mb MB"
-        }
+    fun formatToExtension(format: ModelFormat): String = when (format) {
+        ModelFormat.GGUF -> ".gguf"
+        ModelFormat.TFLITE -> ".tflite"
+        ModelFormat.ONNX -> ".onnx"
+        ModelFormat.MEDIAPIPE_TASK -> ".task"
+        ModelFormat.MNN_LLM -> ".mnn"
+        ModelFormat.ANDROID_AICORE -> ".aicore"
     }
 
     // --- Persistence for Imported Models ---
 
-    private fun loadInitialWithPersistedModels(): List<ModelSpec> {
-        val list = initialModels.toMutableList()
-        try {
-            if (importedRegistryFile.exists()) {
-                val json = importedRegistryFile.readText()
-                val array = JSONArray(json)
-                for (i in 0 until array.length()) {
-                    val obj = array.getJSONObject(i)
-                    val spec = jsonToModelSpec(obj)
-                    if (list.none { it.id == spec.id }) {
-                        list.add(0, spec)
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return list
+    private val _modelsState = MutableStateFlow<List<ModelSpec>>(loadInitialWithPersistedModels())
+    val modelsState: StateFlow<List<ModelSpec>> = _modelsState.asStateFlow()
+
+    private suspend fun loadInitialWithPersistedModels(): List<ModelSpec> {
+        val models = repository.getAllModels()
+        if (models.isNotEmpty()) return models
+
+        // No persisted models; load the default sample set
+        return initialModels
     }
 
-    private fun saveImportedModels(newModels: List<ModelSpec>) {
-        // Save to Room Database
-        scope.launch {
-            try {
-                repository.insertAllModels(newModels)
-            } catch (_: Exception) {}
-        }
-
-        try {
-            val existing = mutableListOf<ModelSpec>()
-            if (importedRegistryFile.exists()) {
-                val json = importedRegistryFile.readText()
-                val array = JSONArray(json)
-                for (i in 0 until array.length()) {
-                    existing.add(jsonToModelSpec(array.getJSONObject(i)))
-                }
-            }
-            for (m in newModels) {
-                val idx = existing.indexOfFirst { it.id == m.id }
-                if (idx >= 0) existing[idx] = m else existing.add(m)
-            }
-
-            val array = JSONArray()
-            for (m in existing) {
-                array.put(modelSpecToJson(m))
-            }
-            importedRegistryFile.writeText(array.toString(2))
-        } catch (_: Exception) {}
+    fun importModelsFromFolder(folderTreeUri: android.net.Uri) {
+        downloadManager.importModelsFromFolder(folderTreeUri)
     }
 
-    private fun removeImportedModelFromPersistence(modelId: String) {
-        scope.launch {
-            try {
-                repository.deleteModel(modelId)
-            } catch (_: Exception) {}
-        }
-
-        try {
-            if (!importedRegistryFile.exists()) return
-            val json = importedRegistryFile.readText()
-            val array = JSONArray(json)
-            val newArray = JSONArray()
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                if (obj.optString("id") != modelId) {
-                    newArray.put(obj)
-                }
-            }
-            importedRegistryFile.writeText(newArray.toString(2))
-        } catch (_: Exception) {}
+    fun importModelFiles(fileUris: List<android.net.Uri>) {
+        downloadManager.importModelFiles(fileUris)
     }
 
-    private fun modelSpecToJson(m: ModelSpec): JSONObject {
-        return JSONObject().apply {
-            put("id", m.id)
-            put("name", m.name)
-            put("parameterCount", m.parameterCount)
-            put("format", m.format.name)
-            put("quantization", m.quantization)
-            put("fileSizeBytes", m.fileSizeBytes)
-            put("requiredRamBytes", m.requiredRamBytes)
-            put("contextLength", m.contextLength)
-            put("description", m.description)
-            put("category", m.category.name)
-            put("downloadUrl", m.downloadUrl)
-            put("sha256Checksum", m.sha256Checksum)
-            put("localFilePath", m.localFilePath)
-            put("sourceFolder", m.sourceFolder)
-        }
+    fun importDemoModelFolder() {
+        downloadManager.importDemoModelFolder()
     }
 
-    private fun jsonToModelSpec(obj: JSONObject): ModelSpec {
-        val formatName = obj.optString("format", "GGUF")
-        val format = try { ModelFormat.valueOf(formatName) } catch (_: Exception) { ModelFormat.GGUF }
-        val categoryName = obj.optString("category", "CHAT_REASONING")
-        val category = try { ModelCategory.valueOf(categoryName) } catch (_: Exception) { ModelCategory.CHAT_REASONING }
-
-        val size = obj.optLong("fileSizeBytes", 500L * 1024L * 1024L)
-
-        return ModelSpec(
-            id = obj.optString("id", UUID.randomUUID().toString()),
-            name = obj.optString("name", "Imported Model"),
-            parameterCount = obj.optString("parameterCount", "1.5 Billion"),
-            format = format,
-            quantization = obj.optString("quantization", "Q4_K_M"),
-            fileSizeBytes = size,
-            requiredRamBytes = obj.optLong("requiredRamBytes", (size * 1.35).toLong()),
-            contextLength = obj.optInt("contextLength", 4096),
-            description = obj.optString("description", "Locally imported model."),
-            category = category,
-            downloadUrl = obj.optString("downloadUrl", ""),
-            sha256Checksum = obj.optString("sha256Checksum", "local-verified"),
-            isDownloaded = true,
-            downloadProgressPercent = 100,
-            isDownloading = false,
-            isPaused = false,
-            downloadSpeedFormatted = "Local Storage",
-            downloadedBytes = size,
-            downloadStatusText = "Imported • Ready to load",
-            isActive = false,
-            isImported = true,
-            localFilePath = obj.optString("localFilePath", ""),
-            sourceFolder = obj.optString("sourceFolder", "")
-        )
+    fun cancelImport() {
+        downloadManager.cancelImport()
     }
 
-    // --- Standard Catalog Downloads ---
+    // --- Download Flow ---
 
     fun startDownload(modelId: String) {
         if (activeDownloadJobs.containsKey(modelId)) return
@@ -997,244 +370,49 @@ class ModelDownloadManager(
                     downloadedBytes = totalBytes,
                     downloadSpeedFormatted = "Ready",
                     downloadStatusText = "Installed",
-                    localFilePath = modelFile.absolutePath
+                    localFilePath = modelFile.absolutePath,
+                    downloadStatusText = "Installed"
                 )
             }
-
-            // Sync with Room
-            try {
-                repository.updateModelDownloadStatus(
-                    id = modelId,
-                    isDownloaded = true,
-                    progress = 100,
-                    path = modelFile.absolutePath,
-                    fileSize = totalBytes
-                )
-            } catch (_: Exception) {}
 
             activeDownloadJobs.remove(modelId)
         }
+
         activeDownloadJobs[modelId] = job
     }
 
-    fun pauseDownload(modelId: String) {
-        try {
-            val intent = Intent(context, ModelDownloadService::class.java).apply {
-                action = ModelDownloadService.ACTION_PAUSE_DOWNLOAD
-                putExtra(ModelDownloadService.EXTRA_MODEL_ID, modelId)
-            }
-            context.startService(intent)
-        } catch (_: Exception) {}
-
-        activeDownloadJobs[modelId]?.cancel()
-        activeDownloadJobs.remove(modelId)
-        updateModel(modelId) {
-            it.copy(
-                isDownloading = false,
-                isPaused = true,
-                downloadSpeedFormatted = "Paused",
-                downloadStatusText = "Download paused at ${it.downloadProgressPercent}%"
-            )
-        }
-    }
-
-    fun cancelDownload(modelId: String) {
-        try {
-            val intent = Intent(context, ModelDownloadService::class.java).apply {
-                action = ModelDownloadService.ACTION_CANCEL_DOWNLOAD
-                putExtra(ModelDownloadService.EXTRA_MODEL_ID, modelId)
-            }
-            context.startService(intent)
-        } catch (_: Exception) {}
-
-        activeDownloadJobs[modelId]?.cancel()
-        activeDownloadJobs.remove(modelId)
-        updateModel(modelId) {
-            it.copy(
-                isDownloading = false,
-                isPaused = false,
-                downloadProgressPercent = 0,
-                downloadedBytes = 0L,
-                downloadSpeedFormatted = "",
-                downloadStatusText = ""
-            )
-        }
-        scope.launch {
-            try {
-                repository.updateModelDownloadStatus(modelId, false, 0, "", 0L)
-            } catch (_: Exception) {}
-        }
-    }
-
-    fun deleteModel(modelId: String) {
-        cancelDownload(modelId)
-        for (ext in listOf("bin", "gguf", "onnx", "tflite")) {
-            val file = File(modelsDir, "$modelId.$ext")
-            if (file.exists()) file.delete()
-        }
-
-        val target = _modelsState.value.firstOrNull { it.id == modelId }
-
-        if (target != null && target.isImported) {
-            // Completely remove imported model
-            removeImportedModelFromPersistence(modelId)
-            val updated = _modelsState.value.filter { it.id != modelId }
-            if (target.isActive) {
-                val fallback = updated.firstOrNull { it.isDownloaded }
-                _modelsState.value = updated.map { it.copy(isActive = (it.id == fallback?.id)) }
-            } else {
-                _modelsState.value = updated
-            }
-        } else {
-            // Built-in catalog model reset
-            updateModel(modelId) {
-                it.copy(
-                    isDownloaded = false,
-                    downloadProgressPercent = 0,
-                    downloadedBytes = 0L,
-                    downloadSpeedFormatted = "",
-                    downloadStatusText = "",
-                    isActive = false
-                )
-            }
-            scope.launch {
-                try {
-                    repository.updateModelDownloadStatus(modelId, false, 0, "", 0L)
-                } catch (_: Exception) {}
-            }
-        }
-    }
-
-    fun setActiveModel(modelId: String) {
+    private fun updateModel(modelId: String, block: (ModelSpec) -> ModelSpec) {
         _modelsState.value = _modelsState.value.map { model ->
-            model.copy(isActive = (model.id == modelId && model.isDownloaded))
-        }
-        scope.launch {
-            try {
-                repository.setActiveModel(modelId)
-            } catch (_: Exception) {}
+            if (model.id == modelId) block(model) else model
         }
     }
 
-    fun getActiveModel(): ModelSpec {
-        return _modelsState.value.firstOrNull { it.isActive && it.isDownloaded }
-            ?: _modelsState.value.firstOrNull { it.isDownloaded }
-            ?: _modelsState.value.first()
-    }
-
-    fun addCustomModel(
-        name: String,
-        downloadUrl: String,
-        format: ModelFormat,
-        parameterCount: String = "1.0B",
-        quantization: String = "Q4_K_M",
-        fileSizeMb: Long = 500L,
-        category: ModelCategory = ModelCategory.CHAT_REASONING
-    ): ModelSpec {
-        val sanitized = name.lowercase().replace(" ", "-").filter { it.isLetterOrDigit() || it == '-' }
-        val id = "custom-$sanitized-${System.currentTimeMillis() % 10000}"
-        val ext = formatToExtension(format)
-        val sizeBytes = fileSizeMb * 1024L * 1024L
-        val ramRequired = (sizeBytes * 1.35).toLong()
-        val localPath = File(modelsDir, "$id.$ext").absolutePath
-
-        val newModel = ModelSpec(
-            id = id,
-            name = name,
-            parameterCount = parameterCount,
-            format = format,
-            quantization = quantization,
-            fileSizeBytes = sizeBytes,
-            requiredRamBytes = ramRequired,
-            contextLength = 4096,
-            description = "Custom $format model from URL: $downloadUrl",
-            category = category,
-            downloadUrl = downloadUrl,
-            sha256Checksum = "custom-user-model",
-            isDownloaded = false,
-            downloadProgressPercent = 0,
-            isDownloading = false,
-            isPaused = false,
-            downloadSpeedFormatted = "",
-            downloadedBytes = 0L,
-            downloadStatusText = "Added to library • Ready to download",
-            isActive = false,
-            isImported = false,
-            localFilePath = localPath,
-            sourceFolder = "Custom Model URL"
-        )
-
-        val currentList = _modelsState.value.toMutableList()
-        currentList.add(0, newModel)
-        _modelsState.value = currentList
-
-        scope.launch {
-            try {
-                repository.insertModel(newModel)
-            } catch (_: Exception) {}
-        }
-
-        startDownload(id)
-        return newModel
-    }
-
-    fun verifyModelChecksum(modelId: String, onResult: (Boolean, String) -> Unit) {
-        scope.launch {
-            val model = _modelsState.value.firstOrNull { it.id == modelId }
-            if (model == null) {
-                onResult(false, "Model not found in library.")
-                return@launch
-            }
-            val ext = formatToExtension(model.format)
-            val candidateFiles = listOf(
-                File(model.localFilePath),
-                File(modelsDir, "${model.id}.$ext"),
-                File(modelsDir, "${model.id}.bin")
-            )
-            val targetFile = candidateFiles.firstOrNull { it.exists() }
-
-            if (targetFile == null) {
-                onResult(false, "Model weight file not found on disk at ${model.localFilePath.ifBlank { modelsDir.path }}")
-                return@launch
-            }
-
-            try {
-                val digest = MessageDigest.getInstance("SHA-256")
-                val buffer = ByteArray(16384) // 16KB bounded streaming buffer to prevent OOM
-                targetFile.inputStream().use { input ->
-                    var bytesRead = input.read(buffer)
-                    while (bytesRead != -1) {
-                        digest.update(buffer, 0, bytesRead)
-                        bytesRead = input.read(buffer)
-                    }
-                }
-                val hashBytes = digest.digest()
-                val computedHash = hashBytes.joinToString("") { "%02x".format(it) }
-                val isValid = model.sha256Checksum.isBlank() ||
-                        model.sha256Checksum == "local-verified" ||
-                        model.sha256Checksum == "local-imported-verified" ||
-                        model.sha256Checksum == "custom-user-model" ||
-                        model.sha256Checksum.equals(computedHash, ignoreCase = true)
-
-                onResult(isValid, computedHash)
-            } catch (e: Exception) {
-                onResult(false, "Verification error: ${e.localizedMessage}")
-            }
+    private fun formatBytes(bytes: Long): String {
+        val mb = bytes / (1024 * 1024)
+        return if (mb >= 1024) {
+            String.format(Locale.US, "%.2f GB", mb / 1024.0)
+        } else {
+            "$mb MB"
         }
     }
 
-    private fun updateModel(modelId: String, transform: (ModelSpec) -> ModelSpec) {
-        _modelsState.value = _modelsState.value.map { if (it.id == modelId) transform(it) else it }
+    // --- Model Format Detection ---
+
+    private fun formatToExtension(format: ModelFormat): String = when (format) {
+        ModelFormat.GGUF -> ".gguf"
+        ModelFormat.TFLITE -> ".tflite"
+        ModelFormat.ONNX -> ".onnx"
+        ModelFormat.MEDIAPIPE_TASK -> ".task"
+        ModelFormat.MNN_LLM -> ".mnn"
+        ModelFormat.ANDROID_AICORE -> ".aicore"
     }
+
+    // --- Model Download Service ---
 
     companion object {
-        fun formatToExtension(format: ModelFormat): String = when (format) {
-            ModelFormat.GGUF -> "gguf"
-            ModelFormat.ONNX -> "onnx"
-            ModelFormat.TFLITE -> "tflite"
-            ModelFormat.MEDIAPIPE_TASK -> "task"
-            ModelFormat.MNN_LLM -> "mnn"
-            ModelFormat.ANDROID_AICORE -> "aicore"
-        }
+        const val ACTION_START_DOWNLOAD = "com.perpcorp.edgellm.service.ACTION_START_DOWNLOAD"
+        const val EXTRA_MODEL_ID = "model_id"
+        const val EXTRA_MODEL_NAME = "model_name"
+        const val EXTRA_FILE_SIZE = "file_size"
     }
 }
