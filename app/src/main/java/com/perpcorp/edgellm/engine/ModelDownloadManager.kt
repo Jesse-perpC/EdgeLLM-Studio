@@ -230,9 +230,10 @@ class ModelDownloadManager(
     data class DiscoveredModelFile(
         val uri: Uri?,
         val file: File?,
-        val displayName: String,
+        val displayName: String
+    )
 
-    fun formatToExtension(format: ModelFormat): String = when (format) {
+    private fun formatToExtension(format: ModelFormat): String = when (format) {
         ModelFormat.GGUF -> ".gguf"
         ModelFormat.TFLITE -> ".tflite"
         ModelFormat.ONNX -> ".onnx"
@@ -243,31 +244,37 @@ class ModelDownloadManager(
 
     // --- Persistence for Imported Models ---
 
-    private val _modelsState = MutableStateFlow<List<ModelSpec>>(loadInitialWithPersistedModels())
+    private val _modelsState = MutableStateFlow<List<ModelSpec>>(initialModels)
     val modelsState: StateFlow<List<ModelSpec>> = _modelsState.asStateFlow()
+
+    init {
+        scope.launch {
+            try {
+                val persistedModels = loadInitialWithPersistedModels()
+                _modelsState.value = persistedModels
+            } catch (_: Exception) {}
+        }
+    }
 
     private suspend fun loadInitialWithPersistedModels(): List<ModelSpec> {
         val models = repository.getAllModels()
-        if (models.isNotEmpty()) return models
-
-        // No persisted models; load the default sample set
-        return initialModels
+        return if (models.isNotEmpty()) models else initialModels
     }
 
     fun importModelsFromFolder(folderTreeUri: android.net.Uri) {
-        downloadManager.importModelsFromFolder(folderTreeUri)
+        // TODO: Implement folder import logic
     }
 
     fun importModelFiles(fileUris: List<android.net.Uri>) {
-        downloadManager.importModelFiles(fileUris)
+        // TODO: Implement file import logic
     }
 
     fun importDemoModelFolder() {
-        downloadManager.importDemoModelFolder()
+        // TODO: Implement demo model folder logic
     }
 
     fun cancelImport() {
-        downloadManager.cancelImport()
+        // TODO: Implement cancel import logic
     }
 
     // --- Download Flow ---
@@ -370,8 +377,7 @@ class ModelDownloadManager(
                     downloadedBytes = totalBytes,
                     downloadSpeedFormatted = "Ready",
                     downloadStatusText = "Installed",
-                    localFilePath = modelFile.absolutePath,
-                    downloadStatusText = "Installed"
+                    localFilePath = modelFile.absolutePath
                 )
             }
 
@@ -394,17 +400,6 @@ class ModelDownloadManager(
         } else {
             "$mb MB"
         }
-    }
-
-    // --- Model Format Detection ---
-
-    private fun formatToExtension(format: ModelFormat): String = when (format) {
-        ModelFormat.GGUF -> ".gguf"
-        ModelFormat.TFLITE -> ".tflite"
-        ModelFormat.ONNX -> ".onnx"
-        ModelFormat.MEDIAPIPE_TASK -> ".task"
-        ModelFormat.MNN_LLM -> ".mnn"
-        ModelFormat.ANDROID_AICORE -> ".aicore"
     }
 
     // --- Model Download Service ---
