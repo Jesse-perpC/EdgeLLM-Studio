@@ -2,6 +2,14 @@ package com.edgellm.studio.core.inference
 
 import java.io.File
 
+// Extension function for EngineResult sealed class
+private fun <T, R> EngineResult<T>.map(transform: (T) -> R): EngineResult<R> {
+    return when (this) {
+        is EngineResult.Success -> EngineResult.Success(transform(value))
+        is EngineResult.Failure -> EngineResult.Failure(error)
+    }
+}
+
 class EngineRouter(
     private val llamaEngine: InferenceEngine,
     private val mediaPipeEngine: InferenceEngine,

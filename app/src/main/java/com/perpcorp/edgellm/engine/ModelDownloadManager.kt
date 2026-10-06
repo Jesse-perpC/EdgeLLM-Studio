@@ -411,3 +411,116 @@ class ModelDownloadManager(
         const val EXTRA_FILE_SIZE = "file_size"
     }
 }
+
+    // --- Public API Methods ---
+
+    suspend fun getAllModels(): List<ModelSpec> {
+        return repository.getAllModels()
+    }
+
+    fun getActiveModel(): ModelSpec? {
+        return _modelsState.value.firstOrNull { it.isActive }
+    }
+
+    fun pauseDownload(modelId: String) {
+        activeDownloadJobs[modelId]?.cancel()
+        updateModel(modelId) {
+            it.copy(
+                isDownloading = false,
+                isPaused = true
+            )
+        }
+    }
+
+    fun cancelDownload(modelId: String) {
+        activeDownloadJobs.remove(modelId)?.cancel()
+        updateModel(modelId) {
+            it.copy(
+                isDownloading = false,
+                isPaused = false,
+                downloadProgressPercent = 0,
+                downloadedBytes = 0,
+                downloadStatusText = "Cancelled"
+            )
+        }
+    }
+
+    fun deleteModel(modelId: String) {
+        val model = _modelsState.value.firstOrNull { it.id == modelId } ?: return
+        val ext = formatToExtension(model.format)
+        val modelFile = File(modelsDir, "$modelId.$ext")
+        modelFile.delete()
+        updateModel(modelId) {
+            it.copy(
+                isDownloaded = false,
+                downloadProgressPercent = 0,
+                localFilePath = ""
+            )
+        }
+    }
+
+    fun setActiveModel(modelId: String) {
+        _modelsState.value = _modelsState.value.map { model ->
+            model.copy(isActive = model.id == modelId)
+        }
+    }
+
+    fun addCustomModel(
+        name: String,
+        downloadUrl: String,
+        format: ModelFormat,
+        parameterCount: String = "1.0B",
+        quantization: String = "Q4_K_M",
+        fileSizeMb: Long = 500L,
+        category: ModelCategory = ModelCategory.CHAT_REASONING
+    ): ModelSpec {
+        val model = ModelSpec(
+            id = "custom_${System.currentTimeMillis()}",
+            name = name,
+            parameterCount = parameterCount,
+            format = format,
+            quantization = quantization,
+            fileSizeBytes = fileSizeMb * 1024L * 1024L,
+            requiredRamBytes = (fileSizeMb * 1.5).toLong() * 1024L * 1024L,
+            contextLength = 2048,
+            description = "Custom user model",
+            category = category,
+            downloadUrl = downloadUrl,
+            sha256Checksum = "",
+            isDownloaded = false,
+            isActive = false
+        )
+        _modelsState.value = _modelsState.value + model
+        return model
+    }
+
+    fun verifyModelChecksum(modelId: String, onResult: (Boolean, String) -> Unit) {
+        scope.launch {
+            try {
+                val model = _modelsState.value.firstOrNull { it.id == modelId } ?: return@launch
+                val ext = formatToExtension(model.format)
+                val modelFile = File(modelsDir, "$modelId.$ext")
+                
+                if (!modelFile.exists()) {
+                    onResult(false, "Model file not found")
+                    return@launch
+                }
+                
+                val digest = MessageDigest.getInstance("SHA-256")
+                val bytes = modelFile.readBytes()
+                val hash = digest.digest(bytes).joinToString("") { "%02x".format(it) }
+                val isValid = hash.equals(model.sha256Checksum, ignoreCase = true)
+                onResult(isValid, if (isValid) "Checksum valid" else "Checksum mismatch")
+            } catch (e: Exception) {
+                onResult(false, e.message ?: "Error verifying checksum")
+            }
+        }
+    }
+
+    val importProgressState: StateFlow<ModelImportProgress> = MutableStateFlow(
+        ModelImportProgress(isImporting = false, progress = 0)
+    ).asStateFlow()
+
+    fun dismissImportProgress() {
+        // Implementation for dismissing progress
+    }
