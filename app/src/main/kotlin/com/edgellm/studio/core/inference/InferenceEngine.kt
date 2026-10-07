@@ -35,7 +35,7 @@ sealed class StreamEvent {
 
 sealed class EngineResult<out T> {
     data class Success<T>(val value: T) : EngineResult<T>()
-    data class Failure(val error: String) : EngineResult<T>()
+    data class Failure<T>(val error: String) : EngineResult<T>
 }
 
 interface InferenceEngine : Closeable {
