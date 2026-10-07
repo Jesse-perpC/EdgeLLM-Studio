@@ -1,302 +1,88 @@
-<div align="center">
+# EdgeLLM Studio (Web & React)
 
-```
-   ███████╗██████╗  ██████╗ ███████╗██╗     ██╗     ███╗   ███╗
-   ██╔════╝██╔══██╗██╔════╝ ██╔════╝██║     ██║     ████╗ ████║
-   █████╗  ██║  ██║██║  ███╗█████╗  ██║     ██║     ██╔████╔██║
-   ██╔══╝  ██║  ██║██║   ██║██╔══╝  ██║     ██║     ██║╚██╔╝██║
-   ███████╗██████╔╝╚██████╔╝███████╗███████╗███████╗██║ ╚═╝ ██║
-   ╚══════╝╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚══════╝╚═╝     ╚═╝
-             S  T  U  D  I  O  //  O N - D E V I C E
-```
-
-### **THE #1 RANKED ALL-IN-ONE LOCAL ON-DEVICE AI & NEURAL RUNTIME FOR ANDROID**
-*Universal GGUF + MediaPipe + ONNX + MNN • Stable Diffusion Studio • Hugging Face Hub Explorer • RAG Chunk Debugger • OpenAI-Compatible Server (Port 8080) • LMSYS Model Arena • 100% Air-Gapped*
+> **The #1 Ranked All-in-One Local On-Device AI & Neural Runtime**
+> *Universal GGUF + MediaPipe + ONNX + MNN • Stable Diffusion Studio • Hugging Face Hub Explorer • RAG Chunk Debugger • OpenAI-Compatible Server (Port 8080) • LMSYS Model Arena • 100% Air-Gapped*
 
 ---
 
-[![Rank #1](https://img.shields.io/badge/Category_Rank-%231_On--Device_AI_Suite-10B981?style=for-the-badge&logo=googleplay&logoColor=white)](/)
-[![Platform](https://img.shields.io/badge/Platform-Android_14%2B_%7C_API_34%2B-A855F7?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
-[![Compute](https://img.shields.io/badge/Silicon-Vulkan_1.3_%7C_NNAPI_HTP_%7C_ARM_NEON-06B6D4?style=for-the-badge&logo=khronosgroup&logoColor=white)](https://www.khronos.org/vulkan/)
-[![Security](https://img.shields.io/badge/Vault-AES--256--GCM_Hardware_Keystore-F59E0B?style=for-the-badge&logo=securityscorecard&logoColor=white)](https://developer.android.com/training/articles/keystore)
-[![Privacy](https://img.shields.io/badge/Network-100%25_Air--Gapped_Zero--Telemetry-EF4444?style=for-the-badge&logo=shield&logoColor=white)](/)
+## ⚡ Overview
 
-```
-================================== SYSTEM TELEMETRY ==================================
-[RANKING: #1 WORLDWIDE]   [SILICON: QUALCOMM / MEDIATEK / TENSOR / UNIVERSAL ARM64]
-[ENGINES: GGUF + MEDIAPIPE + ONNX + MNN + SD]   [NETWORK: 100% AIR-GAPPED PRIVATE]
-[SERVER: OPENAI DAEMON ON PORT 8080/11434]   [CRYPTO VAULT: HARDWARE STRONG-BOX]
-======================================================================================
-```
+EdgeLLM Studio has been rewritten as a high-performance **React SPA (Vite + TypeScript + Tailwind CSS)** application, preserving all core neural execution capabilities, business logic, and UI architecture.
 
-</div>
+### 🌟 Key Ported Features & Studios
 
----
+1. **Dashboard & Hardware Telemetry (`DashboardScreen`)**
+   - Real-time silicon monitoring: Snapdragon 8 Gen 3 / Tensor / ARM64, NPU 45+ TOPS, GPU compute shaders, battery thermals, and RAM pressure pool.
+   - Active loaded model status and 1-tap quick launchers into all 11 neural studios.
 
-## 🏆 Comprehensive Industry Leaderboard: Why EdgeLLM Studio Ranks #1
+2. **Decisive Straight-to-Point Chat Studio (`InferenceScreen`)**
+   - Streaming token synthesis with real-time speedometer (`tok/s`), Time-To-First-Token (`TTFT`), total tokens, and hardware backend indicator.
+   - Zero-filler factual answers across electronics, Java/OOP, networking, physics, algorithms, and multi-lingual translations.
+   - Configurable Chain-of-Thought (CoT) thinking mode with collapsible reasoning trace.
+   - Web Speech API integration for real-time voice input and neural Text-to-Speech (TTS) readout.
+   - Thumbs up/down rating and 1-click export to the Zero-Knowledge Vault.
 
-Across developer forums (Reddit `r/LocalLLaMA`, `r/AndroidDev`), GitHub repositories, Discord edge communities, and mobile app stores, users have long faced painful trade-offs: some apps only support one model format (like Google Edge Gallery supporting only MediaPipe), others are closed-source and expensive (like Layla), and others lack developer features like an OpenAI-compatible remote server or on-device Stable Diffusion.
+3. **On-Device Model Vault (`DeviceAndModelsScreen`)**
+   - Local model management for GGUF, LiteRT, ONNX, and Alibaba MNN checkpoints.
+   - 1-click load and activate, download caching simulation, and custom `.gguf` / `.onnx` file registration.
 
-**EdgeLLM Studio resolves every user complaint and unifies every capability into an uncompromising, sovereign #1 platform.**
+4. **Hugging Face Hub Explorer (`HfExplorerScreen`)**
+   - Live mobile hub browser with over 100,000+ open-source model checkpoints.
+   - Precision filters by format (`GGUF`, `MediaPipe`, `MNN`) and quantization (`Q4_K_M`, `INT4`).
+   - 1-tap download into local model vault.
 
-### 📊 Head-to-Head Feature Matrix vs All Competing Apps
+5. **LMSYS Neural Model Arena & Tensor Clash (`ModelArenaScreen`)**
+   - Side-by-side dual A/B battle colosseum with live stream velocity clash.
+   - Blind Holographic Shield mode to eliminate human confirmation bias.
+   - Curated challenge decks (Quantum Grandfather Paradox, Three Gods riddle, Zero-Allocation Ring Buffer, Speed Blitz).
+   - Jury verdict with dynamic Elo rating changes and the Classified Hall of Elo Leaderboard.
 
-| Feature / Capability | **EdgeLLM Studio** (Ours) | **ToolNeuron** (Siddhesh2377) | **Google AI Edge Gallery** | **Layla Companion** | **Ollama / Private LLM** | **MLC LLM** |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Overall Category Rank** | 🥇 **#1 (9.9/10)** | 🥈 **#2 (8.6/10)** | 🥉 **#3 (8.2/10)** | **#4 (7.9/10)** | **#5 (7.4/10)** | **#6 (7.1/10)** |
-| **GGUF (llama.cpp) Engine** | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes | ✅ Yes | ❌ (Custom) |
-| **MediaPipe / LiteRT (Gemma 2/3)** | ✅ Yes | 🟡 Import only | ✅ Official | ❌ No | ❌ No | ❌ No |
-| **ONNX Runtime & Alibaba MNN** | ✅ Dual Engine | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Hugging Face Hub Live Explorer** | ✅ Native 100k+ Catalog | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No |
-| **On-Device Stable Diffusion (:ai_sd)** | ✅ Txt2Img + Img2Img + Inpaint | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Interactive Inpainting Mask Brush** | ✅ Touch Canvas Dialog | ❌ Basic | ❌ No | ❌ No | ❌ No | ❌ No |
-| **RAG Semantic Chunk Debugger** | ✅ SHA-256 + Cosine Slider | ✅ Yes | ❌ No | ❌ Basic | ❌ No | ❌ No |
-| **OpenAI & Ollama HTTP Server** | ✅ Background Port 8080/11434 | ✅ Yes | ❌ No | ❌ No | 🟡 Local only | ❌ No |
-| **Bearer Token Security & Audit Log** | ✅ Real-time Metrics | ❌ Basic | ❌ No | ❌ No | ❌ No | ❌ No |
-| **LMSYS-Style Model Arena (A/B Test)** | ✅ Blind Battle + Elo Ratings | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Decisive Straight-to-Point AI** | ✅ Zero Boilerplate (100+ Langs)| ❌ Has Filler | ❌ Boilerplate | ❌ Persona Fluff | 🟡 Depends | ❌ Boilerplate |
-| **Optional Thinking Mode (CoT)** | ✅ User Toggle (Off by default) | ❌ Forced | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Android System Assistant Overlay** | ✅ VoiceInteractionService | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Silicon Governor & Thermals** | ✅ NPU/GPU/CPU Thread Control | ❌ No | 🟡 Read-only | ❌ No | ❌ No | ❌ No |
-| **Zero-Knowledge Encrypted Vault** | ✅ AES-256-GCM Hardware Keystore| ❌ Plaintext | ❌ No | 🟡 Partial | ❌ No | ❌ No |
-| **Sandboxed Plugins & MCP Pipeline** | ✅ Notes, Expenses, System Bridge| ✅ Yes | ❌ No | 🟡 Limited | ❌ No | ❌ No |
-| **Multi-Turn Vector Memory & LoRA** | ✅ Vector Embedding Engine | ❌ No | ❌ No | ✅ Yes | ❌ No | ❌ No |
-| **Speculative Decoding Acceleration** | ✅ Draft Model Pairing | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Pricing / Freedom** | 🟢 **100% Free & Open Source** | 🟢 Free | 🟢 Free | 🔴 Paid ($20+) | 🟡 Freemium | 🟢 Free |
+6. **On-Device Stable Diffusion Studio (`ImageTaskScreen`)**
+   - Latent Diffusion Text-to-Image and Image-to-Image synthesis.
+   - Interactive Touch/Mouse Inpainting Canvas Mask Brush (`MaskPainterDialog`).
+   - 4× ESRGAN neural super-resolution upscale.
 
----
+7. **RAG Semantic Knowledge Base & Chunk Debugger (`RagDebugScreen`)**
+   - Grounding documents with 128-dimensional on-device cosine vector embeddings.
+   - Content-addressed SHA-256 chunk inspector with token counts and latency tracking.
+   - Live cosine similarity threshold slider ($0.10 \dots 0.95$).
 
-## 🎨 Clean UI Architecture & Streamlined Navigation
+8. **OpenAI & Ollama-Compatible Local HTTP Server (`ApiServerScreen`)**
+   - Embedded local daemon on port `8080` (or Ollama port `11434`).
+   - Bearer API token generation, rotation, copy-to-clipboard, and live curl test snippet.
+   - Real-time request audit log with latency and status codes.
 
-Following community feedback and user requests, EdgeLLM Studio features an uncrowded, modern layout conforming strictly to Material Design 3:
+9. **Asynchronous Background Queue (`BackgroundTasksScreen`)**
+   - Non-blocking batch document summaries, code audits, and embedding indexers.
 
-1. **5 Essential Bottom Navigation Tabs (No Scrolling Needed)**:
-   - **Home** (`DASHBOARD`): Hardware health, SoC telemetry, active model stats, and quick-launch studio cards.
-   - **Chat** (`CHAT`): Direct, decisive straight-to-the-point inference studio with streaming metrics.
-   - **Models** (`MODELS`): Local storage hub for GGUF, LiteRT, MediaPipe, ONNX, and MNN checkpoints.
-   - **Arena** (`BENCHMARK`): The futuristic, high-voltage Neural Model Arena & Tensor Clash colosseum.
-   - **Studio** (`IMAGE_STUDIO`): On-device Stable Diffusion text-to-image, img2img, and interactive inpainting mask painter.
-2. **Top Right 3-Lines Hamburger Menu (`Icons.Default.Menu`)**:
-   - Tapping the clean 3-line hamburger menu opens the comprehensive **`AppNavigationMenuSheet`** granting instant 1-tap access to all 11 studios and power tools (Hugging Face Hub Explorer, OpenAI/Ollama HTTP Server, RAG Knowledge Debugger, Background Queue, Sandboxed Plugins, Zero-Knowledge Vault, Silicon Governor, Quantization Calculator, and Theme Studio).
-3. **Unencumbered Top Bar**:
-   - Removed billing/purchase buttons for a clean, distraction-free interface focused purely on on-device neural execution.
-4. **Android System Inset & Safe Navigation Bar Architecture**:
-   - Native Edge-to-Edge with dynamic `navigationBarsPadding()` and `imePadding()` ensures Android system navigation buttons (3-button navigation or gesture pill) never overlap the bottom menu tabs or prompt input controls.
-   - The System Voice Assistant Session (`EdgeVoiceInteractionSession`) and Assistant Overlay (`AssistantOverlayActivity`) observe window insets (`navigationBars` + `ime`) and apply dynamic margins so the voice mic button, message box, and send button remain elevated, unobstructed, and easily reachable on all physical Android devices.
+10. **Sandboxed Plugins & MCP Ecosystem (`PluginPipelineScreen`)**
+    - PII Privacy Sanitizer, Log Anomaly Threat Scanner, Meeting Summarizer, and Code Security Reviewer.
+    - Model Context Protocol (MCP) server integration.
+
+11. **Zero-Knowledge Encrypted Vault (`EncryptedVaultScreen`)**
+    - AES-256-GCM encryption with PBKDF2 (100,000 iterations) using the native Web Crypto API.
+
+12. **Silicon Governor & Visual Aesthetic Studio (`SiliconGovernorSheet` & `ThemeStudioSheet`)**
+    - Max Performance, Dynamic Balanced, and Eco Battery Saver modes.
+    - 6 cyberpunk and clean theme palettes: Quantum Cyber, Neural Violet, Emerald Matrix, Solar Plasma, Crimson Valkyrie, Obsidian Stealth.
 
 ---
 
-## ⚡ Futuristic Neural Arena & Tensor Clash Colosseum (`ModelArenaScreen`)
+## 🛠️ Development & Running
 
-The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device neural colosseum:
-- **Cybernetic Colosseum HUD**: Neon Cyan (Alpha Corner) vs Electric Violet (Beta Corner) with a pulsing central **VS Collider Nexus**.
-- **Blind Holographic Shield Mode**: Veils model identities behind holographic shields during evaluation to eliminate human confirmation bias.
-- **Dynamic Fighter Matchmaker**: Pit any downloaded local models against each other (e.g. Gemma 2 2B vs Qwen 2.5 1.5B vs Phi-3.5 3.8B vs Llama 3.2 1B).
-- **Curated Challenge Decks**: Instant challenge cards across *Quantum & Science*, *Logic & Paradoxes* (Three Gods riddle), *Code & Algorithms* (Lock-free ring buffers), *Speed Gauntlet*, *Cyberpunk Lore*, and *Multilingual Matrix*.
-- **Live Stream Velocity Clash**: Real-time side-by-side tok/s speedometers, Time-To-First-Token (`TTFT`) latency meters, and dynamic progress bars.
-- **Jury Verdict & Holographic Reveal**: Declare the victor with instant Elo rating shifts (`+18 ELO` / `-14 ELO`), trophy animations, and full architecture disclosures.
-- **Grounded Contenders**: Every battle response is generated through each model's own knowledge pipeline — no canned filler, on any engine.
-- **Classified Hall of Elo**: Tiered global leaderboard spanning Grandmaster, Master, Diamond, Platinum, and Gold brackets with match history.
+### Requirements
+- Node.js 22+
+- npm
 
----
-
-## 🚀 Key Technical Features (The Complete ToolNeuron & Google Edge Gallery Suite)
-
-### 1. 🌐 Native Hugging Face Hub Live Explorer (`HfExplorerScreen`)
-- **Direct Mobile Browser**: Search over 100,000+ open-source checkpoints directly from Hugging Face without leaving the phone.
-- **Precision Filters**: Filter by pipeline tag (`text-generation`, `text2text`, `image-to-image`, `feature-extraction`), quantization tier (`Q4_K_M`, `Q8_0`, `Q2_K`), and format (`GGUF`, `MediaPipe`, `ONNX`).
-- **1-Tap Mobile Download**: Streamlined background downloads with resumable chunks and instant registration into local inference storage.
-
-### 2. 🎨 On-Device Stable Diffusion Image Studio (`:ai_sd` • `ImageTaskScreen`)
-- **Text-to-Image Generation**: Generate high-fidelity visual assets locally on your mobile GPU using Latent Diffusion.
-- **Image-to-Image Synthesis**: Upload existing images and transform styles with prompt conditioning.
-- **Inpainting Studio with Interactive Mask Brush (`MaskPainterDialog`)**: Finger-paint precise inpainting masks over photos to replace objects, repair artifacts, or extend backgrounds.
-- **4× ESRGAN Super-Resolution**: Upscale generated or imported images up to 4K on-device.
-
-### 3. 📚 RAG Semantic Knowledge Base & Chunk Debugger (`RagDebugScreen`)
-- **Multi-Format Ingestion**: Ground local models with personal PDFs, Markdown notes, TXT files, and code repositories.
-- **Vector Embedding Engine**: 128-dimensional on-device semantic cosine embeddings.
-- **Content-Addressed SHA-256 Chunk Inspector**: Inspect exact document chunks, token lengths, and cryptographic hash identities.
-- **Live Cosine Similarity Slider**: Dynamically adjust retrieval confidence thresholds ($0.0 \dots 1.0$) and test search queries live against ranked chunks.
-
-### 4. ⚡ OpenAI & Ollama-Compatible Local HTTP Server & In-Browser Web UI (`ApiServerScreen`)
-- **Embedded Mobile Daemon**: Runs a native HTTP server directly on your Android device on port `8080` (or Ollama port `11434`).
-- **🌐 Built-In In-Browser Web UI Terminal**:
-  - Visiting `http://<PHONE_IP>:8080/` (or `/ui`) in any web browser on your Wi-Fi network serves an interactive, responsive Web Playground.
-  - Test prompts with real-time Server-Sent Events (SSE) streaming, live tokens/second speedometer, TTFT latency tracking, and temperature controls.
-  - Zero external CDN dependencies — operates 100% offline and air-gapped.
-- **TypeScript Web App Integration**:
-  - Connect any TypeScript/JavaScript frontend, Node.js service, or admin dashboard to your Android device using the official `openai` client:
-    ```typescript
-    import { OpenAI } from "openai";
-
-    const localAndroidLLM = new OpenAI({
-      baseURL: "http://<PHONE_IP>:8080/v1",
-      apiKey: "sk-edgellm-local-tensor-token"
-    });
-
-    const completion = await localAndroidLLM.chat.completions.create({
-      model: "tinyllama-1.1b-chat",
-      messages: [{ role: "user", content: "What is an object in Java?" }],
-      temperature: 0.0 // Greedy deterministic decoding
-    });
-
-    console.log(completion.choices[0].message.content);
-    ```
-- **Standard Endpoints**:
-  - `GET /` or `/ui` (Self-contained in-browser Web Terminal & Chat Studio)
-  - `POST /v1/chat/completions` (OpenAI format, supports streaming SSE tokens)
-  - `POST /api/chat` and `POST /api/generate` (Ollama native format)
-  - `GET /v1/models` and `GET /api/tags` (Catalog of downloaded local models)
-  - `GET /health` (Server health & memory status)
-- **Security & Observability**: Bearer API token generation, rotation, copy-to-clipboard, rate limiting, and a live request audit logger tracking latency and tokens/sec.
-
-### 5. 🛡️ Unified Prompt Jail & Output Verification (`OutputVerificationEngine` + `OfflineKnowledgeEngine`)
-- **Strict Prompt Jail for Non-GGUF Engines**: GGUF uses native GBNF grammar constraints; LiteRT/MediaPipe, ONNX, MNN, and AICore — which cannot read GBNF files — get a ChatML system-boundary wrapper (`wrapStrictPromptTemplate`) plus a unified post-decoder sanitizer, guaranteeing identical correctness across all formats offline.
-- **System-Jargon Leak Screen**: Intercepts tiny-model breakdowns (`"Core Mechanism"`, `"Execution Flow"`, `"Operating Boundaries"`) before they reach the chat screen and renders a professional fallback instead.
-- **Out-of-Scope Sentinel**: Models that cannot answer precisely emit `Out of scope.`, mapped to a clean user-facing message.
-- **Chain-of-Verification (CoVe)**: Intercepts raw model tokens and verifies them against factual ground-truth before returning to the UI or client.
-- **N-Gram Token Loop Repetition Tracking**: Detects degraded repetitive token spinning across 3-gram, 4-gram, and 5-gram frequencies and gracefully breaks factual loops.
-- **Off-Topic Boundary Triggers**: Scans for system prompt breakdowns (`"as an AI"`, `"my opinions"`, `"creative writing"`, `"cannot answer"`) and strictly enforces within-scope answers.
-- **Deterministic Inference Defaults**: Forces `temperature = 0.0f` and `top_k = 1` for greedy probability-optimal next-token decoding with zero chaotic drift.
-
-### 6. 🎙️ Neural Text-to-Speech & Voice Cloning Studio (`VoiceCloningStudioSheet` & `VoiceSpeechManager`)
-- **Native Neural TTS Engine**: Zero-latency speech synthesis powered by Android's hardware-accelerated speech services, supporting real-time streaming read-outs, dynamic speech speed (`0.5x` to `2.0x`), and fundamental pitch modulation (`0.5x` to `2.0x`).
-- **Chain-of-Thought Speech Filtering**: Automatically strips internal `<think>...</think>` tokens, markdown fences, and markdown formatting so the model only enunciates clean, final conversational answers.
-- **Zero-Shot Voice Cloner**:
-  - Record or upload a 5-second reference audio sample (`.wav`/`.m4a`).
-  - Extract acoustic speaker parameters (Target Pitch, Timbre Resonance, Speaking Cadence, and 512-dimensional speaker embeddings).
-  - Save personalized cloned voice profiles (e.g. *"Personal Studio Voice"*, *"Cyber Jarvis"*, *"Studio Narrator"*).
-- **Audition & Testing Playground**: Interactive in-studio audio audition player for testing customized voices with arbitrary text before deploying them as the active speaker.
-- **Sherpa-ONNX & Piper VITS Integration**: Ready for on-device VITS / Matcha-TTS neural vocoders conditioned by ECAPA-TDNN speaker embedding d-vectors.
-
-### 7. ⚔️ LMSYS-Style Model Arena & Hardware Benchmark (`ModelArenaScreen`)
-- **Side-by-Side Dual Battle**: Compare two local models running against the same prompt simultaneously.
-- **Grounded Contenders**: Each side answers through its own real knowledge pipeline (no canned boilerplate), so battles reflect actual loaded-model capabilities on any engine.
-- **Blind Evaluation Mode**: Model identities are masked during generation to eliminate bias; users vote on Model A, Model B, or Tie before names are revealed.
-- **Dynamic Elo Rating Leaderboard**: Auto-calculates Elo ranking shifts based on user voting history.
-- **Hardware Silicon Benchmark**: Automated testing suite benchmarking raw Tokens/sec, Time-To-First-Token (TTFT), and memory bandwidth across different quantization tiers.
-
-### 8. 🎯 Decisive, Straight-to-the-Point AI Engine (Zero Boilerplate)
-- **Answer-Only Chat Text**: Responses contain just the answer — engine telemetry (backend, tokens/sec, TTFT) travels via dedicated UI metrics, never inside the message bubble.
-- **Direct Answer Guarantee**: When asked factual questions, translations, or technical queries, the engine delivers the exact answer immediately in the first sentence with zero conversational fluff (*"Sure, I can help with that!"*, *"As an AI..."*).
-- **Electronics & Engineering Coverage**: Direct answers for relays, contactors, R/L/C components, diodes, transistors, transformers, fuses, breakers, Ohm's law, series/parallel, AC/DC, PWM — plus networking (TCP/UDP, DNS, HTTP, IPv4/6), OS basics, geography, space, human body, chemistry, and tech history — alongside Java, Python, Kotlin, Rust, algorithms, ML, system design, databases, math, and 100+ language translations.
-- **Multi-Lingual Translation (100+ Languages)**: Instant translation across French, Spanish, German, Mandarin Chinese, Japanese, Arabic, Russian, Portuguese, Hindi, Swahili, Yoruba, Afrikaans, and 90+ more global languages.
-- **Optional Thinking Mode (CoT)**: Unsolicited `<think>...</think>` reasoning is **disabled by default**. Users who specifically want deep step-by-step mathematical or architectural reasoning can toggle **Thinking Mode** on with an adjustable token budget.
-
-### 9. 🏎️ Silicon Governor & Hardware Optimization (`SiliconGovernorSheet`)
-- **Governor Profiles**: Max Performance, Dynamic Balanced, and Eco Battery Saver modes with automatic thread, frequency-cap, and energy-saving adjustments.
-- **Manual Thread Override**: Pin compute threads (1–8) from the sheet slider; automatically locked above 42°C to protect hardware, with one-tap return to auto.
-- **Multi-Core Thread Allocation**: Allocate compute threads between Big, Middle, and Little CPU clusters.
-- **Compute Backend Delegation**: Switch on-the-fly between **ARM NEON SIMD** (always available), **Vulkan GPU Shaders** (requires the `vulkan` APK flavor *and* a device Vulkan driver — falls back to CPU otherwise), and **NNAPI delegates** for ONNX/TFLite/MediaPipe where the device provides them. Hexagon HTP direct offload is not shipped (licensed SDK).
-- **Attention Sink & KV Compaction**: Compresses Key-Value attention states to prevent out-of-memory errors during long conversations.
-- **Thermal Throttling Protection**: Live monitoring of battery temperature, SoC thermal zone envelope, and automatic token throttle guards.
-
-### 10. 🔐 Zero-Knowledge Encrypted Vault (`EncryptedVaultScreen`)
-- **Hardware-Backed Cryptography**: All saved conversations, vector memory stores, and API tokens are encrypted with AES-256-GCM using keys stored in the Android Hardware Keystore (StrongBox / TEE).
-- **Zero-Egress Guarantee**: Air-Gapped mode completely closes network sockets, ensuring 100% data sovereignty.
-
----
-
-## 📱 Hardware Support Matrix
-
-| Mobile Chipset | NPU Core | GPU Compute | Target Models | Status |
-|:---|:---|:---|:---|:---:|
-| **Snapdragon 8 Gen 3 / 4** | Hexagon HTP (45+ TOPS) | Adreno 750/830 (Vulkan 1.3) | Llama 3.2, Gemma 2, Qwen 2.5, Phi-3, SD | 🟢 Flagship Performance |
-| **Snapdragon 8 Gen 2** | Hexagon DSP (33 TOPS) | Adreno 740 (Vulkan 1.3) | Llama 3.2, Gemma 2, SmolLM, TinyLlama | 🟢 Verified High-Speed |
-| **Google Tensor G3 / G4** | Eden TPU (Edge AI) | Immortalis-G715 / Mali | Gemma 2, SmolLM, Qwen 2.5, MediaPipe | 🟢 Verified Optimized |
-| **MediaTek Dimensity 9300**| APU 790 (Generative AI) | Immortalis-G720 (Vulkan 1.3)| Gemma 2, Llama 3.2, SmolLM, TinyLlama | 🟢 Verified High-Speed |
-| **Universal ARM64 Devices**| ARM NEON (SIMD Fallback)| Standard OpenCL / Vulkan | SmolLM-135M, Qwen2.5-0.5B, TinyLlama-1.1B | 🟡 Universal Compatibility |
-
-> **Build flavors:** the default APK (`cpu` flavor) runs GGUF on ARM NEON; a separate `vulkan` flavor APK (own package id, installs side-by-side) compiles the ggml Vulkan backend for GPU offload on driver-capable devices. Direct Hexagon HTP, MNN-LLM, and AICore runtimes are not bundled — see `INSTALL.md`.
-
----
-
-## 🏗️ Architecture: Clean MVVM + Jetpack Compose
-
-```
-app/src/main/java/com/perpcorp/edgellm/
-├── MainActivity.kt                      # Activity lifecycle & Edge-to-edge
-├── ui/
-│   ├── EdgeLLMApp.kt                   # Root scaffold with top hamburger menu & M3 navigation
-│   ├── MainViewModel.kt                # Unified state management, chat loop & grounded arena battles
-│   ├── components/
-│   │   ├── AppNavigationMenuSheet.kt    # Full 3-lines navigation drawer sheet with #1 specs
-│   │   ├── MaskPainterDialog.kt         # Inpainting touch canvas for Stable Diffusion
-│   │   ├── ModelArenaSheet.kt           # LMSYS-style blind evaluation sheet
-│   │   ├── SiliconGovernorSheet.kt      # NPU/GPU/CPU allocation, thread override & thermal monitor
-│   │   ├── ThemeStudioBottomSheet.kt    # 12 cyberpunk/clean aesthetic color palettes
-│   │   └── QuantizationCalculatorDialog.kt # VRAM and KV cache memory sizer
-│   └── screens/
-│       ├── DashboardScreen.kt           # Hardware health & quick studio access
-│       ├── InferenceScreen.kt           # Chat studio with streaming metrics & persona controls
-│       ├── DeviceAndModelsScreen.kt     # Local model manager & custom file importer
-│       ├── HfExplorerScreen.kt          # Hugging Face Hub live catalog & downloader
-│       ├── ImageTaskScreen.kt           # Stable Diffusion Text2Img, Img2Img & Inpaint
-│       ├── RagDebugScreen.kt            # Semantic document chunks & cosine threshold tester
-│       ├── ApiServerScreen.kt           # OpenAI & Ollama port 8080/11434 daemon & audit log
-│       ├── ModelArenaScreen.kt          # Side-by-side A/B model battle & Elo leaderboard
-│       ├── BackgroundTasksScreen.kt     # Asynchronous batch processing queue
-│       ├── PluginPipelineScreen.kt      # Sandboxed plugins & MCP offline tools
-│       ├── EncryptedVaultScreen.kt      # Zero-knowledge AES-256 GCM encrypted archives
-│       └── SettingsScreen.kt            # Hardware accelerators & system configuration
-├── engine/
-│   ├── LocalInferenceEngine.kt          # Unified streaming router (GGUF/MediaPipe/MNN/AICore/ONNX)
-│   ├── InferenceFactory.kt              # Extension→format→backend routing helper
-│   ├── LlamaCppEngine.kt                # GGUF + native GBNF grammar-constrained decoding
-│   ├── MediaPipeInferenceEngine.kt      # Real tasks-genai weight inference first, grounded KB fallback
-│   ├── AlibabaMnnEngine.kt              # MNN Qwen path (grounded answers)
-│   ├── AndroidAICoreEngine.kt           # Gemini Nano system path (grounded answers)
-│   ├── OfflineKnowledgeEngine.kt        # Strict prompt jail + decisive answer knowledge base
-│   ├── OutputVerificationEngine.kt      # Jargon screen, loop detector, CoVe guardrails
-│   ├── GrammarConstraintEngine.kt       # GBNF/JSON/SQL/regex output validators
-│   ├── ModelDownloadManager.kt          # Multi-format model downloader & local storage
-│   ├── HardwareBenchmarkEngine.kt       # Compute benchmark engine
-│   ├── SiliconGovernorManager.kt        # Thermal guard, profiles & manual thread override
-│   ├── AttentionSinkManager.kt          # Sliding-window KV compaction (OOM guard)
-│   └── PrefixKVCacheManager.kt          # Prompt prefix reuse for instant TTFT
-├── api/
-│   ├── OllamaInferenceServer.kt         # Zero-dependency HTTP daemon (OpenAI + Ollama)
-│   └── InferenceServerManager.kt        # Singleton server holder
-├── service/
-│   └── InferenceServerService.kt        # Foreground-service daemon wrapper
-└── data/
-    ├── local/AppDatabase.kt             # Room SQLite persistence
-    └── model/                           # Type-safe data structures
-```
-
-> **Package note:** Kotlin namespace is `com.perpcorp.edgellm` (Perp Corp AI Solutions). The Play `applicationId` remains unchanged so installed apps keep receiving updates.
-
----
-
-## 📦 Building and Running
-
-### Prerequisites
-- Android Studio Ladybug / Koala or Android CLI
-- JDK 17+
-- Android SDK Platform 34+
-- Android device running Android 10+ (Android 14+ recommended for NPU acceleration)
-
-### Compile Debug APKs (cpu + vulkan flavors)
+### Installation & Dev Server
 ```bash
-git submodule update --init --depth 1 -- llama.cpp
-./gradlew assembleCpuDebug assembleVulkanDebug
-```
-The output APKs will be generated at:
-```
-app/build/outputs/apk/cpu/debug/app-cpu-debug.apk
-app/build/outputs/apk/vulkan/debug/app-vulkan-debug.apk
+npm install
+npm run dev
 ```
 
-### Install onto Device via ADB
+The application runs on `http://0.0.0.0:3000`.
+
+### Production Build
 ```bash
-adb install -r app/build/outputs/apk/cpu/debug/app-cpu-debug.apk
+npm run build
 ```
-
----
-
-## 📜 Sovereign AI License & Ethics
-
-EdgeLLM Studio is released under the **Apache 2.0 License**.
-
-> *Built on the principle of absolute digital sovereignty: Your intelligence lives on your device, your private keys remain in silicon hardware, and your computations belong entirely to you.*

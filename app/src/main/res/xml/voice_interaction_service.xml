@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:sessionService="com.perpcorp.edgellm.assistant.EdgeVoiceInteractionSessionService"
-    android:recognitionService="com.perpcorp.edgellm.assistant.EdgeRecognitionService"
-    android:settingsActivity="com.perpcorp.edgellm.MainActivity"
-    android:supportsAssist="true"
-    android:supportsLocalInteraction="true" />
