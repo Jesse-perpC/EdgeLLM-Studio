@@ -2,13 +2,10 @@ name: Build EdgeLLM Android APK & Release Package
 
 on:
   push:
-    branches:
-      - '**'
-    tags:
-      - 'v*'
+    branches: ['**']
+    tags: ['v*']
   pull_request:
-    branches:
-      - '**'
+    branches: ['**']
   workflow_dispatch:
     inputs:
       create_release:
@@ -31,6 +28,7 @@ jobs:
     timeout-minutes: 90
 
     env:
+      # Allow debug-signed release artifacts when no upload keystore is present
       ALLOW_DEBUG_SIGNED_RELEASE: "true"
       GRADLE_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8 -Dorg.gradle.daemon=false"
       BUILD_NUMBER: ${{ github.run_number }}
@@ -42,17 +40,14 @@ jobs:
         with:
           lfs: true
           fetch-depth: 0
-
-      - name: Initialize llama.cpp submodule
-        shell: bash
-        run: |
-          git submodule update --init --recursive --depth 1 || true
+          submodules: recursive   # better than manual shallow init
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
+          cache: gradle
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -61,12 +56,18 @@ jobs:
           cache-read-only: false
 
       - name: Setup Android SDK, NDK and CMake
+        uses: android-actions/setup-android@v3
+        # Fallback manual install if the action is unavailable
+        continue-on-error: true
+
+      - name: Install Android SDK components (fallback)
         shell: bash
         run: |
           set -euo pipefail
-          echo "Accepting Android SDK licenses..."
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            echo "ANDROID_HOME not set – installing command-line tools..."
+          fi
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
-          echo "Installing Android SDK Platform 36, NDK 27 and CMake..."
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" \
             "ndk;27.3.13750724" \
@@ -78,15 +79,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          # .env for any local config the app expects
           if [ -f .env.example ]; then
             cp .env.example .env
           else
             touch .env
           fi
 
-          # Ensure settings.gradle.kts exists
+          # Ensure settings.gradle.kts exists (only create if completely missing)
           if [ ! -f settings.gradle.kts ] && [ ! -f settings.gradle ]; then
-            echo "Creating missing settings.gradle.kts..."
+            echo "Creating settings.gradle.kts..."
             echo 'pluginManagement {' > settings.gradle.kts
             echo '    repositories {' >> settings.gradle.kts
             echo '        google()' >> settings.gradle.kts
@@ -105,18 +107,21 @@ jobs:
             echo 'include(":app")' >> settings.gradle.kts
           fi
 
-          # Generate debug.keystore if not committed, ensuring release signing fallback works in CI
+          # Debug keystore fallback (only used when no real signing secrets are present)
           if [ ! -f debug.keystore ]; then
-            echo "Generating debug.keystore for CI release build signing..."
-            keytool -genkey -v -keystore debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
+            echo "Generating temporary debug.keystore for CI..."
+            keytool -genkey -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          # Ensure gradlew exists with executable permissions and LF line endings
+          # Make sure the Gradle wrapper is present and executable
           if [ ! -f ./gradlew ] || [ ! -f ./gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Generating Gradle wrapper..."
+            echo "Gradle wrapper missing – regenerating..."
             gradle wrapper --gradle-version 8.10.2 --distribution-type bin || true
           fi
           sed -i 's/\r$//' ./gradlew 2>/dev/null || true
@@ -130,46 +135,48 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake g++ libvulkan-dev spirv-headers glslc pkg-config
+          sudo apt-get install -y -qq \
+            cmake g++ libvulkan-dev spirv-headers glslc pkg-config
+
+          # Install SPIRV-Headers to a known location
           git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/SPIRV-Headers
-          cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
           sudo cmake --install /tmp/SPIRV-Headers/build
+
+          # Collect Vulkan / SPIR-V headers for the NDK build
           mkdir -p /tmp/vkinc
           cp -r /usr/include/vulkan /tmp/vkinc/ || true
           [ -d /usr/include/vk_video ] && cp -r /usr/include/vk_video /tmp/vkinc/ || true
           cp -r /usr/local/include/spirv /tmp/vkinc/ || true
 
-      - name: Build Android APKs (Release & Debug)
+      - name: Fast validation – compile Kotlin (CPU debug)
         shell: bash
         run: |
           set -euo pipefail
-          echo "Building with version ${APP_VERSION_NAME} (run #${BUILD_NUMBER})..."
+          ./gradlew :app:compileCpuDebugKotlin --no-daemon --stacktrace
 
-          sed -i 's/\r$//' ./gradlew 2>/dev/null || true
-          chmod +x ./gradlew
+      - name: Build release APKs (CPU + Vulkan)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Building with version ${APP_VERSION_NAME} (run #${BUILD_NUMBER})"
 
-          if ! ./gradlew assembleCpuRelease assembleVulkanRelease --no-daemon --stacktrace; then
-            echo "::warning::Release assembly failed, falling back to assembleCpuDebug assembleVulkanDebug"
-            ./gradlew assembleCpuDebug assembleVulkanDebug --no-daemon --stacktrace
+          # Prefer release builds; fall back to debug only if release fails
+          if ! ./gradlew assembleCpuRelease assembleVulkanRelease \
+                --no-daemon --stacktrace; then
+            echo "::warning::Release build failed – falling back to debug variants"
+            ./gradlew assembleCpuDebug assembleVulkanDebug \
+              --no-daemon --stacktrace
           fi
 
-      - name: Stage APKs with ascending version numbers
-        id: stage_apks
+      - name: Stage APKs
+        id: stage
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-apks
           VERSION_TAG="${APP_VERSION_NAME}"
-
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            RELEASE_TAG="${{ github.ref_name }}"
-            RELEASE_TITLE="EdgeLLM Studio ${{ github.ref_name }}"
-          else
-            RELEASE_TAG="v${VERSION_TAG}"
-            RELEASE_TITLE="EdgeLLM Studio v${VERSION_TAG}"
-          fi
-          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "RELEASE_TITLE=${RELEASE_TITLE}" >> "$GITHUB_OUTPUT"
 
           mapfile -t apks < <(find app/build/outputs/apk -name "*.apk" -type f 2>/dev/null || true)
 
@@ -180,10 +187,11 @@ jobs:
           fi
 
           for apk_path in "${apks[@]}"; do
+            # Extract flavor and build type from path
             flavor=$(echo "$apk_path" | awk -F'/' '{print $(NF-2)}')
             type=$(echo "$apk_path" | awk -F'/' '{print $(NF-1)}')
             target="EdgeLLM-v${VERSION_TAG}-${flavor}-${type}.apk"
-            echo "Staging -> release-apks/${target}"
+            echo "Staging → release-apks/${target}"
             cp "$apk_path" "release-apks/${target}"
           done
 
@@ -198,34 +206,34 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create GitHub Release with Ascending Version
-        if: >-
+      - name: Create GitHub Release
+        if: >
           (github.event_name == 'push' &&
             (github.ref == 'refs/heads/main' ||
              github.ref == 'refs/heads/master' ||
              startsWith(github.ref, 'refs/tags/v'))) ||
           (github.event_name == 'workflow_dispatch' &&
-            inputs.create_release != false)
+            github.event.inputs.create_release != 'false')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.stage_apks.outputs.RELEASE_TAG }}
-          name: ${{ steps.stage_apks.outputs.RELEASE_TITLE }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v1.0.{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && format('EdgeLLM Studio {0}', github.ref_name) || format('EdgeLLM Studio v1.0.{0}', github.run_number) }}
           body: |
-            ## 🚀 EdgeLLM Studio Release v1.0.${{ github.run_number }}
+            ## EdgeLLM Studio v1.0.${{ github.run_number }}
 
-            Automated build for commit `${{ github.sha }}`.
+            Automated build from `${{ github.sha }}`.
 
-            ### 📦 Included APK Packages:
-            - **ARM NEON CPU Flavor**: Compatible with all ARM64 Android devices (runs GGUF on ARM NEON SIMD).
-            - **Vulkan GPU Flavor**: Hardware-accelerated Vulkan compute shaders for Adreno / Mali GPUs.
+            ### Packages
+            - **CPU (ARM NEON)** – universal ARM64
+            - **Vulkan** – GPU-accelerated (Adreno / Mali)
 
-            ### 🔢 Version Telemetry:
-            - **Build Number**: `${{ github.run_number }}`
-            - **Version Name**: `1.0.${{ github.run_number }}`
-            - **Target Platform**: Android 14+ (API 34–36)
+            ### Version
+            - Build: `${{ github.run_number }}`
+            - Version name: `1.0.${{ github.run_number }}`
+            - Target: Android 14+ (API 34–36)
           files: release-apks/*.apk
           draft: false
-          prerelease: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
