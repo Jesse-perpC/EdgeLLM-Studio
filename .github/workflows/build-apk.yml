@@ -52,6 +52,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: '8.10.2'
           cache-read-only: false
 
       - name: Setup Android SDK, NDK and CMake
@@ -69,6 +70,29 @@ jobs:
         run: |
           if [ -f .env.example ]; then cp .env.example .env; else touch .env; fi
 
+          # Verify Gradle root configuration files exist
+          if [ ! -f settings.gradle.kts ] && [ ! -f settings.gradle ]; then
+            echo "Creating missing settings.gradle.kts..."
+            cat << 'EOF' > settings.gradle.kts
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "EdgeLLM Studio"
+include(":app")
+EOF
+          fi
+
           # Generate debug.keystore if not committed, ensuring release signing fallback works in CI
           if [ ! -f debug.keystore ]; then
             echo "Generating debug.keystore for CI release build signing..."
@@ -78,14 +102,13 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          # Ensure gradlew exists and is executable
-          if [ ! -f ./gradlew ]; then
-            echo "gradlew not found. Generating wrapper with gradle wrapper..."
-            gradle wrapper || true
+          # Ensure gradlew exists with executable permissions and LF line endings
+          if [ ! -f ./gradlew ] || [ ! -f ./gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Generating Gradle wrapper with gradle wrapper CLI..."
+            gradle wrapper --gradle-version 8.10.2 --distribution-type bin || true
           fi
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-          fi
+          sed -i 's/\r$//' ./gradlew 2>/dev/null || true
+          chmod +x ./gradlew
 
       - name: Install native Vulkan build dependencies
         shell: bash
@@ -106,23 +129,30 @@ jobs:
         run: |
           echo "Building CPU and Vulkan flavors with version 1.0.${{ github.run_number }}..."
 
-          # Resolve gradle command: prefer ./gradlew, fallback to installed gradle
+          # Sanitize line endings and execution permissions
+          sed -i 's/\r$//' ./gradlew 2>/dev/null || true
+          chmod +x ./gradlew 2>/dev/null || true
+
           if [ -x ./gradlew ]; then
             GRADLE_CMD="./gradlew"
           elif [ -f ./gradlew ]; then
             chmod +x ./gradlew
             GRADLE_CMD="./gradlew"
           elif command -v gradle >/dev/null 2>&1; then
-            echo "gradlew not found, using gradle CLI..."
+            echo "Using system gradle command directly..."
             GRADLE_CMD="gradle"
           else
-            echo "Generating wrapper..."
-            gradle wrapper
+            echo "Regenerating gradlew wrapper..."
+            gradle wrapper --gradle-version 8.10.2 || true
+            sed -i 's/\r$//' ./gradlew 2>/dev/null || true
             chmod +x ./gradlew
             GRADLE_CMD="./gradlew"
           fi
 
-          echo "Using command: $GRADLE_CMD"
+          echo "Selected Gradle launcher: $GRADLE_CMD"
+          $GRADLE_CMD --version
+
+          echo "Compiling release APK packages..."
           $GRADLE_CMD assembleCpuRelease assembleVulkanRelease --no-daemon --stacktrace || \
           $GRADLE_CMD assembleCpuDebug assembleVulkanDebug --no-daemon --stacktrace
 
