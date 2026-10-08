@@ -20,15 +20,19 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build Android APKs (CPU & Vulkan)
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+
     env:
-      CI: "false"
-      # CI-only: permit debug-signed release artifacts when upload key is absent.
       ALLOW_DEBUG_SIGNED_RELEASE: "true"
-      GRADLE_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8"
+      GRADLE_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8 -Dorg.gradle.daemon=false"
       BUILD_NUMBER: ${{ github.run_number }}
       APP_VERSION_NAME: "1.0.${{ github.run_number }}"
 
@@ -39,9 +43,10 @@ jobs:
           lfs: true
           fetch-depth: 0
 
-      - name: Initialize llama.cpp submodule (shallow)
+      - name: Initialize llama.cpp submodule
+        shell: bash
         run: |
-          git submodule update --init --depth 1 llama.cpp || true
+          git submodule update --init --recursive --depth 1 || true
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -58,39 +63,46 @@ jobs:
       - name: Setup Android SDK, NDK and CMake
         shell: bash
         run: |
+          set -euo pipefail
           echo "Accepting Android SDK licenses..."
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
-          echo "Installing Android SDK Platform 36..."
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" 2>/dev/null || true
-          echo "Installing NDK and CMake for llama-android JNI..."
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "cmake;3.22.1" 2>/dev/null || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          echo "Installing Android SDK Platform 36, NDK 27 and CMake..."
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" \
+            "ndk;27.3.13750724" \
+            "cmake;3.22.1" \
+            "build-tools;35.0.0" || true
 
-      - name: Prepare build environment & signing keystore
+      - name: Prepare build environment
         shell: bash
         run: |
-          if [ -f .env.example ]; then cp .env.example .env; else touch .env; fi
+          set -euo pipefail
 
-          # Verify Gradle root configuration files exist
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
+
+          # Ensure settings.gradle.kts exists
           if [ ! -f settings.gradle.kts ] && [ ! -f settings.gradle ]; then
             echo "Creating missing settings.gradle.kts..."
-            cat << 'EOF' > settings.gradle.kts
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-rootProject.name = "EdgeLLM Studio"
-include(":app")
-EOF
+            echo 'pluginManagement {' > settings.gradle.kts
+            echo '    repositories {' >> settings.gradle.kts
+            echo '        google()' >> settings.gradle.kts
+            echo '        mavenCentral()' >> settings.gradle.kts
+            echo '        gradlePluginPortal()' >> settings.gradle.kts
+            echo '    }' >> settings.gradle.kts
+            echo '}' >> settings.gradle.kts
+            echo 'dependencyResolutionManagement {' >> settings.gradle.kts
+            echo '    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)' >> settings.gradle.kts
+            echo '    repositories {' >> settings.gradle.kts
+            echo '        google()' >> settings.gradle.kts
+            echo '        mavenCentral()' >> settings.gradle.kts
+            echo '    }' >> settings.gradle.kts
+            echo '}' >> settings.gradle.kts
+            echo 'rootProject.name = "EdgeLLM Studio"' >> settings.gradle.kts
+            echo 'include(":app")' >> settings.gradle.kts
           fi
 
           # Generate debug.keystore if not committed, ensuring release signing fallback works in CI
@@ -104,93 +116,100 @@ EOF
 
           # Ensure gradlew exists with executable permissions and LF line endings
           if [ ! -f ./gradlew ] || [ ! -f ./gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Generating Gradle wrapper with gradle wrapper CLI..."
+            echo "Generating Gradle wrapper..."
             gradle wrapper --gradle-version 8.10.2 --distribution-type bin || true
           fi
           sed -i 's/\r$//' ./gradlew 2>/dev/null || true
           chmod +x ./gradlew
 
-      - name: Install native Vulkan build dependencies
+          echo "=== Environment ready ==="
+          ./gradlew --version
+
+      - name: Install native build dependencies (Vulkan / SPIR-V)
         shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake g++ libvulkan-dev spirv-headers glslc
+          sudo apt-get install -y -qq cmake g++ libvulkan-dev spirv-headers glslc pkg-config
           git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/SPIRV-Headers
           cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
           sudo cmake --install /tmp/SPIRV-Headers/build
-          mkdir -p /tmp/vkinc && cp -r /usr/include/vulkan /tmp/vkinc/
-          if [ -d /usr/include/vk_video ]; then
-            cp -r /usr/include/vk_video /tmp/vkinc/
-          fi
-          cp -r /usr/local/include/spirv /tmp/vkinc/
+          mkdir -p /tmp/vkinc
+          cp -r /usr/include/vulkan /tmp/vkinc/ || true
+          [ -d /usr/include/vk_video ] && cp -r /usr/include/vk_video /tmp/vkinc/ || true
+          cp -r /usr/local/include/spirv /tmp/vkinc/ || true
 
       - name: Build Android APKs (Release & Debug)
         shell: bash
         run: |
-          echo "Building CPU and Vulkan flavors with version 1.0.${{ github.run_number }}..."
+          set -euo pipefail
+          echo "Building with version ${APP_VERSION_NAME} (run #${BUILD_NUMBER})..."
 
-          # Sanitize line endings and execution permissions
           sed -i 's/\r$//' ./gradlew 2>/dev/null || true
-          chmod +x ./gradlew 2>/dev/null || true
+          chmod +x ./gradlew
 
-          if [ -x ./gradlew ]; then
-            GRADLE_CMD="./gradlew"
-          elif [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-            GRADLE_CMD="./gradlew"
-          elif command -v gradle >/dev/null 2>&1; then
-            echo "Using system gradle command directly..."
-            GRADLE_CMD="gradle"
-          else
-            echo "Regenerating gradlew wrapper..."
-            gradle wrapper --gradle-version 8.10.2 || true
-            sed -i 's/\r$//' ./gradlew 2>/dev/null || true
-            chmod +x ./gradlew
-            GRADLE_CMD="./gradlew"
+          if ! ./gradlew assembleCpuRelease assembleVulkanRelease --no-daemon --stacktrace; then
+            echo "::warning::Release assembly failed, falling back to assembleCpuDebug assembleVulkanDebug"
+            ./gradlew assembleCpuDebug assembleVulkanDebug --no-daemon --stacktrace
           fi
-
-          echo "Selected Gradle launcher: $GRADLE_CMD"
-          $GRADLE_CMD --version
-
-          echo "Compiling release APK packages..."
-          $GRADLE_CMD assembleCpuRelease assembleVulkanRelease --no-daemon --stacktrace || \
-          $GRADLE_CMD assembleCpuDebug assembleVulkanDebug --no-daemon --stacktrace
 
       - name: Stage APKs with ascending version numbers
         id: stage_apks
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p release-apks
-          VERSION_TAG="1.0.${{ github.run_number }}"
+          VERSION_TAG="${APP_VERSION_NAME}"
 
-          # Locate and copy built APKs
-          find app/build/outputs/apk -name "*.apk" -type f | while read -r apk_path; do
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RELEASE_TAG="${{ github.ref_name }}"
+            RELEASE_TITLE="EdgeLLM Studio ${{ github.ref_name }}"
+          else
+            RELEASE_TAG="v${VERSION_TAG}"
+            RELEASE_TITLE="EdgeLLM Studio v${VERSION_TAG}"
+          fi
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_TITLE=${RELEASE_TITLE}" >> "$GITHUB_OUTPUT"
+
+          mapfile -t apks < <(find app/build/outputs/apk -name "*.apk" -type f 2>/dev/null || true)
+
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::No APK files were produced"
+            find app/build -type f -name "*.apk" || true
+            exit 1
+          fi
+
+          for apk_path in "${apks[@]}"; do
             flavor=$(echo "$apk_path" | awk -F'/' '{print $(NF-2)}')
             type=$(echo "$apk_path" | awk -F'/' '{print $(NF-1)}')
-            base_name=$(basename "$apk_path")
-            target_name="EdgeLLM-v${VERSION_TAG}-${flavor}-${type}.apk"
-            echo "Staging $apk_path -> release-apks/$target_name"
-            cp "$apk_path" "release-apks/$target_name"
+            target="EdgeLLM-v${VERSION_TAG}-${flavor}-${type}.apk"
+            echo "Staging -> release-apks/${target}"
+            cp "$apk_path" "release-apks/${target}"
           done
 
-          ls -la release-apks/
-          echo "COUNT=$(find release-apks -name '*.apk' | wc -l)" >> $GITHUB_OUTPUT
+          echo "COUNT=${#apks[@]}" >> "$GITHUB_OUTPUT"
+          ls -lh release-apks/
 
-      - name: Upload APKs to GitHub Actions Artifacts
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: edgellm-apks-v1.0.${{ github.run_number }}
+          name: edgellm-apks-v${{ env.APP_VERSION_NAME }}
           path: release-apks/*.apk
           retention-days: 30
+          if-no-files-found: error
 
       - name: Create GitHub Release with Ascending Version
-        if: >
-          (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release != 'false')
+        if: >-
+          (github.event_name == 'push' &&
+            (github.ref == 'refs/heads/main' ||
+             github.ref == 'refs/heads/master' ||
+             startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'workflow_dispatch' &&
+            inputs.create_release != false)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v1.0.{0}', github.run_number) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && format('EdgeLLM Studio {0}', github.ref_name) || format('EdgeLLM Studio v1.0.{0}', github.run_number) }}
+          tag_name: ${{ steps.stage_apks.outputs.RELEASE_TAG }}
+          name: ${{ steps.stage_apks.outputs.RELEASE_TITLE }}
           body: |
             ## 🚀 EdgeLLM Studio Release v1.0.${{ github.run_number }}
 
@@ -202,7 +221,7 @@ EOF
 
             ### 🔢 Version Telemetry:
             - **Build Number**: `${{ github.run_number }}`
-            - **Version Name**: `1.0.${{ github.run_number }} `
+            - **Version Name**: `1.0.${{ github.run_number }}`
             - **Target Platform**: Android 14+ (API 34–36)
           files: release-apks/*.apk
           draft: false
