@@ -78,8 +78,13 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          if [ -f gradlew ]; then
-            chmod +x gradlew
+          # Ensure gradlew exists and is executable
+          if [ ! -f ./gradlew ]; then
+            echo "gradlew not found. Generating wrapper with gradle wrapper..."
+            gradle wrapper || true
+          fi
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
           fi
 
       - name: Install native Vulkan build dependencies
@@ -100,8 +105,26 @@ jobs:
         shell: bash
         run: |
           echo "Building CPU and Vulkan flavors with version 1.0.${{ github.run_number }}..."
-          ./gradlew assembleCpuRelease assembleVulkanRelease --no-daemon --stacktrace || \
-          ./gradlew assembleCpuDebug assembleVulkanDebug --no-daemon --stacktrace
+
+          # Resolve gradle command: prefer ./gradlew, fallback to installed gradle
+          if [ -x ./gradlew ]; then
+            GRADLE_CMD="./gradlew"
+          elif [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            GRADLE_CMD="./gradlew"
+          elif command -v gradle >/dev/null 2>&1; then
+            echo "gradlew not found, using gradle CLI..."
+            GRADLE_CMD="gradle"
+          else
+            echo "Generating wrapper..."
+            gradle wrapper
+            chmod +x ./gradlew
+            GRADLE_CMD="./gradlew"
+          fi
+
+          echo "Using command: $GRADLE_CMD"
+          $GRADLE_CMD assembleCpuRelease assembleVulkanRelease --no-daemon --stacktrace || \
+          $GRADLE_CMD assembleCpuDebug assembleVulkanDebug --no-daemon --stacktrace
 
       - name: Stage APKs with ascending version numbers
         id: stage_apks
@@ -149,7 +172,7 @@ jobs:
 
             ### 🔢 Version Telemetry:
             - **Build Number**: `${{ github.run_number }}`
-            - **Version Name**: `1.0.${{ github.run_number }}`
+            - **Version Name**: `1.0.${{ github.run_number }} `
             - **Target Platform**: Android 14+ (API 34–36)
           files: release-apks/*.apk
           draft: false
