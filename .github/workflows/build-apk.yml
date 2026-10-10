@@ -105,16 +105,23 @@ jobs:
           # 4. Make gradlew executable
           chmod +x gradlew
 
-      - name: Install Vulkan build deps (vulkan flavor only)
-        # ggml's Vulkan backend needs the loader headers, SPIRV-Headers, and
-        # glslc at CMake time. Ubuntu 24.04 provides all three without
-        # third-party repos: libvulkan-dev (loader+headers), spirv-headers,
-        # glslc (shader compiler binary). The default `cpu` flavor does not
-        # need any of this.
+- name: Install Vulkan build deps (vulkan flavor only)
+        # ggml's Vulkan backend needs the loader headers, SPIR-V headers, glslc,
+        # and the C++ Vulkan API bindings (vulkan.hpp). Ubuntu 24.04's
+        # libvulkan-dev provides the C API (vulkan.h) + ICD loader but NOT
+        # vulkan.hpp. We build vulkan-headers from source (like SPIRV-Headers)
+        # to get the C++ bindings needed for Android NDK cross-compilation.
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libvulkan-dev spirv-headers glslc cmake g++
           glslc --version
+          ls /usr/include/vulkan/vulkan.h
+          # Build vulkan-headers from source (header-only, ~1 min) to obtain
+          # the C++ API (vulkan.hpp) that Android NDK cross-compile needs.
+          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/Vulkan-Headers
+          cmake -S /tmp/Vulkan-Headers -B /tmp/Vulkan-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
+          sudo cmake --install /tmp/Vulkan-Headers/build
+          ls /usr/include/vulkan/vulkan.hpp
           ls /usr/include/vulkan/vulkan.h
           # Ubuntu's spirv-headers ships headers but no CMake package config,
           # which ggml-vulkan's find_package(SPIRV-Headers) requires. Build the
