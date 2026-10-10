@@ -49,9 +49,11 @@ jobs:
           cache: gradle
 
       - name: Setup Gradle
+        # No gradle-version pin: the wrapper (gradle-9.3.1, required by AGP
+        # 9.1.1) is the single source of truth. A stale pin here breaks the
+        # build with "Minimum supported Gradle version is 9.3.1".
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10.2'
           cache-read-only: false
 
       - name: Setup Android SDK, NDK and CMake
@@ -140,16 +142,17 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          # Ensure gradle wrapper and jar exist
+          # Ensure gradle wrapper and jar exist (wrapper pins Gradle 9.3.1,
+          # required by AGP 9.1.1 — do NOT downgrade these to 8.x).
           mkdir -p gradle/wrapper
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ] || [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
             echo "Fetching gradle-wrapper.jar..."
-            curl -sSL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.10.2/gradle/wrapper/gradle-wrapper.jar || true
+            curl -sSL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v9.3.1/gradle/wrapper/gradle-wrapper.jar || true
           fi
 
           if [ ! -f ./gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
             echo "Regenerating wrapper with gradle CLI..."
-            gradle wrapper --gradle-version 8.10.2 || true
+            gradle wrapper --gradle-version 9.3.1 || true
           fi
 
           # Strip Windows CRLF line-endings and ensure executable
