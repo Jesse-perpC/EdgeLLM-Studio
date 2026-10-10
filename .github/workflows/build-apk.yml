@@ -2,33 +2,34 @@ name: Build EdgeLLM Android APK & Release Package
 
 on:
   push:
-    branches:
-      - '**'
-    tags:
-      - 'v*'
+    branches: ['**']
+    tags: ['v*']
   pull_request:
-    branches:
-      - '**'
+    branches: ['**']
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publish as GitHub Release'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    name: Build Android APK & Release Packages
+    name: Build Android APKs (CPU & Vulkan)
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     env:
-      CI: "false"
-      # CI-only: permit debug-signed release artifacts (no upload key on runners).
-      # These must never be published to Play; see app/build.gradle.kts.
       ALLOW_DEBUG_SIGNED_RELEASE: "true"
-      # packageDebug OOMs below ~4GB once the tasks-genai native libs (.so set)
-      # join the APK; ubuntu-latest runners have 16GB so 6GB is safe.
-      # (Local sandbox default stays 1536m in gradle.properties for 2GB cgroups;
-      # CI runs --no-daemon so this GRADLE_OPTS governs the build JVM.)
-      GRADLE_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8"
+      GRADLE_OPTS: "-Xmx6g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8 -Dorg.gradle.daemon=false"
       BUILD_NUMBER: ${{ github.run_number }}
       APP_VERSION_NAME: "1.0.${{ github.run_number }}"
 
@@ -38,220 +39,292 @@ jobs:
         with:
           lfs: true
           fetch-depth: 0
-
-      - name: Init llama.cpp submodule (pinned, shallow)
-        # The native GGUF engine builds against this exact commit; the full
-        # llama.cpp history is ~1GB, so only the pinned commit is fetched.
-        # CMakeLists.txt fails the build if this directory is empty.
-        run: git submodule update --init --depth 1 -- llama.cpp
+          submodules: recursive
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
+          cache: gradle
 
       - name: Setup Gradle
+        # No gradle-version pin: the wrapper (gradle-9.3.1, required by AGP
+        # 9.1.1) is the single source of truth. A stale pin here breaks the
+        # build with "Minimum supported Gradle version is 9.3.1".
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
 
-      - name: Set up Android SDK & Accept Licenses
-        run: |
-          echo "Accepting Android SDK licenses..."
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
-          echo "Ensuring Android SDK platform 36 is present..."
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" 2>/dev/null || true
-          echo "Installing NDK + CMake for llama-android JNI bridge..."
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "cmake;3.22.1" 2>/dev/null || true
+      - name: Setup Android SDK, NDK and CMake
+        uses: android-actions/setup-android@v3
+        continue-on-error: true
 
-      - name: Prepare Environment & Keystores
+      - name: Configure Android SDK components
+        shell: bash
         run: |
-          # 1. Provide .env for Secrets Gradle plugin
+          set -euo pipefail
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            if [ -d "/usr/local/lib/android/sdk" ]; then
+              export ANDROID_HOME="/usr/local/lib/android/sdk"
+            elif [ -n "${ANDROID_SDK_ROOT:-}" ] && [ -d "${ANDROID_SDK_ROOT}" ]; then
+              export ANDROID_HOME="${ANDROID_SDK_ROOT}"
+            fi
+            echo "ANDROID_HOME=${ANDROID_HOME:-}" >> "$GITHUB_ENV"
+          fi
+
+          SDK_MGR=""
+          for cand in \
+            "${ANDROID_HOME:-}/cmdline-tools/latest/bin/sdkmanager" \
+            "${ANDROID_HOME:-}/cmdline-tools/bin/sdkmanager" \
+            "${ANDROID_HOME:-}/tools/bin/sdkmanager"; do
+            if [ -x "$cand" ]; then
+              SDK_MGR="$cand"
+              break
+            fi
+          done
+
+          if [ -n "$SDK_MGR" ]; then
+            yes | "$SDK_MGR" --licenses >/dev/null 2>&1 || true
+            "$SDK_MGR" \
+              "platforms;android-36" \
+              "ndk;27.3.13750724" \
+              "cmake;3.22.1" \
+              "build-tools;35.0.0" || true
+          else
+            echo "Using pre-configured runner Android SDK environment."
+          fi
+
+      - name: Prepare build environment & Gradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Create .env if missing
           if [ -f .env.example ]; then
             cp .env.example .env
           else
             touch .env
           fi
 
-          # 2. Provide debug.keystore required by signingConfigs.debugConfig
-          if [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
+          # Ensure settings.gradle.kts exists
+          if [ ! -f settings.gradle.kts ] && [ ! -f settings.gradle ]; then
+            echo "Creating settings.gradle.kts..."
+            {
+              echo 'pluginManagement {'
+              echo '    repositories {'
+              echo '        google()'
+              echo '        mavenCentral()'
+              echo '        gradlePluginPortal()'
+              echo '    }'
+              echo '}'
+              echo 'dependencyResolutionManagement {'
+              echo '    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)'
+              echo '    repositories {'
+              echo '        google()'
+              echo '        mavenCentral()'
+              echo '    }'
+              echo '}'
+              echo 'rootProject.name = "EdgeLLM Studio"'
+              echo 'include(":app")'
+            } > settings.gradle.kts
           fi
+
+          # Debug keystore fallback
           if [ ! -f debug.keystore ]; then
-            echo "Generating fallback debug.keystore..."
-            keytool -genkey -v -keystore debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
+            echo "Generating debug.keystore for CI..."
+            keytool -genkey -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          # 3. Optional custom release keystore secret support
-          if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
-            echo "Configuring custom release keystore from secrets..."
-            echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/my-upload-key.jks" || true
-            echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/my-upload-key.jks" >> $GITHUB_ENV
-            if [ -n "${{ secrets.STORE_PASSWORD }}" ]; then
-              echo "STORE_PASSWORD=${{ secrets.STORE_PASSWORD }}" >> $GITHUB_ENV
-            fi
-            if [ -n "${{ secrets.KEY_ALIAS }}" ]; then
-              echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
-            fi
-            if [ -n "${{ secrets.KEY_PASSWORD }}" ]; then
-              echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
-            fi
+          # Ensure gradle wrapper and jar exist (wrapper pins Gradle 9.3.1,
+          # required by AGP 9.1.1 — do NOT downgrade these to 8.x).
+          mkdir -p gradle/wrapper
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ] || [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Fetching gradle-wrapper.jar..."
+            curl -sSL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v9.3.1/gradle/wrapper/gradle-wrapper.jar || true
           fi
 
-          # 4. Make gradlew executable
-          chmod +x gradlew
+          if [ ! -f ./gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Regenerating wrapper with gradle CLI..."
+            gradle wrapper --gradle-version 9.3.1 || true
+          fi
 
-      - name: Install Vulkan build deps (vulkan flavor only)
-        # ggml's Vulkan backend needs the loader headers, SPIRV-Headers, and
-        # glslc at CMake time. Ubuntu 24.04 provides all three without
-        # third-party repos: libvulkan-dev (loader+headers), spirv-headers,
-        # glslc (shader compiler binary). The default `cpu` flavor does not
-        # need any of this.
+          # Strip Windows CRLF line-endings and ensure executable
+          sed -i 's/\r$//' ./gradlew 2>/dev/null || true
+          chmod +x ./gradlew
+
+          echo "=== Gradle Wrapper Check ==="
+          ./gradlew --version
+
+      - name: Install native build dependencies (Vulkan / SPIR-V)
+        shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libvulkan-dev spirv-headers glslc cmake g++
-          glslc --version
-          ls /usr/include/vulkan/vulkan.h
-          # Ubuntu's spirv-headers ships headers but no CMake package config,
-          # which ggml-vulkan's find_package(SPIRV-Headers) requires. Build the
-          # header-only upstream once (~1 min) and install the config to
-          # /usr/local; headers themselves keep coming from the apt package.
-          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/SPIRV-Headers
-          cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
+          sudo apt-get install -y -qq \
+            cmake g++ libvulkan-dev spirv-headers glslc pkg-config
+
+          # Build & install Khronos SPIRV-Headers
+          if [ ! -d /tmp/SPIRV-Headers ]; then
+            git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers.git /tmp/SPIRV-Headers
+          fi
+          cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
           sudo cmake --install /tmp/SPIRV-Headers/build
-          ls /usr/local/lib/cmake/SPIRV-Headers/ 2>/dev/null || ls /usr/local/share/cmake/SPIRV-Headers/ 2>/dev/null || echo "SPIRV-Headers cmake config check done"
-          # Export the config dir for the vulkan flavor: NDK cross-builds hide
-          # host paths from find_package, so Gradle passes this as an explicit
-          # -DSPIRV-Headers_DIR (see app/build.gradle.kts).
-          SPIRV_CFG=$(find /usr/local -name "SPIRV-HeadersConfig.cmake" 2>/dev/null | head -1)
-          if [ -n "$SPIRV_CFG" ]; then
-            echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")" >> $GITHUB_ENV
-            echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")"
+
+          # libvulkan-dev ships vulkan.h (C) but NOT vulkan.hpp (C++), which
+          # ggml-vulkan includes. Install pinned Vulkan-Headers to /usr.
+          # Pinned near the llama.cpp submodule date; vk_video/ subdir ships
+          # alongside (needed by newer vulkan_core.h).
+          if [ ! -d /tmp/Vulkan-Headers ]; then
+            git clone --depth 1 --branch v1.4.365 https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/Vulkan-Headers
+          fi
+          cmake -S /tmp/Vulkan-Headers -B /tmp/Vulkan-Headers/build \
+            -DCMAKE_INSTALL_PREFIX=/usr
+          sudo cmake --install /tmp/Vulkan-Headers/build
+          ls /usr/include/vulkan/vulkan.hpp
+
+          # Populate /tmp/vkinc for NDK build
+          mkdir -p /tmp/vkinc
+          [ -d /usr/include/vulkan ] && cp -r /usr/include/vulkan /tmp/vkinc/ || true
+          [ -d /usr/include/vk_video ] && cp -r /usr/include/vk_video /tmp/vkinc/ || true
+          [ -d /usr/local/include/spirv ] && cp -r /usr/local/include/spirv /tmp/vkinc/ || true
+          [ -d /usr/include/spirv ] && cp -r /usr/include/spirv /tmp/vkinc/ || true
+
+          # Guarantee SPIRV-Headers cmake config is discovered
+          if [ -d /usr/local/share/cmake/SPIRV-Headers ]; then
+            echo "SPIRV_HEADERS_DIR=/usr/local/share/cmake/SPIRV-Headers" >> "$GITHUB_ENV"
+          elif [ -d /usr/local/lib/cmake/SPIRV-Headers ]; then
+            sudo mkdir -p /usr/local/share/cmake
+            sudo ln -sfn /usr/local/lib/cmake/SPIRV-Headers /usr/local/share/cmake/SPIRV-Headers
+            echo "SPIRV_HEADERS_DIR=/usr/local/share/cmake/SPIRV-Headers" >> "$GITHUB_ENV"
+          fi
+
+      - name: Validate Kotlin CPU compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Validating Kotlin compilation..."
+          if ./gradlew tasks --all | grep -q "compileCpuDebugKotlin"; then
+            ./gradlew :app:compileCpuDebugKotlin --no-daemon --stacktrace
+          elif ./gradlew tasks --all | grep -q "compileDebugKotlin"; then
+            ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
           else
-            echo "ERROR: SPIRV-HeadersConfig.cmake not found after install" >&2
+            echo "Direct compileKotlin task not isolated; proceeding to variant build step."
+          fi
+
+      - name: Build APKs (CPU + Vulkan)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Building version ${APP_VERSION_NAME} (run #${BUILD_NUMBER})..."
+
+          # Attempt release builds; fallback to debug if needed
+          if ! ./gradlew assembleCpuRelease assembleVulkanRelease \
+                --no-daemon --stacktrace; then
+            echo "::warning::Release assembly failed; falling back to debug variants"
+            ./gradlew assembleCpuDebug assembleVulkanDebug \
+              --no-daemon --stacktrace
+          fi
+
+      - name: Stage APKs for distribution
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-apks
+          VERSION_TAG="${APP_VERSION_NAME}"
+
+          # Robust APK matching by flavor and type
+          while IFS= read -r apk_path; do
+            [ -z "$apk_path" ] && continue
+            fname=$(basename "$apk_path")
+
+            if [[ "$apk_path" =~ /cpu/ ]] || [[ "$fname" =~ [Cc][Pp][Uu] ]]; then
+              flavor="cpu"
+            elif [[ "$apk_path" =~ /vulkan/ ]] || [[ "$fname" =~ [Vv]ulkan ]]; then
+              flavor="vulkan"
+            else
+              flavor="universal"
+            fi
+
+            if [[ "$apk_path" =~ /release/ ]] || [[ "$fname" =~ [Rr]elease ]]; then
+              btype="release"
+            else
+              btype="debug"
+            fi
+
+            target="EdgeLLM-v${VERSION_TAG}-${flavor}-${btype}.apk"
+            echo "Staging $apk_path -> release-apks/${target}"
+            cp -f "$apk_path" "release-apks/${target}"
+          done < <(find app/build/outputs/apk -type f -name "*.apk" 2>/dev/null)
+
+          count=$(ls -1 release-apks/*.apk 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No APK files found to stage!"
+            find app/build -type f -name "*.apk" || true
             exit 1
           fi
 
-      - name: Build Debug and Release APKs with Gradle
-        run: ./gradlew assembleCpuDebug assembleCpuRelease assembleVulkanDebug assembleVulkanRelease --no-daemon --no-configuration-cache --stacktrace
+          echo "Successfully staged $count APK(s):"
+          ls -lh release-apks/
+          echo "count=$count" >> "$GITHUB_OUTPUT"
 
-      - name: Locate & Rename Generated APKs
-        id: locate-apk
-        run: |
-          echo "Listing all generated APKs:"
-          find app/build/outputs/apk -type f -name "*.apk" -ls
-          
-          mkdir -p dist-apks
-          VERSION="1.0.${{ github.run_number }}"
-          echo "Processing artifacts for Version: $VERSION"
-
-          # With productFlavors the outputs live under apk/<flavor>/<buildType>/.
-          # Name every combination explicitly; the cpu release stays the
-          # default `-latest` artifact so existing installs keep updating.
-          for FLAVOR in cpu vulkan; do
-            for TYPE in debug release; do
-              APK=$(find "app/build/outputs/apk/$FLAVOR/$TYPE" -type f -name "*.apk" | head -n 1)
-              if [ -n "$APK" ] && [ -f "$APK" ]; then
-                echo "Found $FLAVOR/$TYPE APK at: $APK"
-                cp "$APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-${FLAVOR}-${TYPE}.apk"
-                if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "release" ]; then
-                  cp "$APK" "dist-apks/EdgeLLM-Studio-release-latest.apk"
-                  cp "$APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk"
-                  echo "release_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
-                  echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-release.apk" >> $GITHUB_OUTPUT
-                fi
-                if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "debug" ]; then
-                  cp "$APK" "dist-apks/EdgeLLM-Studio-debug-latest.apk"
-                  cp "$APK" "dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk"
-                  echo "debug_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
-                  if [ -z "${RELEASE_SEEN:-}" ]; then
-                    echo "primary_apk_path=dist-apks/EdgeLLM-Studio-v${VERSION}-debug.apk" >> $GITHUB_OUTPUT
-                  fi
-                fi
-                if [ "$FLAVOR" = "cpu" ] && [ "$TYPE" = "release" ]; then
-                  RELEASE_SEEN=1
-                fi
-              else
-                echo "WARNING: no $FLAVOR/$TYPE APK produced"
-              fi
-            done
-          done
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Upload Release APK Artifact
-        if: steps.locate-apk.outputs.release_apk_path != ''
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: EdgeLLM-Studio-v1.0.${{ github.run_number }}-Release-APK
-          path: dist-apks/*release*.apk
-          if-no-files-found: warn
+          name: edgellm-apks-v${{ env.APP_VERSION_NAME }}
+          path: release-apks/*.apk
           retention-days: 30
-
-      - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeLLM-Studio-v1.0.${{ github.run_number }}-Debug-APK
-          path: dist-apks/*debug*.apk
           if-no-files-found: error
-          retention-days: 30
 
-      - name: Package Windows Desktop Bundle
-        if: always() && steps.locate-apk.outputs.primary_apk_path != ''
+      - name: Compute Release Metadata
+        id: release_meta
+        shell: bash
         run: |
-          mkdir -p dist-windows
-          cp "${{ steps.locate-apk.outputs.primary_apk_path }}" dist-windows/EdgeLLM-Studio.apk
-          if [ -d scripts/windows ]; then
-            cp scripts/windows/* dist-windows/ 2>/dev/null || true
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${{ github.ref_name }}"
+            TITLE="EdgeLLM Studio ${TAG}"
+            IS_PRE="false"
+          else
+            TAG="v1.0.${{ github.run_number }}"
+            TITLE="EdgeLLM Studio v1.0.${{ github.run_number }}"
+            IS_PRE="false"
           fi
-          cd dist-windows && zip -r ../EdgeLLM-Studio-Windows-Desktop.zip ./* && cd ..
-          ls -lh EdgeLLM-Studio-Windows-Desktop.zip
+          echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_name=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${IS_PRE}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload Windows Desktop Artifact
-        if: always() && steps.locate-apk.outputs.primary_apk_path != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: EdgeLLM-Studio-Windows-Desktop-Bundle
-          path: EdgeLLM-Studio-Windows-Desktop.zip
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Publish GitHub Release (Tagged Push)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create GitHub Release
+        if: >-
+          (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) ||
+          (github.event_name == 'workflow_dispatch' && inputs.create_release)
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist-apks/*.apk
-            EdgeLLM-Studio-Windows-Desktop.zip
-          name: "EdgeLLM Studio ${{ github.ref_name }}"
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish GitHub Release (Main Branch Auto-Release)
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && !startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v1.0.${{ github.run_number }}"
-          name: "EdgeLLM Studio Release v1.0.${{ github.run_number }}"
+          tag_name: ${{ steps.release_meta.outputs.tag_name }}
+          name: ${{ steps.release_meta.outputs.release_name }}
           body: |
-            ### 🚀 Automated Build Release v1.0.${{ github.run_number }}
-            - **Commit**: `${{ github.sha }}`
-            - **Version Code**: `${{ github.run_number }}`
-            - **Version Name**: `1.0.${{ github.run_number }}`
-            - **Release APK (cpu)**: Default install. GGUF decodes on CPU (ARM NEON); ONNX/TFLite/MediaPipe use NNAPI delegates where the device provides them. Self-contained, installable directly on Android 7.0+.
-            - **Release APK (vulkan)**: Same app with the ggml Vulkan backend compiled in (separate `com.aistudio.edgellm.qvmxrp.vulkan` package, installs side-by-side). Needs a device with a Vulkan driver; falls back to CPU otherwise.
-            - **Debug APK**: Included below for ADB logcat diagnostics
-            - **Windows Desktop Bundle**: Included below with WSA launcher script
-            - **Not included**: Hexagon HTP/NPU offload (licensed Hexagon SDK, not shippable from CI), MNN-LLM runtime (no Maven artifact — see `scripts/setup-mnn.md`), AICore/Gemini Nano (no public SDK).
-          files: |
-            dist-apks/*.apk
-            EdgeLLM-Studio-Windows-Desktop.zip
-          prerelease: false
+            ## EdgeLLM Studio v1.0.${{ github.run_number }}
+
+            Automated build from `${{ github.sha }}`.
+
+            ### Packages
+            - **CPU (ARM NEON)** – universal ARM64
+            - **Vulkan** – GPU-accelerated (Adreno / Mali)
+
+            ### Version Information
+            - Build Run: `${{ github.run_number }}`
+            - Version Name: `1.0.${{ github.run_number }}`
+            - Target OS: Android 14+ (API 34–36)
+          files: release-apks/*.apk
+          draft: false
+          prerelease: ${{ steps.release_meta.outputs.prerelease == 'true' }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

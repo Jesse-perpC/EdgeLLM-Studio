@@ -74,6 +74,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.ui.text.font.FontFamily
+import com.perpcorp.edgellm.ui.components.CloudHubSettingsCard
 import com.perpcorp.edgellm.ui.components.VoiceCloningStudioSheet
 import android.widget.Toast
 import android.content.Intent
@@ -851,6 +852,11 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
+
+        // Cloud Hub (opt-in third-party APIs; default off = fully local)
+        item {
+            CloudHubSettingsCard()
         }
 
         // Privacy & Security Guarantee

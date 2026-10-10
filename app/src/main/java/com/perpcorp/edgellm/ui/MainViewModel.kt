@@ -727,9 +727,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshHardware()
         recalculateMemoryBreakdown()
         startTelemetryLoop()
+        applyCloudHubDeviceDefaults()
 
         viewModelScope.launch {
             repository.seedInitialMemoriesIfEmpty()
+        }
+    }
+
+    /**
+     * First-launch seeding from PrivateLM's device tiers (RAM → default
+     * max-tokens). Runs once ever via [DeviceAutoConfig]; afterwards the
+     * user's own settings are never touched.
+     */
+    private fun applyCloudHubDeviceDefaults() {
+        try {
+            val store = com.perpcorp.edgellm.cloudhub.EncryptedCloudHubStore
+                .get(getApplication())
+            com.perpcorp.edgellm.cloudhub.DeviceAutoConfig
+                .applyOnce(getApplication(), store) { _, maxTokens ->
+                    _generationParameters.value = _generationParameters.value.copy(
+                        maxNewTokens = maxTokens,
+                    )
+                }
+        } catch (_: Exception) {
+            // Defaults stay as declared; autoconfig is best-effort.
         }
     }
 

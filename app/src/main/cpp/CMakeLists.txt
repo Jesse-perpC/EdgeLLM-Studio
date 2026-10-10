@@ -104,6 +104,20 @@ set(LLAMA_FATAL_WARNINGS       OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/llama.cpp-build")
 
 # ---------------------------------------------------------------------------
+# Android Vulkan linking (vulkan flavor only).
+#
+# ggml-vulkan unconditionally calls Vulkan 1.1 entry points
+# (vkGetPhysicalDeviceFeatures2, ...), but the NDK's API-24 libvulkan stub
+# exports Vulkan 1.0 symbols only — linking against it fails with
+# "undefined symbol". The vulkan flavor therefore sets minSdk 28 (see
+# app/build.gradle.kts), so the toolchain links the API-28 stub, which has
+# the 1.1 symbols. No CMake link surgery needed. Devices below API 28 cannot
+# install that APK flavor at all (and have no Vulkan 1.1 driver anyway); on
+# API 28+ devices without a driver, LlamaCppEngine.resolveGpuLayers falls
+# back to CPU at runtime.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # JNI bridge
 # ---------------------------------------------------------------------------
 add_library(llama-android SHARED

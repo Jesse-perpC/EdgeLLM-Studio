@@ -57,7 +57,7 @@ class InferenceServerService : Service() {
         var isServiceActive = false
             private set
 
-        fun startService(context: Context, port: Int = 11434, bindToLan: Boolean = false) {
+        fun startService(context: Context, port: Int = 11434, bindToLan: Boolean = true) {
             try {
                 val intent = Intent(context, InferenceServerService::class.java).apply {
                     action = ACTION_START_SERVER

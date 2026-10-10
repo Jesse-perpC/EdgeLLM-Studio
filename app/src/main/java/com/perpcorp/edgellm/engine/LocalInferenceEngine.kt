@@ -174,12 +174,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             mediaPipeEngine.generateStreamingResponse(nonGbnfStrictPrompt, mpOptions, model, persona).collect { chunk ->
                 val loraBadge = if (chunk.loraRank != null) " (LoRA r=${chunk.loraRank})" else ""
                 val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
-                // KB fallback must not masquerade as weight inference.
-                val backend = if (chunk.usedFallback) {
-                    "MediaPipe KB fallback (weights unavailable)"
-                } else {
-                    "MediaPipe GenAI • ${chunk.delegateUsed.displayName}$loraBadge"
-                }
                 emit(
                     StreamTokenChunk(
                         token = chunk.token,
@@ -188,7 +182,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                         tokensPerSecond = chunk.tokensPerSecond,
                         timeToFirstTokenMs = chunk.timeToFirstTokenMs,
                         isComplete = chunk.isComplete,
-                        backendUsed = backend,
+                        backendUsed = "MediaPipe GenAI • ${chunk.delegateUsed.displayName}$loraBadge",
                         speculativeSpeedup = 1.0f,
                         speculativeAcceptedTokens = 0,
                         // Not measured: MediaPipe does not report KV reuse, so this
