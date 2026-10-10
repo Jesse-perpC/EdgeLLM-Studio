@@ -175,6 +175,18 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/usr/local
           sudo cmake --install /tmp/SPIRV-Headers/build
 
+          # libvulkan-dev ships vulkan.h (C) but NOT vulkan.hpp (C++), which
+          # ggml-vulkan includes. Install pinned Vulkan-Headers to /usr.
+          # Pinned near the llama.cpp submodule date; vk_video/ subdir ships
+          # alongside (needed by newer vulkan_core.h).
+          if [ ! -d /tmp/Vulkan-Headers ]; then
+            git clone --depth 1 --branch v1.4.365 https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/Vulkan-Headers
+          fi
+          cmake -S /tmp/Vulkan-Headers -B /tmp/Vulkan-Headers/build \
+            -DCMAKE_INSTALL_PREFIX=/usr
+          sudo cmake --install /tmp/Vulkan-Headers/build
+          ls /usr/include/vulkan/vulkan.hpp
+
           # Populate /tmp/vkinc for NDK build
           mkdir -p /tmp/vkinc
           [ -d /usr/include/vulkan ] && cp -r /usr/include/vulkan /tmp/vkinc/ || true
