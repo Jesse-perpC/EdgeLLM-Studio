@@ -592,7 +592,8 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                     "  \"answer\": \"$safeAnswer\",\n" +
                     "  \"data\": {\n" +
                     "    \"type\": \"factual_response\",\n" +
-                    "    \"verified\": true\n" +
+                    "    \"verified\": false,\n" +
+                    "    \"source\": \"offline_knowledge\",\n" +
                     "  }\n" +
                     "}"
         }

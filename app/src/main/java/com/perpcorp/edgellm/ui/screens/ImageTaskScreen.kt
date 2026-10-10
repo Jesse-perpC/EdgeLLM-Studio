@@ -466,10 +466,10 @@ fun ImageTaskScreen(
                                 for (i in 1..simulatedSteps) {
                                     delay(120)
                                     generationProgress = i.toFloat() / simulatedSteps.toFloat()
-                                    generationStatusText = "Diffusion denoising step $i/$simulatedSteps (${selectedModel.speedRating})..."
+                                    generationStatusText = "Simulated denoising step $i/$simulatedSteps (${selectedModel.speedRating})..."
                                 }
                                 delay(200)
-                                generationStatusText = "Decoding latent tensor through VAE..."
+                                generationStatusText = "Image generation complete (simulated — no diffusion runtime loaded)"
                                 delay(150)
 
                                 val newImage = GeneratedImageItem(
@@ -488,7 +488,7 @@ fun ImageTaskScreen(
                                         2 -> 0xFF4C1D95
                                         else -> 0xFF172554
                                     },
-                                    labelText = "${selectedModel.displayName} • ${selectedMode.title}",
+                                    labelText = "${selectedModel.displayName} • ${selectedMode.title} (simulated)",
                                     isUpscaled = (selectedMode == ImageTaskMode.SUPER_RESOLUTION)
                                 )
                                 imageHistory.add(0, newImage)
