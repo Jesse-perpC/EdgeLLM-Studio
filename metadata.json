@@ -1,6 +1,6 @@
 {
   "name": "EdgeLLM Studio",
-  "description": "On-device private LLM and ML runtime with full Android System Voice Assistant integration, autonomous chain-of-thought human-like conversational engine, Stripe Pro payments, WordPress-style plugin ecosystem, Model Context Protocol (MCP) servers, hardware acceleration, and encrypted export.",
+  "description": "Offline-first on-device LLM runtime for Android (GGUF via llama.cpp, MediaPipe, ONNX, TFLite). Local inference by default with optional user-enabled cloud assist; no payments or server-side dependencies required.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

@@ -10,12 +10,14 @@
              S  T  U  D  I  O  //  O N - D E V I C E
 ```
 
-### **THE #1 RANKED ALL-IN-ONE LOCAL ON-DEVICE AI & NEURAL RUNTIME FOR ANDROID**
-*Universal GGUF + MediaPipe + ONNX + MNN • Stable Diffusion Studio • Hugging Face Hub Explorer • RAG Chunk Debugger • OpenAI-Compatible Server (Port 8080) • LMSYS Model Arena • 100% Air-Gapped*
+### **LOCAL ON-DEVICE AI & NEURAL RUNTIME FOR ANDROID (BETA)**
+*Universal GGUF + MediaPipe + ONNX + TFLite • Hugging Face Hub Explorer • RAG Chunk Debugger • OpenAI-Compatible Server (Port 8080) • Model Arena • Offline-first*
+
+> **Production status: beta.** No stable release yet — see [INSTALL.md](INSTALL.md) for what actually ships (CPU vs Vulkan flavors) and current limitations (no Hexagon HTP, no MNN-LLM/AICore runtimes, image generation is stub/simulated). Benchmarks against other apps are aspirational, not independently verified.
 
 ---
 
-[![Rank #1](https://img.shields.io/badge/Category_Rank-%231_On--Device_AI_Suite-10B981?style=for-the-badge&logo=googleplay&logoColor=white)](/)
+[![Status](https://img.shields.io/badge/Status-Beta_in_development-amber?style=for-the-badge)](/)
 [![Platform](https://img.shields.io/badge/Platform-Android_14%2B_%7C_API_34%2B-A855F7?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
 [![Compute](https://img.shields.io/badge/Silicon-Vulkan_1.3_%7C_NNAPI_HTP_%7C_ARM_NEON-06B6D4?style=for-the-badge&logo=khronosgroup&logoColor=white)](https://www.khronos.org/vulkan/)
 [![Security](https://img.shields.io/badge/Vault-AES--256--GCM_Hardware_Keystore-F59E0B?style=for-the-badge&logo=securityscorecard&logoColor=white)](https://developer.android.com/training/articles/keystore)
@@ -23,9 +25,9 @@
 
 ```
 ================================== SYSTEM TELEMETRY ==================================
-[RANKING: #1 WORLDWIDE]   [SILICON: QUALCOMM / MEDIATEK / TENSOR / UNIVERSAL ARM64]
-[ENGINES: GGUF + MEDIAPIPE + ONNX + MNN + SD]   [NETWORK: 100% AIR-GAPPED PRIVATE]
-[SERVER: OPENAI DAEMON ON PORT 8080/11434]   [CRYPTO VAULT: HARDWARE STRONG-BOX]
+[MATURITY: BETA]   [SILICON: QUALCOMM / MEDIATEK / TENSOR / UNIVERSAL ARM64]
+[ENGINES: GGUF + MEDIAPIPE + ONNX + TFLITE]   [NETWORK: OFFLINE-FIRST, OPT-IN CLOUD ASSIST]
+[SERVER: OPENAI DAEMON ON PORT 8080/11434]   [CRYPTO VAULT: HARDWARE KEYSTORE WHERE AVAILABLE]
 ======================================================================================
 ```
 
@@ -33,17 +35,19 @@
 
 ---
 
-## 🏆 Comprehensive Industry Leaderboard: Why EdgeLLM Studio Ranks #1
+## Feature comparison (aspirational — unbenchmarked)
+
+> Benchmarks below are the author's goals, not independent test results. Treat all scores as unverified until a reproducible benchmark + device matrix lands in CI.
 
 Across developer forums (Reddit `r/LocalLLaMA`, `r/AndroidDev`), GitHub repositories, Discord edge communities, and mobile app stores, users have long faced painful trade-offs: some apps only support one model format (like Google Edge Gallery supporting only MediaPipe), others are closed-source and expensive (like Layla), and others lack developer features like an OpenAI-compatible remote server or on-device Stable Diffusion.
 
-**EdgeLLM Studio resolves every user complaint and unifies every capability into an uncompromising, sovereign #1 platform.**
+**EdgeLLM Studio aims to unify these capabilities into one sovereign offline-first platform.** Many rows below are in progress or device-dependent — see [INSTALL.md](INSTALL.md).
 
 ### 📊 Head-to-Head Feature Matrix vs All Competing Apps
 
 | Feature / Capability | **EdgeLLM Studio** (Ours) | **ToolNeuron** (Siddhesh2377) | **Google AI Edge Gallery** | **Layla Companion** | **Ollama / Private LLM** | **MLC LLM** |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Overall Category Rank** | 🥇 **#1 (9.9/10)** | 🥈 **#2 (8.6/10)** | 🥉 **#3 (8.2/10)** | **#4 (7.9/10)** | **#5 (7.4/10)** | **#6 (7.1/10)** |
+| **Overall Category Rank** | **Beta (unranked)** | 🥈 **#2 (8.6/10)** | 🥉 **#3 (8.2/10)** | **#4 (7.9/10)** | **#5 (7.4/10)** | **#6 (7.1/10)** |
 | **GGUF (llama.cpp) Engine** | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes | ✅ Yes | ❌ (Custom) |
 | **MediaPipe / LiteRT (Gemma 2/3)** | ✅ Yes | 🟡 Import only | ✅ Official | ❌ No | ❌ No | ❌ No |
 | **ONNX Runtime & Alibaba MNN** | ✅ Dual Engine | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |

@@ -12,7 +12,14 @@ on:
   workflow_dispatch:
 
 permissions:
+  # Releases need write; PRs/pushes only need read. Tag-only releases
+  # (below) keep this scoped in practice.
   contents: write
+
+# Cancel superseded runs on the same branch/PR for faster, cheaper CI.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -118,11 +125,12 @@ jobs:
           ls /usr/include/vulkan/vulkan.h
           # Build vulkan-headers from source (header-only, ~1 min) to obtain
           # the C++ API (vulkan.hpp) that Android NDK cross-compile needs.
+          # Installs to /usr/local, so check there first.
           git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git /tmp/Vulkan-Headers
           cmake -S /tmp/Vulkan-Headers -B /tmp/Vulkan-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
           sudo cmake --install /tmp/Vulkan-Headers/build
-          ls /usr/include/vulkan/vulkan.hpp
-          ls /usr/include/vulkan/vulkan.h
+          ls /usr/local/include/vulkan/vulkan.hpp || ls /usr/include/vulkan/vulkan.hpp
+          ls /usr/local/include/vulkan/vulkan.h || ls /usr/include/vulkan/vulkan.h
           # Ubuntu's spirv-headers ships headers but no CMake package config,
           # which ggml-vulkan's find_package(SPIRV-Headers) requires. Build the
           # header-only upstream once (~1 min) and install the config to
@@ -140,6 +148,23 @@ jobs:
             echo "SPIRV_HEADERS_DIR=$(dirname "$SPIRV_CFG")"
           else
             echo "ERROR: SPIRV-HeadersConfig.cmake not found after install" >&2
+            exit 1
+          fi
+
+      - name: Run unit + Robolectric tests (quality gate)
+        # INSTALL.md documents this command. Failing tests block APK assembly.
+        run: ./gradlew testCpuDebugUnitTest --no-daemon --stacktrace
+
+      - name: Enforce real release key for tags
+        # A debug-signed "release" must never be published as a versioned
+        # GitHub Release or to Play (publicly known debug key, Play rejects).
+        # Tags therefore require RELEASE_KEYSTORE_BASE64; branch builds may
+        # still use ALLOW_DEBUG_SIGNED_RELEASE=true for diagnostics.
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "ERROR: tag ${{ github.ref_name }} needs secrets.RELEASE_KEYSTORE_BASE64 (+ STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD)." >&2
+            echo "Refusing to publish a debug-signed release." >&2
             exit 1
           fi
 
@@ -227,7 +252,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Publish GitHub Release (Tagged Push)
+      - name: Publish GitHub Release (Tagged Push only)
+        # Production rule: versioned Releases are created from tags (v*).
+        # Pushes to main/master only upload artifacts (above) — no release spam,
+        # no accidental debug-signed "releases".
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
@@ -235,30 +263,14 @@ jobs:
             dist-apks/*.apk
             EdgeLLM-Studio-Windows-Desktop.zip
           name: "EdgeLLM Studio ${{ github.ref_name }}"
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish GitHub Release (Main Branch Auto-Release)
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && !startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v1.0.${{ github.run_number }}"
-          name: "EdgeLLM Studio Release v1.0.${{ github.run_number }}"
           body: |
-            ### 🚀 Automated Build Release v1.0.${{ github.run_number }}
+            ### EdgeLLM Studio ${{ github.ref_name }}
             - **Commit**: `${{ github.sha }}`
-            - **Version Code**: `${{ github.run_number }}`
-            - **Version Name**: `1.0.${{ github.run_number }}`
-            - **Release APK (cpu)**: Default install. GGUF decodes on CPU (ARM NEON); ONNX/TFLite/MediaPipe use NNAPI delegates where the device provides them. Self-contained, installable directly on Android 7.0+.
-            - **Release APK (vulkan)**: Same app with the ggml Vulkan backend compiled in (separate `com.aistudio.edgellm.qvmxrp.vulkan` package, installs side-by-side). Needs a device with a Vulkan driver; falls back to CPU otherwise.
-            - **Debug APK**: Included below for ADB logcat diagnostics
-            - **Windows Desktop Bundle**: Included below with WSA launcher script
-            - **Not included**: Hexagon HTP/NPU offload (licensed Hexagon SDK, not shippable from CI), MNN-LLM runtime (no Maven artifact — see `scripts/setup-mnn.md`), AICore/Gemini Nano (no public SDK).
-          files: |
-            dist-apks/*.apk
-            EdgeLLM-Studio-Windows-Desktop.zip
-          prerelease: false
+            - **Release APK (cpu)**: Default install. GGUF decodes on CPU (ARM NEON); ONNX/TFLite/MediaPipe use NNAPI delegates where the device provides them.
+            - **Release APK (vulkan)**: Same app with the ggml Vulkan backend compiled in (separate `.vulkan` package, installs side-by-side). Needs a device Vulkan driver; falls back to CPU otherwise.
+            - **Debug APK**: Included for ADB logcat diagnostics only, not for distribution.
+            - **Not included**: Hexagon HTP/NPU offload (licensed SDK), MNN-LLM runtime (see `scripts/setup-mnn.md`), AICore/Gemini Nano (no public SDK).
+            - Signed with the release upload key (tag builds refuse debug-signed fallback — see workflow).
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

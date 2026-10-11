@@ -57,15 +57,21 @@ cd EdgeLLM-Studio
 git submodule update --init --depth 1 -- llama.cpp
 # (or: ./scripts/setup-llama-cpp.sh)
 
-# 3. Build Debug APKs (cpu default + vulkan GPU flavor)
+# 3. Add local signing/test config (never commit .env or keys)
+cp .env.example .env
+
+# 4. Build Debug APKs (cpu default + vulkan GPU flavor)
 ./gradlew assembleCpuDebug assembleVulkanDebug
 
-# 4. Run unit and Robolectric tests (per flavor)
+# 5. Run unit and Robolectric tests (per flavor)
 ./gradlew testCpuDebugUnitTest
 ```
+
+Prerequisites (match CI): JDK 21, Android SDK Platform 36, NDK 27.3.13750724, CMake 3.22.1. minSdk 24 (Android 7.0); target/compile 36.
 
 ### GitHub Actions (Automated CI/CD)
 The repository includes `.github/workflows/build-apk.yml` which automatically:
 - Installs Android SDK 36, NDK 27.3.13750724, and CMake 3.22.1.
-- Builds both Debug and Release APKs (including the `llama-android` JNI stub).
-- Publishes installable release APK artifacts on every commit and tag.
+- Runs unit/Robolectric tests as a quality gate (`testCpuDebugUnitTest`).
+- Builds both Debug and Release APKs (including the `llama-android` JNI bridge).
+- Uploads APK artifacts on every push/PR; publishes a versioned GitHub Release from `v*` tags only (tags require a real release key — debug-signed fallbacks are refused).

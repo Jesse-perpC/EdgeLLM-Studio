@@ -16,3 +16,11 @@
 local.properties
 .env
 debug.keystore
+# Release signing keys must never be committed.
+my-upload-key.jks
+*.jks
+*.keystore
+# CI build outputs.
+/dist-apks/
+/dist-windows/
+*.zip
