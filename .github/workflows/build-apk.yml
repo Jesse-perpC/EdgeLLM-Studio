@@ -104,7 +104,6 @@ jobs:
 
           # 4. Make gradlew executable
           chmod +x gradlew
-
 - name: Install Vulkan build deps (vulkan flavor only)
         # ggml's Vulkan backend needs the loader headers, SPIR-V headers, glslc,
         # and the C++ Vulkan API bindings (vulkan.hpp). Ubuntu 24.04's
