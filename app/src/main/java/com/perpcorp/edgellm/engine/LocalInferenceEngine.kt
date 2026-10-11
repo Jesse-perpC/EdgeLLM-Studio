@@ -8,11 +8,8 @@ import com.perpcorp.edgellm.data.model.HardwareAccelerationSettings
 import com.perpcorp.edgellm.data.model.KnowledgeDocument
 import com.perpcorp.edgellm.data.model.ModelCategory
 import com.perpcorp.edgellm.data.model.ModelSpec
-import com.perpcorp.edgellm.data.model.PowerProfile
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlin.random.Random
 
 data class StreamTokenChunk(
     val token: String,
@@ -26,13 +23,16 @@ data class StreamTokenChunk(
     val speculativeAcceptedTokens: Int = 0,
     val kvCacheSavedPercent: Float = 0f,
     val isPrefixCacheHit: Boolean = false,
-    val isTurboBoost: Boolean = true,
-    val samplerName: String = "Min-P (0.05)",
+    val isTurboBoost: Boolean = false,
+    val samplerName: String = "unknown",
     val grammarModeUsed: GrammarMode = GrammarMode.NONE,
-    val trustScore: Float = 0.95f,
-    val factualAccuracyScore: Float = 0.95f,
-    val sentimentToneScore: Float = 0.95f,
-    val topicAdherenceScore: Float = 0.95f,
+    // Quality scores. -1f is the honest sentinel for "not measured". These are
+    // only populated when a verification pass actually computed them; they are
+    // never given fabricated defaults, because a made-up 0.95 would be a lie.
+    val trustScore: Float = -1f,
+    val factualAccuracyScore: Float = -1f,
+    val sentimentToneScore: Float = -1f,
+    val topicAdherenceScore: Float = -1f,
     val wasMultiAgentRefined: Boolean = false,
     val critiqueSummary: String? = null,
     val critiqueReasons: List<String> = emptyList()
@@ -46,13 +46,15 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
 
     val geminiClient by lazy { GeminiInferenceClient() }
     val mediaPipeEngine by lazy { MediaPipeInferenceEngine(context) }
-    // NOTE: AndroidAICoreEngine and AlibabaMnnEngine are intentionally NOT
-    // instantiated here. Both are unimplemented placeholders (no public AICore
-    // SDK exists; MNN-LLM has no Maven artifact). Their branches report
-    // unavailable rather than routing to them. See scripts/setup-mnn.md.
     val llamaCppEngine by lazy { LlamaCppEngine(context) }
     val onnxLlmEngine by lazy { OnnxLlmEngine() }
     val tfliteClassifierEngine by lazy { TfliteClassifierEngine() }
+    // REAL MNN-LLM JNI engine. Loads libmnn_llm.so when bundled; reports
+    // unavailable (never fabricates output) when the native runtime is absent.
+    val mnnEngine by lazy { MnnEngine(context) }
+    // NOTE: AndroidAICoreEngine is intentionally NOT instantiated. There is no
+    // public AICore/Gemini Nano SDK for third-party apps, so that branch reports
+    // unavailable rather than routing to a placeholder.
 
     fun generateStreamingResponse(
         prompt: String,
@@ -71,22 +73,12 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
 
         val isTurbo = params.isTurboBoost || settings.turboBoostMode
 
-        // Calculate realistic speed based on hardware settings & power profile with Turbo Boost
-        val baseSpeed = when (settings.computeBackend) {
-            ComputeBackend.NPU_NNAPI -> if (isTurbo) 48f else 32f
-            ComputeBackend.GPU_VULKAN -> if (isTurbo) 40f else 24f
-            ComputeBackend.OPENCL -> if (isTurbo) 32f else 20f
-            ComputeBackend.CPU_NEON -> if (isTurbo) 24f else 14f
-        }
-        val powerMultiplier = when (settings.powerProfile) {
-            PowerProfile.HIGH_PERFORMANCE -> if (isTurbo) 1.55f else 1.35f
-            PowerProfile.BALANCED -> if (isTurbo) 1.25f else 1.0f
-            PowerProfile.BATTERY_SAVER -> 0.65f
-        }
-        val threadBonus = (settings.threadCount.coerceAtLeast(1) * (if (isTurbo) 0.14f else 0.08f))
-        val rawTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 65f)
+        // HONESTY: we do NOT compute a synthetic tokens/sec from a hardware
+        // lookup table, and we do NOT sleep() to fake a prefill time. TTFT and
+        // throughput are measured only where a real engine reports them. For the
+        // knowledge-base / no-model path below there is no inference at all, so
+        // these stay 0 rather than inventing numbers.
 
-        // Time to first token (TTFT) & Prefix KV Cache Look-up
         val docTokens = (attachedDoc?.tokenCountEstimate ?: 0)
         val imageTokens = if (attachedImageUri != null || attachedImageLabel != null) 256 else 0
         val memoryTokens = recalledMemories.sumOf { it.length / 4 }
@@ -95,15 +87,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         val (prefixEntry, isPrefixHit) = if (settings.enablePrefixCaching && params.enablePrefixCaching) {
             PrefixKVCacheManager.getOrComputePrefix(model.id, params.systemPrompt, persona?.id)
         } else Pair(null, false)
-
-        val prefillTimeMs = if (isPrefixHit) {
-            // Instantaneous TTFT with cached prefix KV states
-            (6L + (promptTokens * 0.06f).toLong()).coerceIn(6L, 20L)
-        } else {
-            (40L + (promptTokens * 1.2f).toLong()).coerceIn(55L, 500L)
-        }
-        delay(prefillTimeMs)
-        val ttft = System.currentTimeMillis() - startTime
 
         val effectivePrompt = if (recalledMemories.isNotEmpty()) {
             "### Contextual Persistent Memories (Recalled via 128-D Vector Cosine Similarity):\n" +
@@ -204,28 +187,68 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return@flow
         }
 
-        // 3. Alibaba MNN-LLM: not wired up.
-        // Alibaba publishes no Maven artifact for MNN-LLM; its own Android LLM
-        // app pulls prebuilt native libraries through a Gradle download plugin,
-        // and the LLM runtime is a separate build (MNN_LLM=ON) not present in the
-        // stock release zips. Without those .so files there is no runtime to bind
-        // to, so this reports unavailable rather than synthesizing MNN output.
-        // See scripts/setup-mnn.md for the manual integration steps.
+        // 3. Alibaba MNN-LLM — REAL JNI engine (MnnEngine).
+        // MNN-LLM runs genuine on-device weights through the native runtime when
+        // libmnn_llm.so is bundled (build via scripts/setup-mnn.md). If the native
+        // runtime or model file is absent we surface the exact cause instead of
+        // synthesizing MNN output.
         if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.MNN_LLM) {
-            Log.e(TAG, "MNN_LLM requested, but no MNN-LLM native runtime is linked")
-            emit(
-                StreamTokenChunk(
-                    token = "",
-                    accumulatedText = "",
-                    tokenCount = 0,
-                    tokensPerSecond = 0f,
-                    timeToFirstTokenMs = 0L,
-                    isComplete = true,
-                    backendUsed = "Unavailable",
-                    samplerName = "Unavailable",
-                    grammarModeUsed = GrammarMode.NONE
+            if (!MnnEngine.isRuntimeAvailable()) {
+                Log.e(TAG, "MNN_LLM requested, but native runtime unavailable: ${MnnEngine.nativeLibraryError}")
+                emit(
+                    StreamTokenChunk(
+                        token = "",
+                        accumulatedText = "MNN-LLM runtime not available on this build: " +
+                            (MnnEngine.nativeLibraryError ?: "native library not bundled") +
+                            ". See scripts/setup-mnn.md to build and bundle libmnn_llm.so.",
+                        tokenCount = 0,
+                        tokensPerSecond = 0f,
+                        timeToFirstTokenMs = 0L,
+                        isComplete = true,
+                        backendUsed = "MNN (unavailable)",
+                        samplerName = "Unavailable",
+                        grammarModeUsed = GrammarMode.NONE
+                    )
                 )
-            )
+                return@flow
+            }
+            try {
+                mnnEngine.streamMnnResponse(
+                    prompt = effectivePrompt,
+                    model = model,
+                    settings = settings,
+                    params = params
+                ).collect { c ->
+                    emit(
+                        StreamTokenChunk(
+                            token = c.token,
+                            accumulatedText = sanitizeNonGbnfChunk(c.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt),
+                            tokenCount = c.tokenCount,
+                            tokensPerSecond = c.tokensPerSecond,
+                            timeToFirstTokenMs = c.timeToFirstTokenMs,
+                            isComplete = c.isComplete,
+                            backendUsed = "MNN-LLM • JNI",
+                            samplerName = "MNN sampler",
+                            grammarModeUsed = GrammarMode.NONE
+                        )
+                    )
+                }
+            } catch (e: MnnEngine.MnnUnavailableException) {
+                Log.e(TAG, "MNN inference failed", e)
+                emit(
+                    StreamTokenChunk(
+                        token = "",
+                        accumulatedText = "MNN-LLM inference failed: ${e.message}",
+                        tokenCount = 0,
+                        tokensPerSecond = 0f,
+                        timeToFirstTokenMs = 0L,
+                        isComplete = true,
+                        backendUsed = "MNN (failed)",
+                        samplerName = "N/A",
+                        grammarModeUsed = GrammarMode.NONE
+                    )
+                )
+            }
             return@flow
         }
 
@@ -405,8 +428,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         } else null
 
         val speedupMultiplier = specResult?.metrics?.effectiveSpeedupMultiplier ?: 1.0f
-        val calculatedTokPerSec = (rawTokPerSec * speedupMultiplier).coerceIn(4f, 120f)
-        val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(6L, 250L)
 
         // Attention Sink / StreamingLLM KV-cache profile applies only when a real
         // model holds a KV cache. Offline text has none.
@@ -436,56 +457,30 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             enableThinkingMode = params.enableThinkingMode
         )
         val verifiedResponseText = verification.verifiedText
-        val tokens = tokenizeResponse(verifiedResponseText)
 
-        val stringBuilder = StringBuilder()
-        var tokenCount = 0
-
-        for (token in tokens) {
-            tokenCount++
-            stringBuilder.append(token)
-
-            val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
-            val currentTps = if (elapsedSec > 0.05f) {
-                tokenCount / elapsedSec
-            } else {
-                calculatedTokPerSec
-            }
-
-            emit(
-                StreamTokenChunk(
-                    token = token,
-                    accumulatedText = stringBuilder.toString(),
-                    tokenCount = tokenCount,
-                    tokensPerSecond = ((currentTps * 10).toInt() / 10f),
-                    timeToFirstTokenMs = ttft,
-                    isComplete = false,
-                    backendUsed = backendUsed,
-                    speculativeSpeedup = speedupMultiplier,
-                    speculativeAcceptedTokens = specResult?.acceptedTokensThisPass ?: 0,
-                    kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f,
-                    isPrefixCacheHit = effectivePrefixHit,
-                    isTurboBoost = effectiveTurbo,
-                    samplerName = "Min-P (${params.minP})",
-                    grammarModeUsed = params.grammarMode
-                )
-            )
-
-            // Fixed display pacing between chunks. This is UI pacing, not measured
-            // inference; the offline path runs no model.
-            val jitter = if (isTurbo) Random.nextLong(-1L, 3L) else Random.nextLong(-3L, 6L)
-            delay((delayPerTokenMs + jitter).coerceAtLeast(4L))
+        // HONESTY: this path did not decode tokens one-by-one from a model. The
+        // text above is either a completed Cloud response or knowledge-base text,
+        // so we emit it as ONE chunk. We deliberately do NOT split it into fake
+        // "tokens" and delay() between them to imitate streaming — that was
+        // theater. tokensPerSecond is reported as 0 (not measured), and TTFT is
+        // the real elapsed wall-clock time to produce the answer, not a
+        // fabricated prefill latency.
+        val totalElapsedMs = System.currentTimeMillis() - startTime
+        val wordCount = verifiedResponseText.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+        val measuredTps = if (isOfflineFallback) {
+            0f // no model ran; do not invent a throughput number
+        } else {
+            // Cloud round-trip: words / elapsed, honestly labeled as wall-clock.
+            (wordCount / (totalElapsedMs / 1000f).coerceAtLeast(0.001f))
         }
 
-        // Final completion chunk
-        val totalElapsedSec = ((System.currentTimeMillis() - startTime) / 1000f).coerceAtLeast(0.1f)
         emit(
             StreamTokenChunk(
-                token = "",
-                accumulatedText = stringBuilder.toString(),
-                tokenCount = tokenCount,
-                tokensPerSecond = ((tokenCount / totalElapsedSec) * 10).toInt() / 10f,
-                timeToFirstTokenMs = ttft,
+                token = verifiedResponseText,
+                accumulatedText = verifiedResponseText,
+                tokenCount = wordCount,
+                tokensPerSecond = (measuredTps * 10).toInt() / 10f,
+                timeToFirstTokenMs = totalElapsedMs,
                 isComplete = true,
                 backendUsed = backendUsed,
                 speculativeSpeedup = speedupMultiplier,
@@ -493,7 +488,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f,
                 isPrefixCacheHit = effectivePrefixHit,
                 isTurboBoost = effectiveTurbo,
-                samplerName = "Min-P (${params.minP})",
+                samplerName = if (isOfflineFallback) "n/a (knowledge base — no sampler)" else "provider default",
                 grammarModeUsed = params.grammarMode,
                 trustScore = verification.trustScore,
                 factualAccuracyScore = verification.factualAccuracyScore,
@@ -506,22 +501,10 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         )
     }
 
-    fun tokenizeResponse(text: String): List<String> {
-        val tokens = mutableListOf<String>()
-        val words = text.split(" ")
-        for (i in words.indices) {
-            val word = words[i]
-            val chunk = if (i == 0) word else " $word"
-            if (chunk.length > 8 && Random.nextBoolean()) {
-                val mid = chunk.length / 2
-                tokens.add(chunk.substring(0, mid))
-                tokens.add(chunk.substring(mid))
-            } else {
-                tokens.add(chunk)
-            }
-        }
-        return tokens
-    }
+    // NOTE: the old `tokenizeResponse` helper is gone. It split words at random
+    // midpoints (`Random.nextBoolean()`) to manufacture extra "tokens", which
+    // inflated the token count and faked a smoother stream. The chat/no-model
+    // path now emits one honest chunk instead.
 
     fun generateOfflineIntelligence(
         prompt: String,
@@ -587,7 +570,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             val safeAnswer = answer.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
             val safeQuery = cleanQuery.replace("\\", "\\\\").replace("\"", "\\\"").take(100)
             return "{\n" +
-                    "  \"status\": \"success\",\n" +
+                    "  \"status\": \"knowledge_base_answer\",\n" +
                     "  \"query\": \"$safeQuery\",\n" +
                     "  \"answer\": \"$safeAnswer\",\n" +
                     "  \"data\": {\n" +
@@ -637,16 +620,37 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 // neither is true for offline text, so both are gone. Shape
                 // without false provenance.
                 val safePrompt = prompt.replace("\"", "\\\"").take(60)
-                "{\n  \"status\": \"success\",\n  \"query\": \"$safePrompt\",\n  \"grammar_mode\": \"JSON_STRICT\",\n  \"data\": {\n    \"content\": \"${rawBody.lines().firstOrNull()?.replace("\"", "\\\"") ?: "Processed"}\"\n  }\n}"
+                "{\n  \"status\": \"knowledge_base_answer\",\n  \"query\": \"$safePrompt\",\n  \"grammar_enforced\": false, \"note\": \"No grammar-constrained model ran; this is knowledge-base text wrapped as JSON.\",\n  \"data\": {\n    \"content\": \"${rawBody.lines().firstOrNull()?.replace("\"", "\\\"") ?: "Processed"}\"\n  }\n}"
             }
             GrammarMode.PYTHON_CODE -> {
-                if (rawBody.contains("```python")) rawBody else "```python\n# Constrained Python 3 Output\ndef solution():\n    \"\"\"Generated on-device without cloud API\"\"\"\n    return True\n```"
+                // Do NOT emit a fake `def solution(): return True` stub — it
+                // answers nothing and looks like real generated code. Return the
+                // knowledge-base answer, honestly labeled. Real grammar-constrained
+                // code output needs a GGUF code model with a GBNF grammar.
+                "```python\n# No Python code model is loaded on-device, so no code was generated.\n# Grammar-constrained code output requires a code LLM (GGUF + GBNF grammar).\n# Knowledge-base answer instead:\n```\n\n$rawBody"
             }
             GrammarMode.SQL_QUERY -> {
-                "SELECT id, model_name, inference_speed, accuracy_score\nFROM on_device_models\nWHERE is_active = 1\nORDER BY inference_speed DESC;"
+                // Do NOT return the hardcoded `SELECT ... FROM on_device_models`
+                // sample row (it ignored the user's question entirely). Emit an
+                // honest notice plus the knowledge-base answer. SQL grammar
+                // enforcement needs a constrained-decoding model (GGUF + GBNF).
+                "-- No SQL grammar model is loaded on-device, so no query was generated.\n-- SQL grammar enforcement requires a constrained-decoding model (GGUF + GBNF).\n-- Knowledge-base answer follows:\n\n$rawBody"
             }
             GrammarMode.REGEX_PATTERN -> {
-                if (params.customRegexPattern.isNotBlank()) "2026-09-15" else rawBody
+                if (params.customRegexPattern.isNotBlank()) {
+                    // Do NOT return a hardcoded date like "2026-09-15" (it ignored
+                    // the user's pattern entirely). Validate the user's real regex
+                    // instead; matching still requires real input text.
+                    val isValid = try {
+                        java.util.regex.Pattern.compile(params.customRegexPattern); true
+                    } catch (e: java.util.regex.PatternSyntaxException) {
+                        false
+                    }
+                    "Regex `" + params.customRegexPattern + "` is " +
+                        (if (isValid) "syntactically valid" else "INVALID") +
+                        " (compiled with java.util.regex). No on-device model was run and no " +
+                        "match was produced; supplying real input text is required to test matches."
+                } else rawBody
             }
             GrammarMode.GBNF_STRICT_FACTUAL -> {
                 val factual = llamaCppEngine.generateStrictFactualResponse(prompt, model)
