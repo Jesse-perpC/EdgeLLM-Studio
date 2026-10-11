@@ -5,10 +5,12 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Production: auth tokens, billing identifiers, and the encrypted
+        vault database must never leave the device via cloud backup. -->
+        <exclude domain="sharedpref" path="edgellm_server_prefs.xml"/>
+        <exclude domain="sharedpref" path="edgellm_billing_prefs.xml"/>
+        <exclude domain="sharedpref" path="edgellm_theme_prefs.xml"/>
+        <exclude domain="database" path="edgellm_database.db"/>
     </cloud-backup>
     <!--
     <device-transfer>

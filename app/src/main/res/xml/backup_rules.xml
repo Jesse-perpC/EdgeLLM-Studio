@@ -6,8 +6,11 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Production: never back up auth tokens, billing identifiers, or the
+    encrypted vault database to Google cloud backup. Fresh installs reprovision
+    a random server bearer token on first launch. -->
+    <exclude domain="sharedpref" path="edgellm_server_prefs.xml"/>
+    <exclude domain="sharedpref" path="edgellm_billing_prefs.xml"/>
+    <exclude domain="sharedpref" path="edgellm_theme_prefs.xml"/>
+    <exclude domain="database" path="edgellm_database.db"/>
 </full-backup-content>

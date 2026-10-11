@@ -63,13 +63,13 @@ enum class SubscriptionTier(
 }
 
 data class UserSubscriptionProfile(
-    val userId: String = "usr_creator_8921",
-    val email: String = "jesselepota.com@gmail.com",
+    val userId: String = "local_user",
+    val email: String = "",
     val tier: SubscriptionTier = SubscriptionTier.FREE,
-    val usedAllocations: Int = 1_420,
+    val usedAllocations: Int = 0,
     val maxAllocations: Int = SubscriptionTier.FREE.maxAllocations,
-    val currentPeriodEnd: String = "Oct 01, 2026",
-    val isAutoRenew: Boolean = true
+    val currentPeriodEnd: String = "",
+    val isAutoRenew: Boolean = false
 ) {
     val isPro: Boolean get() = tier == SubscriptionTier.PRO_CREATOR || tier == SubscriptionTier.ENTERPRISE
     val remainingAllocations: Int get() = maxOf(0, maxAllocations - usedAllocations)
@@ -88,8 +88,8 @@ enum class SupabaseStatus {
 data class SupabaseConnectionConfig(
     val url: String = "",
     val anonKey: String = "",
-    val status: SupabaseStatus = SupabaseStatus.LOCAL_CACHE,
-    val lastSyncMessage: String = "Using local-first allocation cache (air-gapped ready)",
+    val status: SupabaseStatus = SupabaseStatus.UNCONFIGURED,
+    val lastSyncMessage: String = "Supabase not configured. Using on-device storage.",
     val lastSyncTimestamp: Long = System.currentTimeMillis()
 ) {
     val isConfigured: Boolean get() = url.isNotBlank() && !url.contains("your-project") && anonKey.isNotBlank() && !anonKey.contains("your-anon-key")
@@ -107,12 +107,12 @@ enum class StripeAccountMode {
 }
 
 data class StripeBillingConfig(
-    val publishableKey: String = "pk_test_LTsnLXAZKhKJqVczf2JjYTLk00g98H1Nl1",
+    val publishableKey: String = "",
     val paymentLinkUrl: String = "",
-    val mode: StripeAccountMode = StripeAccountMode.TEST_MODE,
+    val mode: StripeAccountMode = StripeAccountMode.UNCONFIGURED,
     val currency: String = "USD",
     val proMonthlyPriceId: String = "price_pro_creator_monthly",
-    val statusMessage: String = "Stripe Test Mode active (pk_test_...1Nl1). Ready for client checkout."
+    val statusMessage: String = "Stripe not configured. Add your publishable key to enable checkout."
 ) {
     val isConfigured: Boolean get() = publishableKey.isNotBlank() && publishableKey.startsWith("pk_")
 }

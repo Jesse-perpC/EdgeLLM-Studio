@@ -26,8 +26,10 @@ the latest `v*` tag receive security fixes. There is no LTS yet.
 
 ## Scope notes
 
-- The on-device HTTP server (`8080`/`11434`) binds to the local network by
-  design. Use bearer-token auth, keep the token in the hardware-backed vault,
-  rotate it regularly, and review the in-app audit log.
+- The on-device HTTP server (`8080`/`11434`) defaults to loopback
+  (`127.0.0.1`). LAN exposure is an explicit opt-in via the in-app LAN
+  switch. Either way, use bearer-token auth, keep the token in app-private
+  storage (excluded from cloud backup), rotate it regularly, and review the
+  in-app audit log.
 - Secrets (`.env`, `*.jks`, `debug.keystore`) are git-ignored and must never
   be committed. `.env.example` ships blank placeholders only.

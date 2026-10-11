@@ -5,6 +5,19 @@ versioning is `1.0.<run_number>` from CI (`versionCode` = run number).
 
 ## [Unreleased]
 
+### Fixed (keystone production pass)
+- `BillingRepository`: removed hardcoded Supabase project URL + anon key,
+  Stripe test publishable key, owner email/user-id, and fabricated usage
+  counter. Fresh installs are now unconfigured/local-only (`isConfigured`
+  gates all cloud sync); billing backends are opt-in via `.env`/in-app sheet.
+- `InferenceServerService`: HTTP server now defaults to loopback
+  (`127.0.0.1`). LAN bind is an explicit opt-in via the in-app LAN switch.
+  Bearer-token provisioning still happens before any connection is accepted.
+- `backup_rules.xml` / `data_extraction_rules.xml`: cloud backup now excludes
+  the server bearer-token prefs, billing prefs, theme prefs, and the Room
+  vault database.
+- CI (`build-apk.yml`): rewritten from scratch (single robust job, YAML-validated).
+
 ### Fixed (production hardening)
 - `metadata.json`: honest offline-first description; removed Stripe/WordPress
   claims and the server-side Gemini capability.

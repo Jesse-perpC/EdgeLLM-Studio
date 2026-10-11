@@ -135,14 +135,17 @@ class InferenceServerService : Service() {
                         } catch (_: Throwable) {}
                         stopSelf()
                     } else {
-                        server.start(11434, true)
+                        // Production default: loopback only. LAN exposure is an
+                        // explicit opt-in via the in-app LAN switch (which sends
+                        // ACTION_START_SERVER with EXTRA_BIND_LAN=true).
+                        server.start(11434, false)
                         monitorServerStats()
                     }
                 }
             }
             ACTION_START_SERVER -> {
                 val port = intent?.getIntExtra(EXTRA_PORT, 11434) ?: 11434
-                val bindToLan = intent?.getBooleanExtra(EXTRA_BIND_LAN, true) ?: true
+                val bindToLan = intent?.getBooleanExtra(EXTRA_BIND_LAN, false) ?: false
                 serviceScope.launch {
                     if (!server.serverStats.value.isRunning) {
                         server.start(port, bindToLan)
