@@ -506,22 +506,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         )
     }
 
-    fun tokenizeResponse(text: String): List<String> {
-        val tokens = mutableListOf<String>()
-        val words = text.split(" ")
-        for (i in words.indices) {
-            val word = words[i]
-            val chunk = if (i == 0) word else " $word"
-            if (chunk.length > 8 && Random.nextBoolean()) {
-                val mid = chunk.length / 2
-                tokens.add(chunk.substring(0, mid))
-                tokens.add(chunk.substring(mid))
-            } else {
-                tokens.add(chunk)
-            }
-        }
-        return tokens
-    }
 
     fun generateOfflineIntelligence(
         prompt: String,
@@ -739,6 +723,14 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         port: Int = 8080
     ): ProcessBuilder {
         val commandArgs = buildLlamaServerCommandArgs(modelPath, grammarPath, port)
-        return ProcessBuilder(commandArgs)
+return ProcessBuilder(commandArgs)
     }
+
+    /**
+     * Honest whitespace split for API eval_count reporting only.
+     * This is NOT a model tokenizer and does not invent mid-word splits.
+     */
+    fun tokenizeResponse(text: String): List<String> =
+        text.split(Regex("\\s+")).filter { it.isNotBlank() }
+}
 }

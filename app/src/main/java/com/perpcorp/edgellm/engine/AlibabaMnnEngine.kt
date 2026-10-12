@@ -190,6 +190,42 @@ class AlibabaMnnEngine(private val context: Context? = null) {
         }
 
         // Legacy fallback without model handle: stay on-topic, no jail echo.
-        return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
+return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
     }
+
+    companion object {
+        private const val TAG = "MnnEngine"
+
+        @Volatile var nativeLibraryLoaded: Boolean = false
+            private set
+        @Volatile var nativeLibraryError: String? = null
+            private set
+
+        init {
+            try {
+                System.loadLibrary("mnn")
+                System.loadLibrary("mnn_llm")
+                System.loadLibrary("edgellm_mnn_jni")
+                nativeLibraryLoaded = true
+                Log.i(TAG, "MNN-LLM native runtime loaded")
+            } catch (t: UnsatisfiedLinkError) {
+                nativeLibraryLoaded = false
+                nativeLibraryError = t.message ?: "libmnn_llm.so / libedgellm_mnn_jni.so not found"
+                Log.w(TAG, "MNN-LLM native runtime NOT available: $nativeLibraryError")
+            }
+        }
+
+        fun isRuntimeAvailable(): Boolean = nativeLibraryLoaded
+
+        private external fun nativeCreateSession(
+            modelPath: String,
+            threads: Int,
+            useVulkan: Boolean
+        ): Long
+        private external fun nativeFeedPrompt(handle: Long, prompt: String)
+        private external fun nativeFetchNextToken(handle: Long): String?
+        private external fun nativeReset(handle: Long)
+        private external fun nativeDestroy(handle: Long)
+    }
+}
 }

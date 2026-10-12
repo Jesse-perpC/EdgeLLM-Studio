@@ -22,6 +22,8 @@ android {
     versionCode = buildNumber
     versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.$buildNumber"
 
+    // Safety net when secrets plugin skips blank .env values
+    buildConfigField("String", "GEMINI_API_KEY", "\"\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     ndk {
