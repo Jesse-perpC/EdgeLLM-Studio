@@ -48,13 +48,16 @@ class StableDiffusionEngine(private val context: Context?) {
         val error: String? = null
     )
 
+    /**
+     * Make the return type explicit so Kotlin can infer generic types at call site.
+     */
     fun generate(
         prompt: String,
         task: ImageTask,
         opts: ImageGenOptions,
         sourceBitmap: Bitmap? = null,
         maskBitmap: Bitmap? = null
-    ): Flow<ImageGenResult> = flow {
+    ): Flow<ImageGenResult> = flow<ImageGenResult> {
         if (opts.modelPath.isBlank()) {
             throw ImageGenUnavailableException(
                 "No image model path configured. Download a MediaPipe ImageGenerator " +
@@ -81,4 +84,3 @@ class StableDiffusionEngine(private val context: Context?) {
                 "dependency used by this build. See scripts/setup-mediapipe-imagegen.md."
         )
     }.flowOn(Dispatchers.Default)
-}
