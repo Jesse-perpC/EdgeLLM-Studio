@@ -84,3 +84,4 @@ class StableDiffusionEngine(private val context: Context?) {
                 "dependency used by this build. See scripts/setup-mediapipe-imagegen.md."
         )
     }.flowOn(Dispatchers.Default)
+}

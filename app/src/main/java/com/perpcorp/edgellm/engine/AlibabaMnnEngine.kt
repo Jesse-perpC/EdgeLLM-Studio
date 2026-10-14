@@ -1,5 +1,6 @@
 package com.perpcorp.edgellm.engine
 
+import android.util.Log
 import android.content.Context
 import com.perpcorp.edgellm.data.model.AiPersona
 import com.perpcorp.edgellm.data.model.ModelSpec
@@ -190,7 +191,7 @@ class AlibabaMnnEngine(private val context: Context? = null) {
         }
 
         // Legacy fallback without model handle: stay on-topic, no jail echo.
-return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
+        return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
     }
 
     companion object {
@@ -227,5 +228,4 @@ return "Direct answer for \"$userQuery\": please load a model to receive full gr
         private external fun nativeReset(handle: Long)
         private external fun nativeDestroy(handle: Long)
     }
-}
 }
