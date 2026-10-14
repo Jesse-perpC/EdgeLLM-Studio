@@ -102,7 +102,7 @@ jobs:
             fi
           fi
 
-# 4. Make gradlew executable
+          # 4. Make gradlew executable
           chmod +x gradlew
 
       - name: Install Vulkan build deps (vulkan flavor only)

@@ -191,6 +191,8 @@ dependencies {
   // Real on-device weight inference for Gemma/LiteRT .task models (MediaPipe LLM Inference API).
   // If manifest merger ever reports a minSdk conflict from this AAR, raise app minSdk to 26.
   implementation(libs.mediapipe.tasks.genai)
+  // Real image generation via MediaPipe Vision Image Generator.
+  implementation(libs.mediapipe.tasks.vision.image.generator)
   // Real ONNX Runtime for .onnx decoder models. Ships CPU + NNAPI + XNNPACK.
   // Replaces the previous ONNX branch, which produced canned text because no
   // ONNX runtime was ever on the classpath.
