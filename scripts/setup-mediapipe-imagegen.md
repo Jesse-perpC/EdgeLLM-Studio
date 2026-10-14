@@ -7,7 +7,7 @@ The `StableDiffusionEngine` uses Google's **MediaPipe tasks-genai** library for 
 The dependency is already declared in `app/build.gradle.kts`:
 
 ```kotlin
-implementation(libs.mediapipe.tasks.genai)
+mediapipe-tasks-genai = "0.10.27"  # check for latest version
 ```
 
 Verify it's present. If missing, add it to `libs.versions.toml`:
