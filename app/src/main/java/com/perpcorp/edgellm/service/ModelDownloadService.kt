@@ -25,6 +25,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 class ModelDownloadService : Service() {
 
@@ -107,65 +110,96 @@ class ModelDownloadService : Service() {
                     else -> "tflite"
                 }
                 val destFile = File(modelsDir, "$modelId.$extension")
-                val startProgress = currentModel?.downloadProgressPercent ?: 0
-                var currentProgress = startProgress
+                val downloadUrl = currentModel?.downloadUrl ?: ""
 
-                updateNotification("Downloading $modelName", "Progress: $currentProgress% • Streaming chunks to disk")
+                if (downloadUrl.isBlank() || !downloadUrl.startsWith("http")) {
+                    throw java.io.IOException("No valid HTTP download URL found for $modelName")
+                }
 
-                // Stream small dummy chunks to disk bounded to small 16KB allocations to prevent OOM
-                val buffer = ByteArray(16384)
+                updateNotification("Connecting: $modelName", "Opening connection to Hugging Face / Model Hub...")
+
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(60, TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .build()
+
+                val request = Request.Builder()
+                    .url(downloadUrl)
+                    .header("User-Agent", "EdgeLLM-Studio-Android/1.0")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    throw java.io.IOException("HTTP Error ${response.code}: ${response.message}")
+                }
+
+                val body = response.body ?: throw java.io.IOException("Empty server response body")
+                val totalBytes = if (body.contentLength() > 0) body.contentLength() else fileSize
+                var downloadedBytes = 0L
+                var lastUpdate = System.currentTimeMillis()
+                var bytesSinceLastUpdate = 0L
+
                 destFile.parentFile?.mkdirs()
-                FileOutputStream(destFile, currentProgress > 0).use { output ->
-                    while (currentProgress < 100) {
-                        if (pausedModels.contains(modelId)) {
-                            // Paused by user
-                            repository.updateModelDownloadStatus(
-                                id = modelId,
-                                isDownloaded = false,
-                                progress = currentProgress,
-                                path = destFile.absolutePath,
-                                fileSize = fileSize
-                            )
-                            updateNotification("Paused: $modelName", "Download paused at $currentProgress%")
-                            return@use
-                        }
+                body.byteStream().use { input ->
+                    FileOutputStream(destFile).use { output ->
+                        val buffer = ByteArray(32768)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            if (pausedModels.contains(modelId)) {
+                                val currentPct = ((downloadedBytes * 100) / totalBytes.coerceAtLeast(1L)).toInt()
+                                repository.updateModelDownloadStatus(
+                                    id = modelId,
+                                    isDownloaded = false,
+                                    progress = currentPct,
+                                    path = destFile.absolutePath,
+                                    fileSize = totalBytes
+                                )
+                                updateNotification("Paused: $modelName", "Download paused at $currentPct%")
+                                return@launch
+                            }
 
-                        delay(120)
-                        currentProgress = (currentProgress + 4).coerceAtMost(100)
+                            output.write(buffer, 0, read)
+                            downloadedBytes += read
+                            bytesSinceLastUpdate += read
 
-                        // Write a small chunk to ensure file has physical presence without exhausting RAM
-                        buffer[0] = (currentProgress % 256).toByte()
-                        output.write(buffer, 0, 64)
+                            val now = System.currentTimeMillis()
+                            if (now - lastUpdate >= 500) {
+                                val elapsedSec = (now - lastUpdate) / 1000.0
+                                val mbps = if (elapsedSec > 0) (bytesSinceLastUpdate / (1024.0 * 1024.0)) / elapsedSec else 0.0
+                                val currentProgress = ((downloadedBytes * 100) / totalBytes.coerceAtLeast(1L)).toInt().coerceIn(0, 99)
+                                val speedStr = String.format(java.util.Locale.US, "%.1f MB/s", mbps)
+                                val downloadedMb = downloadedBytes / (1024 * 1024)
+                                val totalMb = totalBytes / (1024 * 1024)
 
-                        val speed = "28.4 MB/s"
-                        updateNotification(
-                            title = "Downloading $modelName",
-                            text = "$currentProgress% ($speed) • Room Metadata Sync"
-                        )
+                                updateNotification(
+                                    title = "Downloading $modelName",
+                                    text = "$currentProgress% ($downloadedMb/$totalMb MB) • $speedStr"
+                                )
 
-                        // Save progressive updates to Room periodically
-                        if (currentProgress % 12 == 0 || currentProgress == 100) {
-                            repository.updateModelDownloadStatus(
-                                id = modelId,
-                                isDownloaded = (currentProgress == 100),
-                                progress = currentProgress,
-                                path = destFile.absolutePath,
-                                fileSize = fileSize
-                            )
+                                repository.updateModelDownloadStatus(
+                                    id = modelId,
+                                    isDownloaded = false,
+                                    progress = currentProgress,
+                                    path = destFile.absolutePath,
+                                    fileSize = totalBytes
+                                )
+
+                                lastUpdate = now
+                                bytesSinceLastUpdate = 0L
+                            }
                         }
                     }
                 }
 
-                if (currentProgress >= 100) {
-                    repository.updateModelDownloadStatus(
-                        id = modelId,
-                        isDownloaded = true,
-                        progress = 100,
-                        path = destFile.absolutePath,
-                        fileSize = fileSize
-                    )
-                    updateNotification("Download Complete", "$modelName is ready for local inference.")
-                }
+                repository.updateModelDownloadStatus(
+                    id = modelId,
+                    isDownloaded = true,
+                    progress = 100,
+                    path = destFile.absolutePath,
+                    fileSize = destFile.length()
+                )
+                updateNotification("Download Complete", "$modelName (${destFile.length() / (1024 * 1024)} MB) is ready for local inference.")
 
             } catch (e: Exception) {
                 updateNotification("Download Interrupted", e.localizedMessage ?: "Unknown error")

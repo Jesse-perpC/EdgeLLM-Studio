@@ -85,6 +85,33 @@ class HardwareBenchmarkEngine {
         )
     )
 
+    /**
+     * Executes an actual micro-kernel matrix multiplication (General Matrix Multiply - GEMM)
+     * measuring real CPU floating-point throughput (GFLOPS) and cache bandwidth.
+     */
+    private fun runRealMicroKernelGemm(size: Int, iterations: Int): Double {
+        val a = FloatArray(size * size) { (it % 17) * 0.05f }
+        val b = FloatArray(size * size) { (it % 11) * 0.05f }
+        val c = FloatArray(size * size)
+
+        val start = System.nanoTime()
+        for (iter in 0 until iterations) {
+            for (i in 0 until size) {
+                val iOffset = i * size
+                for (k in 0 until size) {
+                    val aVal = a[iOffset + k]
+                    val kOffset = k * size
+                    for (j in 0 until size) {
+                        c[iOffset + j] += aVal * b[kOffset + j]
+                    }
+                }
+            }
+        }
+        val durationNs = (System.nanoTime() - start).coerceAtLeast(1L)
+        val flops = 2.0 * size.toDouble() * size.toDouble() * size.toDouble() * iterations.toDouble()
+        return (flops / (durationNs / 1_000_000_000.0)) / 1_000_000_000.0 // GFLOPS
+    }
+
     fun runDiagnosticBenchmark(
         hardware: DeviceHardwareInfo,
         settings: HardwareAccelerationSettings
@@ -103,15 +130,6 @@ class HardwareBenchmarkEngine {
             )
         )
 
-        // Pre-test hardware calibration
-        val calibrationTime = measureTimeMillis {
-            var accumulator = 0.0
-            for (i in 1..400_000) {
-                accumulator += Math.sin(i.toDouble()) * Math.cos(i.toDouble())
-            }
-        }
-        val siliconSpeedFactor = (120.0 / calibrationTime.coerceAtLeast(10)).toFloat().coerceIn(0.6f, 2.5f)
-
         for (index in benchmarkTiers.indices) {
             val tier = benchmarkTiers[index]
             val progress = ((index + 1) * 100) / (total + 1)
@@ -127,23 +145,31 @@ class HardwareBenchmarkEngine {
                 )
             )
 
-            // Simulate realistic micro-kernel GEMM execution
-            delay(550)
+            // Real micro-kernel GEMM tensor workload
+            val matrixDim = when (tier.paramSize) {
+                "0.5B" -> 64
+                "1.1B" -> 96
+                "2B" -> 128
+                "3.8B" -> 144
+                "7B" -> 160
+                else -> 96
+            }
+            val iters = when (tier.paramSize) {
+                "0.5B" -> 18
+                "1.1B" -> 12
+                "2B" -> 8
+                "3.8B" -> 5
+                "7B" -> 3
+                else -> 8
+            }
+            val measuredGflops = runRealMicroKernelGemm(matrixDim, iters)
 
             val availableRamGb = hardware.availableRamGb
             val memoryHeadroom = availableRamGb - tier.requiredRamGb
             val isOom = memoryHeadroom < 0.3f // Less than 300MB headroom is dangerous
 
-            // Calculate realistic token speed based on hardware silicon:
-            // NPU/GPU boosts throughput, CPU NEON is slightly slower, heavy models slow down due to memory bus bandwidth
-            val baseSpeed = when (tier.paramSize) {
-                "0.5B" -> 38.0f
-                "1.1B" -> 24.5f
-                "2B" -> 14.2f
-                "3.8B" -> 7.8f
-                "7B" -> 3.2f
-                else -> 10.0f
-            }
+            // Calculate realistic token speed based on real measured GFLOPS & hardware silicon:
+            val baseSpeed = (measuredGflops * 8.5).toFloat().coerceIn(3.0f, 45.0f)
 
             val backendMultiplier = when (settings.computeBackend) {
                 ComputeBackend.NPU_NNAPI -> 1.35f
@@ -156,7 +182,7 @@ class HardwareBenchmarkEngine {
             val measuredTokPerSec = if (isOom) {
                 (baseSpeed * 0.2f) // Severe thrashing
             } else {
-                baseSpeed * backendMultiplier * siliconSpeedFactor * threadFactor
+                (baseSpeed * backendMultiplier * threadFactor).coerceAtLeast(1.0f)
             }
 
             val ttftMs = (1000f / (measuredTokPerSec * 0.5f)).toLong() + (tier.approxWeightSizeMb / 8)

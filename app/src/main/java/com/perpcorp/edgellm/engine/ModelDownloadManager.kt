@@ -306,24 +306,19 @@ class ModelDownloadManager(
     val importProgressState: StateFlow<ModelImportProgress> = _importProgressState.asStateFlow()
 
     init {
-        // Ensure default models files and local file paths exist
-        for (m in initialModels) {
-            val ext = formatToExtension(m.format)
-            val targetFile = File(modelsDir, "${m.id}.$ext")
-            if (m.isDownloaded && !targetFile.exists()) {
-                try {
-                    targetFile.writeText("EdgeLLM Model: ${m.name}")
-                } catch (_: Exception) {}
-            }
-        }
-
         // Seed Room Database with initial models if empty
         scope.launch {
             try {
                 if (repository.getModelCount() == 0) {
                     val populated = initialModels.map { m ->
                         val ext = formatToExtension(m.format)
-                        m.copy(localFilePath = File(modelsDir, "${m.id}.$ext").absolutePath)
+                        val targetFile = File(modelsDir, "${m.id}.$ext")
+                        val actuallyExists = targetFile.exists() && targetFile.length() > 50_000L
+                        m.copy(
+                            localFilePath = targetFile.absolutePath,
+                            isDownloaded = actuallyExists,
+                            isActive = actuallyExists && m.isActive
+                        )
                     }
                     repository.insertAllModels(populated)
                 }
@@ -753,7 +748,16 @@ class ModelDownloadManager(
     // --- Persistence for Imported Models ---
 
     private fun loadInitialWithPersistedModels(): List<ModelSpec> {
-        val list = initialModels.toMutableList()
+        val list = initialModels.map { m ->
+            val ext = formatToExtension(m.format)
+            val file = File(modelsDir, "${m.id}.$ext")
+            val actuallyExists = file.exists() && file.length() > 50_000L
+            m.copy(
+                localFilePath = file.absolutePath,
+                isDownloaded = actuallyExists,
+                isActive = actuallyExists && m.isActive
+            )
+        }.toMutableList()
         try {
             if (importedRegistryFile.exists()) {
                 val json = importedRegistryFile.readText()

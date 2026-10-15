@@ -70,7 +70,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: EdgeLLMRepository
     private val hardwareDetector: HardwareCapabilityDetector
-    private val inferenceEngine: LocalInferenceEngine
+    val inferenceEngine: LocalInferenceEngine
     private val downloadManager: ModelDownloadManager
     private val cryptoManager: CryptoManager
     private val shareManager: TemporaryShareManager

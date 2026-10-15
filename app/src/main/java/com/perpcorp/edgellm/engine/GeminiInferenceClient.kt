@@ -144,4 +144,84 @@ Structure your response into two sequential phases:
             Result.failure(e)
         }
     }
+
+    suspend fun generateImage(
+        prompt: String,
+        aspectRatio: String = "1:1",
+        modelName: String = "gemini-2.5-flash-image"
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isNullOrBlank()) {
+            return@withContext Result.failure(IllegalStateException("GEMINI_API_KEY is not configured in BuildConfig"))
+        }
+
+        try {
+            val url = "$BASE_URL/$modelName:generateContent?key=$apiKey"
+
+            val rootJson = JSONObject()
+            val contentsArray = JSONArray()
+            val contentObj = JSONObject()
+            val partsArray = JSONArray()
+            val partObj = JSONObject()
+            partObj.put("text", prompt)
+            partsArray.put(partObj)
+            contentObj.put("parts", partsArray)
+            contentsArray.put(contentObj)
+            rootJson.put("contents", contentsArray)
+
+            val genConfig = JSONObject().apply {
+                val imageConfig = JSONObject().apply {
+                    put("aspectRatio", aspectRatio)
+                    put("imageSize", "1K")
+                }
+                put("imageConfig", imageConfig)
+                val modalities = JSONArray().apply {
+                    put("TEXT")
+                    put("IMAGE")
+                }
+                put("responseModalities", modalities)
+            }
+            rootJson.put("generationConfig", genConfig)
+
+            val requestBody = rootJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url(url)
+                .post(requestBody)
+                .header("Content-Type", "application/json")
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val bodyString = response.body?.string()
+                if (!response.isSuccessful || bodyString.isNullOrBlank()) {
+                    Log.w(TAG, "Gemini Image API error code: ${response.code}, body: $bodyString")
+                    return@withContext Result.failure(Exception("Gemini API error ${response.code}: $bodyString"))
+                }
+
+                val jsonResponse = JSONObject(bodyString)
+                val candidates = jsonResponse.optJSONArray("candidates")
+                if (candidates != null && candidates.length() > 0) {
+                    val candidate = candidates.getJSONObject(0)
+                    val content = candidate.optJSONObject("content")
+                    val parts = content?.optJSONArray("parts")
+                    if (parts != null) {
+                        for (i in 0 until parts.length()) {
+                            val part = parts.getJSONObject(i)
+                            val inlineData = part.optJSONObject("inlineData")
+                            if (inlineData != null) {
+                                val base64Data = inlineData.optString("data", "")
+                                if (base64Data.isNotBlank()) {
+                                    return@withContext Result.success(base64Data)
+                                }
+                            }
+                        }
+                    }
+                }
+                Result.failure(Exception("No image returned in response"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed calling Gemini Image API", e)
+            Result.failure(e)
+        }
+    }
 }
+

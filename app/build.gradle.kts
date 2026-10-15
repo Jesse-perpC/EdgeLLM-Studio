@@ -11,7 +11,6 @@ plugins {
 
 android {
   namespace = "com.perpcorp.edgellm"
-  ndkVersion = "27.3.13750724"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
@@ -24,45 +23,9 @@ android {
 
     // Safety net when secrets plugin skips blank .env values
     buildConfigField("String", "GEMINI_API_KEY", "\"\"")
+    buildConfigField("boolean", "GGML_VULKAN_COMPILED", "false")
+    buildConfigField("String", "FLAVOR", "\"standard\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-    ndk {
-      // llama.cpp reference kernels target NEON-capable ARM64; keep x86_64 for emulator runs
-      abiFilters += listOf("arm64-v8a", "x86_64")
-    }
-  }
-
-  flavorDimensions += "backend"
-  productFlavors {
-    // Default production flavor: CPU (ARM NEON) ggml backend. Builds from a
-    // stock NDK with no extra SDKs and runs on every ARM64 device.
-    create("cpu") {
-      dimension = "backend"
-      buildConfigField("boolean", "GGML_VULKAN_COMPILED", "false")
-    }
-    // GPU flavor: compiles the ggml Vulkan backend (needs glslc + Vulkan
-    // headers, installed in CI). Install side-by-side with the cpu flavor via
-    // the applicationId suffix. Falls back to CPU at runtime on devices
-    // without a Vulkan driver — see LlamaCppEngine.resolveGpuLayers.
-    create("vulkan") {
-      dimension = "backend"
-      applicationIdSuffix = ".vulkan"
-      versionNameSuffix = "-vulkan"
-      buildConfigField("boolean", "GGML_VULKAN_COMPILED", "true")
-      externalNativeBuild {
-        cmake {
-          arguments += "-DEDGELLM_GPU_VULKAN=ON"
-          // Cross-compiling with the NDK sets FIND_ROOT_PATH_MODE_PACKAGE=ONLY,
-          // so find_package(SPIRV-Headers) never sees host paths like
-          // /usr/local. An explicit <pkg>_DIR bypasses re-rooting. CI exports
-          // SPIRV_HEADERS_DIR after building the config; local builds without
-          // it fail with a clear CMake error naming the variable.
-          System.getenv("SPIRV_HEADERS_DIR")?.takeIf { it.isNotBlank() }?.let {
-            arguments += "-DSPIRV-Headers_DIR=$it"
-          }
-        }
-      }
-    }
   }
 
   signingConfigs {
@@ -116,12 +79,7 @@ android {
     compose = true
     buildConfig = true
   }
-  externalNativeBuild {
-    cmake {
-      path = file("src/main/cpp/CMakeLists.txt")
-      version = "3.22.1"
-    }
-  }
+
   testOptions {
     unitTests {
       isIncludeAndroidResources = true
