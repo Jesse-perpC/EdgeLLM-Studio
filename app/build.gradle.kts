@@ -11,13 +11,16 @@ plugins {
 
 android {
   namespace = "com.perpcorp.edgellm"
+  ndkVersion = "27.3.13750724"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
     applicationId = "com.aistudio.edgellm.qvmxrp"
     minSdk = 24
     targetSdk = 36
-    val buildNumber = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull() ?: 1
+    val gitCommitCount = providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+      .standardOutput.asText.get().trim().toIntOrNull() ?: 1
+    val buildNumber = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull() ?: gitCommitCount
     versionCode = buildNumber
     versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.$buildNumber"
 
@@ -84,7 +87,6 @@ android {
   testOptions {
     unitTests {
       isIncludeAndroidResources = true
-      isReturnDefaultValues = true
     }
   }
   dependenciesInfo {
