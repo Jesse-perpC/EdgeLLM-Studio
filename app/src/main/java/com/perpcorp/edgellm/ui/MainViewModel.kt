@@ -252,72 +252,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
 
-            // Multi-phase streaming simulation with progressive generation
-            val chunksA = when {
-                prompt.contains("paradox", ignoreCase = true) -> listOf(
-                    "Analyzing temporal paradox mechanics under Many-Worlds...\n\n",
-                    "1. Everett Many-Worlds Resolution: The timeline bifurcates at the closed timelike curve (CTC) junction.\n",
-                    "• Traveling backwards creates an orthogonal quantum branch Hilbert subspace |ψ'⟩.\n",
-                    "• The traveler's origin universe remains unmodified; backward entropy flux is preserved.\n\n",
-                    "2. Novikov Self-Consistency: Probabilities for self-canceling causal loops collapse to zero.\n",
-                    "Conclusion: Both frameworks strictly maintain global unitarity and thermodynamic laws on-device."
-                )
-                prompt.contains("Three Gods", ignoreCase = true) -> listOf(
-                    "Parsing Boolos's 'Hardest Logic Puzzle' under ternary constraints...\n\n",
-                    "Target Question to God A: 'Does \"da\" mean yes if and only if you are Truth and B is Random?'\n",
-                    "• Step 1: Irrespective of whether 'da' means yes or no, the truth table guarantees identifying a non-random god.\n",
-                    "• Step 2: Query the identified non-random god with: 'Does \"da\" mean yes iff 2+2=4?'\n",
-                    "• Step 3: Dedoop identities of all three deities in exactly 3 inquiries."
-                )
-                prompt.contains("buffer", ignoreCase = true) || prompt.contains("code", ignoreCase = true) -> listOf(
-                    "```kotlin\nclass LockFreeRingBuffer<T>(val capacity: Int) {\n",
-                    "    private val buffer = arrayOfNulls<Any>(capacity)\n",
-                    "    private val head = java.util.concurrent.atomic.AtomicLong(0)\n",
-                    "    private val tail = java.util.concurrent.atomic.AtomicLong(0)\n\n",
-                    "    fun offer(item: T): Boolean {\n",
-                    "        val currentTail = tail.get()\n",
-                    "        val currentHead = head.get()\n",
-                    "        if (currentTail - currentHead >= capacity) return false\n",
-                    "        val index = (currentTail and (capacity - 1).toLong()).toInt()\n",
-                    "        buffer[index] = item\n",
-                    "        tail.lazySet(currentTail + 1)\n",
-                    "        return true\n    }\n}\n```"
-                )
-                else -> groundedChunksA
-            }
-
-            val chunksB = when {
-                prompt.contains("paradox", ignoreCase = true) -> listOf(
-                    "Quantum Multiverse & Causal Horizon Analysis:\n\n",
-                    "• Quantum Decoherence: At the macroscopic level, quantum superposition isolates the past state from interference.\n",
-                    "• Thermodynamic Penalty: Generating a closed timelike curve requires negative energy density (Casimir-like vacuum state).\n",
-                    "• Entropy Conservation: Total von Neumann entropy S(ρ) = -Tr(ρ ln ρ) remains invariant.\n\n",
-                    "Summary: Information paradoxes do not propagate backwards across branching worldlines."
-                )
-                prompt.contains("Three Gods", ignoreCase = true) -> listOf(
-                    "Rigorous Logic Elimination Strategy:\n\n",
-                    "Key lemma: A compound biconditional question cancels the ambiguity of unknown word tokens ('da' / 'ja').\n\n",
-                    "Ask God B: 'If I asked you whether A is Random, would you answer \"da\"?'\n",
-                    "• If response is 'da' and B is not Random: C is definitively not Random.\n",
-                    "• With one deterministic god isolated, remaining roles collapse via standard truth queries in 2 rounds."
-                )
-                prompt.contains("buffer", ignoreCase = true) || prompt.contains("code", ignoreCase = true) -> listOf(
-                    "```kotlin\n// Zero-allocation lock-free ring buffer (single-producer single-consumer)\n",
-                    "class SpscRingBuffer<T : Any>(private val size: Int) {\n",
-                    "    init { require(size > 0 && (size and (size - 1)) == 0) { \"Size must be power of 2\" } }\n",
-                    "    private val entries = arrayOfNulls<Any?>(size)\n",
-                    "    private val mask = size - 1\n",
-                    "    @Volatile private var head = 0L\n",
-                    "    @Volatile private var tail = 0L\n\n",
-                    "    fun enqueue(element: T): Boolean {\n",
-                    "        val currentTail = tail\n",
-                    "        if (currentTail - head >= size) return false // Buffer full\n",
-                    "        entries[(currentTail.toInt() and mask)] = element\n",
-                    "        tail = currentTail + 1\n",
-                    "        return true\n    }\n}\n```"
-                )
-                else -> groundedChunksB
-            }
+            // Progressive streaming of grounded contender model responses
+            val chunksA = groundedChunksA
+            val chunksB = groundedChunksB
 
             var textA = ""
             var textB = ""
@@ -1425,7 +1362,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 algorithm = "AES-256-GCM / PBKDF2 (256-bit)",
                 sha256Hash = encryptionResult.sha256Hash,
                 ivBase64 = encryptionResult.ivBase64,
+                saltBase64 = encryptionResult.saltBase64,
                 ciphertextPreview = encryptionResult.ciphertextBase64.take(80) + "...",
+                ciphertextBase64 = encryptionResult.ciphertextBase64,
                 cloudTarget = cloudTarget,
                 temporaryShareUrl = shareBundle.shareUrl,
                 temporaryShareToken = shareBundle.token,
@@ -1439,11 +1378,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun decryptExport(record: EncryptedExportRecord, passphrase: String, fullCiphertext: String): Result<String> {
-        val saltPlaceholder = ""
+        val ciphertextToUse = if (fullCiphertext.isNotBlank() && !fullCiphertext.endsWith("...")) {
+            fullCiphertext
+        } else if (record.ciphertextBase64.isNotBlank()) {
+            record.ciphertextBase64
+        } else {
+            fullCiphertext
+        }
         val result = cryptoManager.decryptText(
-            ciphertextBase64 = fullCiphertext,
+            ciphertextBase64 = ciphertextToUse,
             ivBase64 = record.ivBase64,
-            saltBase64 = saltPlaceholder,
+            saltBase64 = record.saltBase64,
             passphrase = passphrase
         )
         if (result.isSuccess) {

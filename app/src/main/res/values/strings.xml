@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">EdgeLLM Studio</string>
+    <string name="google_app_id" translatable="false">1:1234567890:android:abcdef</string>
+    <string name="gcm_defaultSenderId" translatable="false">1234567890</string>
+    <string name="default_web_client_id" translatable="false">dummy.apps.googleusercontent.com</string>
+    <string name="firebase_database_url" translatable="false">https://dummy-default-rtdb.firebaseio.com</string>
+    <string name="google_api_key" translatable="false">AIzaSyDummyKeyForInitializationOnly</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyDummyKeyForInitializationOnly</string>
+    <string name="project_id" translatable="false">edgellm-studio</string>
 </resources>

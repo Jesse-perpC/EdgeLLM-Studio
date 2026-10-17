@@ -18,8 +18,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import com.perpcorp.edgellm.data.local.AppDatabase
+import com.perpcorp.edgellm.data.memory.VectorEmbeddingEngine
 
 class McpClientManager(private val context: Context) {
 
@@ -173,12 +176,12 @@ class McpClientManager(private val context: Context) {
 
         val startTime = System.currentTimeMillis()
 
-        // If local stdio mock or local endpoint:
-        if (server.transportType == McpTransportType.STDIO_LOCAL || server.endpointUrl.contains("localhost") || server.endpointUrl.contains("127.0.0.1")) {
-            delay(120) // Local discovery simulation
-            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(4L)
+        // Local stdio workspace check
+        if (server.transportType == McpTransportType.STDIO_LOCAL) {
+            val isReady = context.filesDir.exists()
+            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
             val updated = server.copy(
-                isConnected = true,
+                isConnected = isReady,
                 latencyMs = latency,
                 lastSyncTimestamp = System.currentTimeMillis()
             )
@@ -225,25 +228,23 @@ class McpClientManager(private val context: Context) {
                 _servers.value = _servers.value.map { if (it.id == serverId) updated else it }
                 Result.success(updated)
             } else {
-                // Fallback graceful simulation if remote server doesn't respond with 200
                 val updated = server.copy(
-                    isConnected = true,
+                    isConnected = false,
                     latencyMs = latency,
                     lastSyncTimestamp = System.currentTimeMillis()
                 )
                 _servers.value = _servers.value.map { if (it.id == serverId) updated else it }
-                Result.success(updated)
+                Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
             }
         } catch (e: Exception) {
-            // Graceful fallback for offline environment
-            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(18L)
+            val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(10L)
             val updated = server.copy(
-                isConnected = true,
+                isConnected = false,
                 latencyMs = latency,
                 lastSyncTimestamp = System.currentTimeMillis()
             )
             _servers.value = _servers.value.map { if (it.id == serverId) updated else it }
-            Result.success(updated)
+            Result.failure(e)
         }
     }
 
@@ -251,63 +252,189 @@ class McpClientManager(private val context: Context) {
         val startTime = System.currentTimeMillis()
         val server = _servers.value.find { it.id == serverId }
 
-        delay(80) // Simulate tool transport handshake
+        var isError = false
+        val resultOutput: String = try {
+            if (server != null && server.transportType != McpTransportType.STDIO_LOCAL &&
+                (server.endpointUrl.startsWith("http://") || server.endpointUrl.startsWith("https://"))
+            ) {
+                // Real remote JSON-RPC 2.0 tools/call request
+                val jsonRpcCall = JSONObject().apply {
+                    put("jsonrpc", "2.0")
+                    put("id", 2)
+                    put("method", "tools/call")
+                    put("params", JSONObject().apply {
+                        put("name", toolName)
+                        val argsObj = try { JSONObject(argumentsJson) } catch (_: Exception) { JSONObject() }
+                        put("arguments", argsObj)
+                    })
+                }
 
-        val resultOutput = when (toolName) {
-            "fs_list_directory" -> """
-                [
-                  {"name": "models", "type": "directory", "size": "4.2 GB"},
-                  {"name": "knowledge_vault", "type": "directory", "size": "18.5 MB"},
-                  {"name": "telemetry_records.json", "type": "file", "size": "142 KB"},
-                  {"name": "crypto_keys.keystore", "type": "file", "size": "4 KB"}
-                ]
-            """.trimIndent()
+                val reqBuilder = Request.Builder()
+                    .url(server.endpointUrl)
+                    .post(jsonRpcCall.toString().toRequestBody("application/json".toMediaType()))
+                server.authHeader?.let { reqBuilder.addHeader("Authorization", it) }
 
-            "fs_read_file" -> """
-                === [MCP Tool: fs_read_file] ===
-                PATH: /storage/emulated/0/EdgeLLM/vault/config.yaml
-                CONTENT:
-                  engine: LocalInferenceEngine
-                  backend: NPU_NNAPI
-                  air_gapped: true
-                  max_threads: 8
-                  mcp_enabled: true
-            """.trimIndent()
+                val response = httpClient.newCall(reqBuilder.build()).execute()
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) {
+                    val resJson = try { JSONObject(body) } catch (_: Exception) { null }
+                    if (resJson != null && resJson.has("result")) {
+                        resJson.opt("result").toString()
+                    } else if (resJson != null && resJson.has("error")) {
+                        isError = true
+                        "MCP Error: ${resJson.optJSONObject("error")?.optString("message") ?: body}"
+                    } else {
+                        body
+                    }
+                } else {
+                    isError = true
+                    "HTTP ${response.code}: $body"
+                }
+            } else {
+                // Real on-device implementation for local tools
+                when (toolName) {
+                    "fs_list_directory" -> {
+                        val requestedPath = try {
+                            val obj = JSONObject(argumentsJson)
+                            obj.optString("path", context.filesDir.absolutePath)
+                        } catch (_: Exception) {
+                            context.filesDir.absolutePath
+                        }
+                        val dir = File(requestedPath)
+                        if (dir.exists() && dir.isDirectory) {
+                            val files = dir.listFiles() ?: emptyArray()
+                            val jsonArr = JSONArray()
+                            for (f in files.take(100)) {
+                                val item = JSONObject().apply {
+                                    put("name", f.name)
+                                    put("type", if (f.isDirectory) "directory" else "file")
+                                    put("sizeBytes", if (f.isFile) f.length() else 0L)
+                                    put("path", f.absolutePath)
+                                    put("lastModified", f.lastModified())
+                                }
+                                jsonArr.put(item)
+                            }
+                            jsonArr.toString(2)
+                        } else {
+                            isError = true
+                            "Directory does not exist or is not readable: $requestedPath"
+                        }
+                    }
 
-            "fs_grep_search" -> """
-                Found 3 occurrences for query in local workspace:
-                1. /models/spec.json:5: "runtime": "on-device-llama"
-                2. /logs/inference.log:22: "status": "loaded successfully into NPU"
-                3. /vault/meta.txt:2: "security_mode": "air-gapped"
-            """.trimIndent()
+                    "fs_read_file" -> {
+                        val filePath = try {
+                            val obj = JSONObject(argumentsJson)
+                            obj.optString("filePath", obj.optString("path", ""))
+                        } catch (_: Exception) { "" }
 
-            "db_execute_query" -> """
-                Query executed successfully on SQLite:
-                +----+-------------------------+-----------------+------------------+
-                | id | model_name              | latency_avg_ms  | total_inferences |
-                +----+-------------------------+-----------------+------------------+
-                | 1  | Llama 3.2 1B Q4_K_M     | 38.2            | 1,420            |
-                | 2  | DeepSeek R1 Distill 1.5B| 44.7            | 890              |
-                | 3  | Qwen 2.5 0.5B Nano      | 19.5            | 3,110            |
-                +----+-------------------------+-----------------+------------------+
-                3 rows returned (0.84ms)
-            """.trimIndent()
+                        if (filePath.isBlank()) {
+                            isError = true
+                            "Error: Parameter 'filePath' is required."
+                        } else {
+                            val file = File(filePath)
+                            if (file.exists() && file.isFile && file.canRead()) {
+                                val maxRead = 32768
+                                val content = file.readText(Charsets.UTF_8).take(maxRead)
+                                "=== [fs_read_file: ${file.name}] ===\nPath: ${file.absolutePath}\nSize: ${file.length()} bytes\n\n$content"
+                            } else {
+                                isError = true
+                                "Error: File not found or unreadable at path: $filePath"
+                            }
+                        }
+                    }
 
-            "vector_search_embeddings" -> """
-                === Top-3 Nearest Neighbor Chunks (Cosine Similarity) ===
-                1. [Score: 0.941] "EdgeLLM executes local quantizations with zero external network egress..."
-                2. [Score: 0.887] "Model weights reside in isolated Android internal app storage partition..."
-                3. [Score: 0.823] "MCP protocol acts as a standard universal interface between LLMs and external tools..."
-            """.trimIndent()
+                    "fs_grep_search" -> {
+                        val query = try {
+                            JSONObject(argumentsJson).optString("query", "")
+                        } catch (_: Exception) { "" }
 
-            "github_list_issues" -> """
-                [GitHub MCP Bridge]
-                #42: Optimize NPU delegate memory footprint (Status: Open, Assignee: @edge-dev)
-                #39: Support Claude/OpenAI MCP tool call schemas (Status: Merged)
-                #36: Add Stripe checkout flow for Pro Creator tiers (Status: Closed)
-            """.trimIndent()
+                        if (query.isBlank()) {
+                            isError = true
+                            "Error: Parameter 'query' is required."
+                        } else {
+                            val matches = mutableListOf<String>()
+                            context.filesDir.walkTopDown().maxDepth(4).filter { it.isFile && it.length() < 250_000 }.forEach { file ->
+                                try {
+                                    file.useLines { lines ->
+                                        lines.forEachIndexed { lineNum, line ->
+                                            if (line.contains(query, ignoreCase = true) && matches.size < 30) {
+                                                matches.add("${file.name}:${lineNum + 1}: ${line.trim()}")
+                                            }
+                                        }
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                            if (matches.isEmpty()) {
+                                "No occurrences found for '$query' in local app workspace."
+                            } else {
+                                "Found ${matches.size} match(es) for '$query':\n" + matches.joinToString("\n") { "• $it" }
+                            }
+                        }
+                    }
 
-            else -> "Tool execution completed with argument: $argumentsJson"
+                    "db_execute_query" -> {
+                        val sql = try {
+                            JSONObject(argumentsJson).optString("sql", "SELECT name FROM sqlite_master WHERE type='table'")
+                        } catch (_: Exception) {
+                            "SELECT name FROM sqlite_master WHERE type='table'"
+                        }
+                        val db = AppDatabase.getInstance(context).openHelper.readableDatabase
+                        val cursor = db.query(sql)
+                        val colCount = cursor.columnCount
+                        val colNames = (0 until colCount).map { cursor.getColumnName(it) }
+                        val sb = StringBuilder()
+                        sb.appendLine(colNames.joinToString(" | "))
+                        sb.appendLine("-".repeat(colNames.sumOf { it.length } + colCount * 3))
+                        var rows = 0
+                        while (cursor.moveToNext() && rows < 50) {
+                            val rowValues = (0 until colCount).map { cursor.getString(it) ?: "NULL" }
+                            sb.appendLine(rowValues.joinToString(" | "))
+                            rows++
+                        }
+                        cursor.close()
+                        sb.appendLine("\n($rows rows returned from SQLite)")
+                        sb.toString()
+                    }
+
+                    "vector_search_embeddings" -> {
+                        val query = try {
+                            JSONObject(argumentsJson).optString("query", "")
+                        } catch (_: Exception) { "" }
+                        val topK = try {
+                            JSONObject(argumentsJson).optInt("topK", 3)
+                        } catch (_: Exception) { 3 }
+
+                        if (query.isBlank()) {
+                            isError = true
+                            "Error: Parameter 'query' is required."
+                        } else {
+                            val queryVec = VectorEmbeddingEngine.generateEmbedding(query)
+                            val memories = AppDatabase.getInstance(context).semanticMemoryDao().getAllMemoriesSnapshot()
+                            val scored = memories.map { mem ->
+                                val vec = VectorEmbeddingEngine.stringToVector(mem.embeddingVector)
+                                val score = VectorEmbeddingEngine.computeCosineSimilarity(queryVec, vec)
+                                Pair(mem, score)
+                            }.sortedByDescending { it.second }.take(topK)
+
+                            if (scored.isEmpty()) {
+                                "Vector Search: 0 memories indexed in local semantic memory store."
+                            } else {
+                                buildString {
+                                    appendLine("=== Top-${scored.size} Nearest Neighbor Semantic Chunks (128-D Cosine Sim) ===")
+                                    scored.forEachIndexed { i, (mem, score) ->
+                                        appendLine("${i + 1}. [Score: ${String.format(java.util.Locale.US, "%.3f", score)}] [${mem.subject}] ${mem.content.take(140)}")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    else -> "Tool execution completed: $toolName"
+                }
+            }
+        } catch (e: Exception) {
+            isError = true
+            "Execution failed: ${e.message ?: "Unknown error"}"
         }
 
         val elapsed = System.currentTimeMillis() - startTime
@@ -316,7 +443,7 @@ class McpClientManager(private val context: Context) {
             toolName = toolName,
             argumentsJson = argumentsJson,
             outputContent = resultOutput,
-            isError = false,
+            isError = isError,
             durationMs = elapsed
         )
 

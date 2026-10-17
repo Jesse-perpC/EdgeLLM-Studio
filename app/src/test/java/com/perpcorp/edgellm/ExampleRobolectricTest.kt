@@ -20,6 +20,12 @@ class ExampleRobolectricTest {
   }
 
   @Test
+  fun `main activity launches successfully`() {
+    val controller = org.robolectric.Robolectric.buildActivity(MainActivity::class.java).setup()
+    org.junit.Assert.assertNotNull(controller.get())
+  }
+
+  @Test
   fun `model filename parser extracts metadata accurately`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val manager = com.perpcorp.edgellm.engine.ModelDownloadManager(context)

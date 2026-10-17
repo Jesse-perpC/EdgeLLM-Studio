@@ -30,4 +30,13 @@ class GreetingScreenshotTest {
 
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
   }
+
+  @Test
+  fun test_edge_llm_app_renders() {
+    val application = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+    val viewModel = com.perpcorp.edgellm.ui.MainViewModel(application)
+    composeTestRule.setContent {
+      com.perpcorp.edgellm.ui.EdgeLLMApp(viewModel = viewModel)
+    }
+  }
 }

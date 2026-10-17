@@ -391,7 +391,7 @@ fun EncryptedVaultScreen(
                             val result = viewModel.decryptExport(
                                 record = record,
                                 passphrase = decryptPassphrase,
-                                fullCiphertext = record.ciphertextPreview.replace("...", "")
+                                fullCiphertext = if (record.ciphertextBase64.isNotBlank()) record.ciphertextBase64 else record.ciphertextPreview.replace("...", "")
                             )
                             if (result.isFailure) {
                                 decryptErrorMessage = "Decryption failed: Incorrect key or corrupted ciphertext."
