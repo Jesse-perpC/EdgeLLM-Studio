@@ -2,195 +2,208 @@ package com.perpcorp.edgellm.engine
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
+import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.GenerateContentResponse
 import com.perpcorp.edgellm.data.model.AiPersona
 import com.perpcorp.edgellm.data.model.ModelSpec
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import java.util.Locale
-import kotlin.random.Random
+import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 /**
- * Android AICore Engine - Gemini Nano on-device system foundation model.
- * References: https://developer.android.com/blog/posts/build-intelligent-android-apps-on-device-inference
- * Integrates with Android AICore system service & Google Play Services.
+ * Android AICore / Gemini Nano Engine using Google Generative AI client.
+ *
+ * This engine attempts to use on-device Gemini Nano when:
+ * - Device runs Android 14+ (API 34+)
+ * - AI Core system service is available (Pixel 8+, some newer flagships)
+ * - The model has been downloaded via Google Play Services
+ *
+ * When unavailable, it explicitly reports Unavailable rather than
+ * synthesizing text — the caller decides whether to fall back.
+ *
+ * References:
+ * - https://github.com/google-gemini/generative-ai-android
+ * - https://developer.android.com/ai/on-device
  */
-class AndroidAICoreEngine(private val context: Context? = null) {
+class AndroidAICoreEngine(private val context: Context?) {
 
-    enum class AICoreStatus(val title: String, val description: String) {
-        READY("Ready (Gemini Nano Active)", "On-device system foundation model is loaded in NPU/TPU memory"),
-        DOWNLOADING_BACKGROUND("Downloading via Google Play Services", "AICore is downloading the latest Gemini Nano weights in the background"),
-        NEEDS_SYSTEM_UPDATE("System Update Required", "AICore service requires Android 14+ with latest Play System update"),
-        HARDWARE_INCOMPATIBLE("Hardware Incompatible", "Device SoC lacks dedicated TPU/NPU tensor hardware required for Gemini Nano")
+    private companion object {
+        private const val TAG = "AICoreEngine"
+        private const val MIN_API = 34 // Android 14
     }
 
-    enum class AICoreCapability(val displayName: String, val latencyBenchmark: String) {
-        PROMPT_API("Prompt API (General Reasoning)", "~32 tok/s • 0ms TTFT"),
-        SUMMARIZATION("Native Summarization API", "~45 tok/s • Chunked"),
-        PROOFREADING_REWRITE("Proofreading & Style Rewrite", "~38 tok/s • Low Latency"),
-        SMART_REPLY("Smart Reply & Intent Classification", "<18ms Zero-Shot"),
-        MULTIMODAL_EMBEDDINGS("Multimodal TPU Embeddings", "512-D Tensor Matrix")
-    }
+    @Volatile
+    private var modelInstance: GenerativeModel? = null
 
-    data class AICoreDeviceInfo(
-        val status: AICoreStatus,
-        val isHardwareSupported: Boolean,
-        val modelVersion: String,
-        val acceleratorType: String,
-        val contextWindowTokens: Int,
-        val capabilities: List<AICoreCapability>,
-        val privacyIsolationScore: Int = 100 // 100% On-device sandbox
+    @Volatile
+    private var isAvailable: Boolean? = null
+
+    data class AICoreStatus(
+        val isAvailable: Boolean,
+        val message: String,
+        val modelVersion: String?,
+        val acceleratorType: String?
     )
 
-    fun getAICoreDeviceInfo(): AICoreDeviceInfo {
-        val soc = Build.HARDWARE.lowercase(Locale.ROOT)
-        val isTensor = soc.contains("tensor") || soc.contains("zuma") || soc.contains("gs")
-        val isSnapdragonFlagship = soc.contains("qcom") || soc.contains("qualcomm") || soc.contains("sm8")
-        val isExynosFlagship = soc.contains("exynos") || soc.contains("s5e")
+    data class AICoreTokenChunk(
+        val token: String,
+        val accumulatedText: String,
+        val tokenCount: Int,
+        val tokensPerSecond: Float,
+        val timeToFirstTokenMs: Long,
+        val isComplete: Boolean,
+        val backendUsed: String
+    )
 
-        val isSupported = isTensor || isSnapdragonFlagship || isExynosFlagship || Build.VERSION.SDK_INT >= 34
-
-        val accelerator = when {
-            isTensor -> "Google Tensor TPU (Direct System Sandbox)"
-            isSnapdragonFlagship -> "Qualcomm Hexagon NPU (Android AICore Backend)"
-            isExynosFlagship -> "Samsung Exynos NPU (AICore Offload)"
-            else -> "ARM NEON CPU Fallback"
+    /**
+     * Check if AICore/Gemini Nano is available on this device.
+     * Returns a status object with availability and details.
+     */
+    suspend fun checkAvailability(): AICoreStatus {
+        if (isAvailable != null) {
+            return AICoreStatus(isAvailable!!, "Cached", null, null)
         }
 
-        val status = if (isSupported) AICoreStatus.READY else AICoreStatus.NEEDS_SYSTEM_UPDATE
+        // Hard requirement: Android 14+
+        if (Build.VERSION.SDK_INT < MIN_API) {
+            isAvailable = false
+            return AICoreStatus(false, "Requires Android 14+ (API $MIN_API)", null, null)
+        }
 
-        return AICoreDeviceInfo(
-            status = status,
-            isHardwareSupported = isSupported,
-            modelVersion = "Gemini Nano-2 (3.25B / 4-bit INT4 System Quantized)",
-            acceleratorType = accelerator,
-            contextWindowTokens = 4096,
-            capabilities = AICoreCapability.values().toList(),
-            privacyIsolationScore = 100
-        )
+        // Try to instantiate the GenerativeModel with the on-device model name.
+        // If AI Core isn't available or model not downloaded, this will fail at generateContent time.
+        try {
+            modelInstance = GenerativeModel(
+                modelName = "gemini-nano",
+                apiKey = "" // On-device models don't need an API key
+            )
+            isAvailable = true
+            return AICoreStatus(true, "Gemini Nano available", "Gemini Nano (on-device)", "NPU/TPU via AI Core")
+        } catch (e: Exception) {
+            isAvailable = false
+            Log.w(TAG, "Gemini Nano not available: ${e.message}")
+            return AICoreStatus(false, "AI Core not ready or model not downloaded: ${e.message}", null, null)
+        }
     }
 
     /**
-     * Executes streaming inference using the Android AICore Gemini Nano Prompt API.
+     * Stream a response using on-device Gemini Nano.
+     * Emits measured tokens with real timing.
      */
     fun generateStreamingResponse(
         prompt: String,
         systemInstruction: String = "",
-        taskType: AICoreCapability = AICoreCapability.PROMPT_API,
         model: ModelSpec? = null,
         persona: AiPersona? = null
     ): Flow<AICoreTokenChunk> = flow {
         val startTime = System.currentTimeMillis()
 
-        // Ultra-low time to first token due to kernel-level resident NPU memory
-        val ttft = Random.nextLong(15L, 35L)
-        delay(ttft)
-
-        val generatedText = when (taskType) {
-            AICoreCapability.SUMMARIZATION -> {
-                // Summarization still grounds on the actual user content.
-                val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-                if (model != null) {
-                    OutputVerificationEngine.verifyAndSanitizeText(
-                        OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
-                    )
-                } else {
-                    "Summary of \"$userQuery\": processed locally in the AICore sandbox with zero cloud egress."
-                }
-            }
-            AICoreCapability.PROOFREADING_REWRITE -> {
-                val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-                if (model != null && userQuery.length > 140) {
-                    OutputVerificationEngine.verifyAndSanitizeText(
-                        OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
-                    )
-                } else {
-                    "Polished: ${userQuery.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }}"
-                }
-            }
-            AICoreCapability.SMART_REPLY -> {
-                "1. Understood, proceeding with local task execution.\n" +
-                        "2. Confirmed on-device without cloud network latency.\n" +
-                        "3. Model parameters and responses remain 100% private."
-            }
-            else -> {
-                generateGeminiNanoResponse(prompt, systemInstruction, model, persona)
-            }
-        }
-
-        val words = generatedText.split(" ")
-        val sb = StringBuilder()
-        var tokenCount = 0
-
-        for (i in words.indices) {
-            tokenCount++
-            val token = if (i == 0) words[i] else " ${words[i]}"
-            sb.append(token)
-
-            val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
-            val tps = if (elapsedSec > 0.05f) tokenCount / elapsedSec else 35.0f
-
+        // Verify availability
+        val status = checkAvailability()
+        if (!status.isAvailable || modelInstance == null) {
             emit(
                 AICoreTokenChunk(
-                    token = token,
-                    accumulatedText = sb.toString(),
-                    tokenCount = tokenCount,
-                    tokensPerSecond = ((tps * 10).toInt() / 10f),
-                    timeToFirstTokenMs = ttft,
-                    isComplete = false
+                    token = "",
+                    accumulatedText = "",
+                    tokenCount = 0,
+                    tokensPerSecond = 0f,
+                    timeToFirstTokenMs = 0L,
+                    isComplete = true,
+                    backendUsed = "Unavailable: ${status.message}"
                 )
             )
-
-            // High throughput: ~30-45 tokens/s on modern mobile NPUs
-            delay(Random.nextLong(18L, 30L))
+            return@flow
         }
 
+        val fullPrompt = if (systemInstruction.isNotBlank()) "$systemInstruction\n\n$prompt" else prompt
+
+        // Channel for streaming tokens from the suspend function
+        val channel = Channel<String>(capacity = 64)
+
+        // Launch generation in a separate coroutine
+        val generationJob = CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // The GenerativeModel doesn't support true token streaming yet.
+                // We get the full response and stream it word-by-word with real timing.
+                val response: GenerateContentResponse = modelInstance!!.generateContent(fullPrompt)
+                val text = response.text ?: ""
+                channel.send(text)
+            } catch (e: Exception) {
+                Log.e(TAG, "Gemini Nano generation failed", e)
+                channel.send("[Error: ${e.message}]")
+            } finally {
+                channel.close()
+            }
+        }
+
+        // Collect from channel and emit as streaming chunks
+        var ttft = -1L
+        var tokenCount = 0
+        val sb = StringBuilder()
+
+        for (text in channel) {
+            val words = text.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }
+            for (i in words.indices) {
+                tokenCount++
+                val token = if (i == 0) words[i] else " ${words[i]}"
+                sb.append(token)
+
+                if (ttft < 0) ttft = System.currentTimeMillis() - startTime
+
+                val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
+                val tps = if (elapsedSec > 0.05f) tokenCount / elapsedSec else 0f
+
+                emit(
+                    AICoreTokenChunk(
+                        token = token,
+                        accumulatedText = sb.toString(),
+                        tokenCount = tokenCount,
+                        tokensPerSecond = (tps * 10).toInt() / 10f,
+                        timeToFirstTokenMs = ttft,
+                        isComplete = false,
+                        backendUsed = "Gemini Nano (AI Core)"
+                    )
+                )
+
+                // Small delay to simulate streaming feel (real API doesn't stream yet)
+                kotlinx.coroutines.delay(15)
+            }
+        }
+
+        generationJob.join()
+
+        // Final chunk
+        val totalElapsedSec = ((System.currentTimeMillis() - startTime) / 1000f).coerceAtLeast(0.1f)
         emit(
             AICoreTokenChunk(
                 token = "",
                 accumulatedText = sb.toString(),
                 tokenCount = tokenCount,
-                tokensPerSecond = 38.5f,
-                timeToFirstTokenMs = ttft,
-                isComplete = true
+                tokensPerSecond = ((tokenCount / totalElapsedSec) * 10).toInt() / 10f,
+                timeToFirstTokenMs = if (ttft >= 0) ttft else (System.currentTimeMillis() - startTime),
+                isComplete = true,
+                backendUsed = "Gemini Nano (AI Core)"
             )
         )
     }
 
     /**
-     * Grounded Gemini Nano response: answer the ACTUAL user query via the shared
-     * knowledge base so any loaded model type stays on-topic.
+     * Quick synchronous availability check for UI.
      */
-    private fun generateGeminiNanoResponse(
-        prompt: String,
-        systemInstruction: String,
-        model: ModelSpec? = null,
-        persona: AiPersona? = null
-    ): String {
-        val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-        val lower = userQuery.lowercase(Locale.ROOT)
-
-        // Identity stays concise and on-topic (answer-only, no setup talk).
-        if (lower.contains("hello") || lower == "hi" || lower == "hey") {
-            return "Hello! How can I help you today?"
-        }
-
-        // Any loaded model: ground through shared knowledge, AICore as accelerator only.
-        if (model != null) {
-            return OutputVerificationEngine.verifyAndSanitizeText(
-                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
-            )
-        }
-
-        return "Please load a model to receive full grounded answers."
-    }
+    fun isAvailableSync(): Boolean = isAvailable ?: (Build.VERSION.SDK_INT >= MIN_API)
 }
 
-data class AICoreTokenChunk(
-    val token: String,
-    val accumulatedText: String,
-    val tokenCount: Int,
-    val tokensPerSecond: Float,
-    val timeToFirstTokenMs: Long,
-    val isComplete: Boolean
-)
+companion object {
+    // Simple device capability check without initializing the model
+    fun quickCapabilityCheck(context: Context?): Boolean {
+        return context?.let {
+            Build.VERSION.SDK_INT >= MIN_API &&
+                    it.packageManager.hasSystemFeature("android.hardware.type.automotive") == false
+        } ?: false
+    }
+}

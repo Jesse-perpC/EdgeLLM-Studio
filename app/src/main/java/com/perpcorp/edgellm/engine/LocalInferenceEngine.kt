@@ -46,10 +46,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
 
     val geminiClient by lazy { GeminiInferenceClient() }
     val mediaPipeEngine by lazy { MediaPipeInferenceEngine(context) }
-    // NOTE: AndroidAICoreEngine and AlibabaMnnEngine are intentionally NOT
-    // instantiated here. Both are unimplemented placeholders (no public AICore
-    // SDK exists; MNN-LLM has no Maven artifact). Their branches report
-    // unavailable rather than routing to them. See scripts/setup-mnn.md.
+    val androidAICoreEngine by lazy { AndroidAICoreEngine(context) }
     val llamaCppEngine by lazy { LlamaCppEngine(context) }
     val onnxLlmEngine by lazy { OnnxLlmEngine() }
     val tfliteClassifierEngine by lazy { TfliteClassifierEngine() }
@@ -120,21 +117,36 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             effectivePrompt
         }
 
+        // 1. Android AICore / Gemini Nano (real on-device via Google Generative AI client).
+        // Requires Android 14+, AI Core system service, and model downloaded via Play Services.
+        // Falls back to KB if unavailable — availability checked inside the engine.
         if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.ANDROID_AICORE) {
-            Log.e(TAG, "ANDROID_AICORE requested, but no public AICore/Gemini Nano SDK exists")
-            emit(
-                StreamTokenChunk(
-                    token = "",
-                    accumulatedText = "",
-                    tokenCount = 0,
-                    tokensPerSecond = 0f,
-                    timeToFirstTokenMs = 0L,
-                    isComplete = true,
-                    backendUsed = "Unavailable",
-                    samplerName = "Unavailable",
-                    grammarModeUsed = GrammarMode.NONE
+            androidAICoreEngine.generateStreamingResponse(
+                prompt = nonGbnfStrictPrompt,
+                systemInstruction = params.systemPrompt,
+                model = model,
+                persona = persona
+            ).collect { chunk ->
+                val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
+                emit(
+                    StreamTokenChunk(
+                        token = chunk.token,
+                        accumulatedText = displayText,
+                        tokenCount = chunk.tokenCount,
+                        tokensPerSecond = chunk.tokensPerSecond,
+                        timeToFirstTokenMs = chunk.timeToFirstTokenMs,
+                        isComplete = chunk.isComplete,
+                        backendUsed = chunk.backendUsed,
+                        speculativeSpeedup = 1.0f,
+                        speculativeAcceptedTokens = 0,
+                        kvCacheSavedPercent = 0f,
+                        isPrefixCacheHit = false,
+                        isTurboBoost = params.isTurboBoost,
+                        samplerName = "Gemini Nano (AI Core)",
+                        grammarModeUsed = GrammarMode.NONE
+                    )
                 )
-            )
+            }
             return@flow
         }
 

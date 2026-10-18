@@ -162,6 +162,7 @@ dependencies {
   // Replaces the path that answered classification prompts from the
   // hardcoded knowledge engine.
   implementation(libs.tensorflow.lite)
+implementation(libs.generative.ai)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

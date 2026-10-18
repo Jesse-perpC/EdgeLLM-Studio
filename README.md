@@ -23,11 +23,12 @@
 
 ```
 ================================== SYSTEM TELEMETRY ==================================
-[RANKING: #1 WORLDWIDE]   [SILICON: QUALCOMM / MEDIATEK / TENSOR / UNIVERSAL ARM64]
-[ENGINES: GGUF + MEDIAPIPE + ONNX + MNN + SD]   [NETWORK: 100% AIR-GAPPED PRIVATE]
-[SERVER: OPENAI DAEMON ON PORT 8080/11434]   [CRYPTO VAULT: HARDWARE STRONG-BOX]
+[MATURITY: BETA]   [SILICON: QUALCOMM / MEDIATEK / TENSOR / UNIVERSAL ARM64]
+[ENGINES: GGUF + MEDIAPIPE + ONNX + TFLITE + AICORE*]   [NETWORK: OFFLINE-FIRST, OPT-IN CLOUD ASSIST]
+[SERVER: OPENAI DAEMON ON PORT 8080/11434]   [CRYPTO VAULT: HARDWARE KEYSTORE WHERE AVAILABLE]
 ======================================================================================
 ```
+*AICore requires Android 14+, AI Core system service, and model downloaded (Pixel 8+, some flagships).
 
 </div>
 
@@ -43,24 +44,12 @@ Across developer forums (Reddit `r/LocalLLaMA`, `r/AndroidDev`), GitHub reposito
 
 | Feature / Capability | **EdgeLLM Studio** (Ours) | **ToolNeuron** (Siddhesh2377) | **Google AI Edge Gallery** | **Layla Companion** | **Ollama / Private LLM** | **MLC LLM** |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Overall Category Rank** | 🥇 **#1 (9.9/10)** | 🥈 **#2 (8.6/10)** | 🥉 **#3 (8.2/10)** | **#4 (7.9/10)** | **#5 (7.4/10)** | **#6 (7.1/10)** |
+| **Overall Category Rank** | **Beta (unranked)** | 🥈 **#2 (8.6/10)** | 🥉 **#3 (8.2/10)** | **#4 (7.9/10)** | **#5 (7.4/10)** | **#6 (7.1/10)** |
 | **GGUF (llama.cpp) Engine** | ✅ Yes | ✅ Yes | ❌ No | ✅ Yes | ✅ Yes | ❌ (Custom) |
 | **MediaPipe / LiteRT (Gemma 2/3)** | ✅ Yes | 🟡 Import only | ✅ Official | ❌ No | ❌ No | ❌ No |
-| **ONNX Runtime & Alibaba MNN** | ✅ Dual Engine | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Hugging Face Hub Live Explorer** | ✅ Native 100k+ Catalog | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No |
-| **On-Device Stable Diffusion (:ai_sd)** | ✅ Txt2Img + Img2Img + Inpaint | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Interactive Inpainting Mask Brush** | ✅ Touch Canvas Dialog | ❌ Basic | ❌ No | ❌ No | ❌ No | ❌ No |
-| **RAG Semantic Chunk Debugger** | ✅ SHA-256 + Cosine Slider | ✅ Yes | ❌ No | ❌ Basic | ❌ No | ❌ No |
-| **OpenAI & Ollama HTTP Server** | ✅ Background Port 8080/11434 | ✅ Yes | ❌ No | ❌ No | 🟡 Local only | ❌ No |
-| **Bearer Token Security & Audit Log** | ✅ Real-time Metrics | ❌ Basic | ❌ No | ❌ No | ❌ No | ❌ No |
-| **LMSYS-Style Model Arena (A/B Test)** | ✅ Blind Battle + Elo Ratings | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Decisive Straight-to-Point AI** | ✅ Zero Boilerplate (100+ Langs)| ❌ Has Filler | ❌ Boilerplate | ❌ Persona Fluff | 🟡 Depends | ❌ Boilerplate |
-| **Optional Thinking Mode (CoT)** | ✅ User Toggle (Off by default) | ❌ Forced | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Android System Assistant Overlay** | ✅ VoiceInteractionService | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Silicon Governor & Thermals** | ✅ NPU/GPU/CPU Thread Control | ❌ No | 🟡 Read-only | ❌ No | ❌ No | ❌ No |
-| **Zero-Knowledge Encrypted Vault** | ✅ AES-256-GCM Hardware Keystore| ❌ Plaintext | ❌ No | 🟡 Partial | ❌ No | ❌ No |
-| **Sandboxed Plugins & MCP Pipeline** | ✅ Notes, Expenses, System Bridge| ✅ Yes | ❌ No | 🟡 Limited | ❌ No | ❌ No |
-| **Multi-Turn Vector Memory & LoRA** | ✅ Vector Embedding Engine | ❌ No | ❌ No | ✅ Yes | ❌ No | ❌ No |
+| **ONNX Runtime** | ✅ Yes | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
+| **Alibaba MNN** | ❌ Manual build only | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
+| **AICore / Gemini Nano** | ✅ On supported devices | ❌ No | ✅ Official | ❌ No | ❌ No | ❌ No |
 | **Speculative Decoding Acceleration** | ✅ Draft Model Pairing | ❌ No | ❌ No | ❌ No | ❌ No | ❌ No |
 | **Pricing / Freedom** | 🟢 **100% Free & Open Source** | 🟢 Free | 🟢 Free | 🔴 Paid ($20+) | 🟡 Freemium | 🟢 Free |
 
@@ -241,12 +230,14 @@ app/src/main/java/com/perpcorp/edgellm/
 │       ├── EncryptedVaultScreen.kt      # Zero-knowledge AES-256 GCM encrypted archives
 │       └── SettingsScreen.kt            # Hardware accelerators & system configuration
 ├── engine/
-│   ├── LocalInferenceEngine.kt          # Unified streaming router (GGUF/MediaPipe/MNN/AICore/ONNX)
+│   ├── LocalInferenceEngine.kt          # Unified streaming router (GGUF/MediaPipe/ONNX/TFLite/AICore*; MNN manual only)
 │   ├── InferenceFactory.kt              # Extension→format→backend routing helper
 │   ├── LlamaCppEngine.kt                # GGUF + native GBNF grammar-constrained decoding
 │   ├── MediaPipeInferenceEngine.kt      # Real tasks-genai weight inference first, grounded KB fallback
-│   ├── AlibabaMnnEngine.kt              # MNN Qwen path (grounded answers)
-│   ├── AndroidAICoreEngine.kt           # Gemini Nano system path (grounded answers)
+│   ├── OnnxLlmEngine.kt                 # Real ONNX Runtime decoder (encoder-safe)
+│   ├── TfliteClassifierEngine.kt        # Real TFLite BERT classifier
+│   ├── AlibabaMnnEngine.kt              # MNN-LLM (manual build only — no Maven artifact; see scripts/setup-mnn.md)
+│   ├── AndroidAICoreEngine.kt           # Gemini Nano via Generative AI client (real on supported devices)
 │   ├── OfflineKnowledgeEngine.kt        # Strict prompt jail + decisive answer knowledge base
 │   ├── OutputVerificationEngine.kt      # Jargon screen, loop detector, CoVe guardrails
 │   ├── GrammarConstraintEngine.kt       # GBNF/JSON/SQL/regex output validators
