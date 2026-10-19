@@ -65,7 +65,7 @@ class ModelDownloadManager(
             fileSizeBytes = 230L * 1024L * 1024L,
             requiredRamBytes = 410L * 1024L * 1024L,
             contextLength = 4096,
-            description = "Featherweight model trained on high-quality synthetic datasets. Runs at 35+ tok/s with zero thermal impact.",
+            description = "Featherweight model trained on high-quality synthetic datasets.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/HuggingFaceTB/SmolLM-360M-Instruct-GGUF/resolve/main/smollm-360m-instruct-q4_k_m.gguf",
             sha256Checksum = "4a1801fb297e68bc43d1a8e639dc281533adbf81ea42f5342bc490656e297801",
@@ -455,10 +455,16 @@ class ModelDownloadManager(
         val directSpecs = mutableListOf<ModelSpec>()
         for ((filename, size) in demoFiles) {
             val f = File(sampleFolder, filename)
-            if (!f.exists()) {
-                try {
-                    f.writeText("EdgeLLM Demo Model Container: $filename ($size bytes)")
-                } catch (_: Exception) {}
+            if (!f.exists() || f.length() < 1024) {
+                activeImportJob?.cancel()
+                activeImportJob = scope.launch {
+                    _importProgressState.value = _importProgressState.value.copy(
+                        isImporting = false,
+                        hasError = true,
+                        errorMessage = "Model file not found or too small: $filename. Please download models first."
+                    )
+                }
+                return
             }
             discovered.add(DiscoveredModelFile(null, f, filename, size))
             directSpecs.add(parseModelSpecFromFileName(filename, size, f.absolutePath, "Sample Models Folder"))
@@ -543,7 +549,7 @@ class ModelDownloadManager(
             val modelBinFile = File(modelsDir, "${parsedSpec.id}.bin")
             if (!modelBinFile.exists()) {
                 try {
-                    modelBinFile.writeText("Imported model weights link: ${parsedSpec.name} (${parsedSpec.format})")
+                    modelBinFile.writeBytes(ByteArray(0))
                 } catch (_: Exception) {}
             }
 
@@ -920,80 +926,115 @@ class ModelDownloadManager(
                     isPaused = false,
                     downloadProgressPercent = startPercent,
                     downloadedBytes = (totalBytes * (startPercent / 100.0)).toLong(),
-                    downloadSpeedFormatted = "18.4 MB/s",
-                    downloadStatusText = "Connecting to mirror & allocating storage..."
+                    downloadSpeedFormatted = "0 MB/s",
+                    downloadStatusText = "Starting download..."
                 )
             }
-
-            delay(300)
-
-            val speeds = listOf("24.5 MB/s", "31.2 MB/s", "28.8 MB/s", "36.4 MB/s", "22.1 MB/s", "34.0 MB/s")
-            var currentPercent = startPercent
-
-            while (currentPercent < 95) {
-                delay(120)
-                currentPercent += 4
-                if (currentPercent > 95) currentPercent = 95
-                val currentBytes = (totalBytes * (currentPercent / 100.0)).toLong()
-                val speed = speeds[(currentPercent / 7) % speeds.size]
-
-                updateModel(modelId) {
-                    it.copy(
-                        downloadProgressPercent = currentPercent,
-                        downloadedBytes = currentBytes,
-                        downloadSpeedFormatted = speed,
-                        downloadStatusText = "Streaming weights chunk ${(currentPercent / 10) + 1}/10"
-                    )
-                }
-
-                if (currentPercent % 20 == 0) {
-                    val ext = formatToExtension(initialModel.format)
-                    val currentPath = File(modelsDir, "$modelId.$ext").absolutePath
-                    repository.updateModelDownloadStatus(modelId, false, currentPercent, currentPath, totalBytes)
-                }
-            }
-
-            updateModel(modelId) {
-                it.copy(
-                    downloadProgressPercent = 98,
-                    downloadedBytes = totalBytes,
-                    downloadSpeedFormatted = "Verifying",
-                    downloadStatusText = "Computing SHA-256 integrity checksum..."
-                )
-            }
-            delay(300)
 
             val ext = formatToExtension(initialModel.format)
             val modelFile = File(modelsDir, "$modelId.$ext")
-            if (!modelFile.exists()) {
-                try {
-                    modelFile.writeText("EdgeLLM Model Weights Container: $modelId")
-                } catch (_: Exception) {}
-            }
+            val url = initialModel.downloadUrl
 
-            updateModel(modelId) {
-                it.copy(
-                    isDownloading = false,
-                    isPaused = false,
-                    isDownloaded = true,
-                    downloadProgressPercent = 100,
-                    downloadedBytes = totalBytes,
-                    downloadSpeedFormatted = "Ready",
-                    downloadStatusText = "Installed",
-                    localFilePath = modelFile.absolutePath
-                )
-            }
-
-            // Sync with Room
             try {
-                repository.updateModelDownloadStatus(
-                    id = modelId,
-                    isDownloaded = true,
-                    progress = 100,
-                    path = modelFile.absolutePath,
-                    fileSize = totalBytes
-                )
-            } catch (_: Exception) {}
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val request = okhttp3.Request.Builder().url(url).build()
+                val response = client.newCall(request).execute()
+
+                if (!response.isSuccessful) {
+                    updateModel(modelId) {
+                        it.copy(
+                            isDownloading = false,
+                            downloadStatusText = "Failed: HTTP ${response.code}"
+                        )
+                    }
+                    return@launch
+                }
+
+                val body = response.body ?: run {
+                    updateModel(modelId) {
+                        it.copy(
+                            isDownloading = false,
+                            downloadStatusText = "Failed: Empty response"
+                        )
+                    }
+                    return@launch
+                }
+
+                val contentLength = body.contentLength().coerceAtLeast(totalBytes)
+                val source = body.source()
+                val sink = modelFile.sink().buffer()
+
+                val buffer = okio.Buffer()
+                var totalBytesRead = 0L
+                var lastUpdateTime = System.currentTimeMillis()
+                var lastUpdateBytes = 0L
+
+                while (true) {
+                    val bytesRead = source.read(buffer, 8192)
+                    if (bytesRead == -1L) break
+                    sink.write(buffer, bytesRead)
+                    totalBytesRead += bytesRead
+
+                    val now = System.currentTimeMillis()
+                    if (now - lastUpdateTime >= 500L) {
+                        val elapsed = (now - lastUpdateTime).coerceAtLeast(1L)
+                        val bytesSinceLastUpdate = totalBytesRead - lastUpdateBytes
+                        val speedBps = (bytesSinceLastUpdate * 1000L) / elapsed
+                        val speedMbps = speedBps / (1024.0 * 1024.0)
+                        val progress = ((totalBytesRead.toDouble() / contentLength.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+
+                        updateModel(modelId) {
+                            it.copy(
+                                downloadProgressPercent = progress,
+                                downloadedBytes = totalBytesRead,
+                                downloadSpeedFormatted = String.format("%.1f MB/s", speedMbps),
+                                downloadStatusText = "Downloading..."
+                            )
+                        }
+
+                        lastUpdateTime = now
+                        lastUpdateBytes = totalBytesRead
+                    }
+                }
+
+                sink.close()
+                source.close()
+
+                updateModel(modelId) {
+                    it.copy(
+                        isDownloading = false,
+                        isPaused = false,
+                        isDownloaded = true,
+                        downloadProgressPercent = 100,
+                        downloadedBytes = totalBytesRead,
+                        downloadSpeedFormatted = "Ready",
+                        downloadStatusText = "Installed",
+                        localFilePath = modelFile.absolutePath
+                    )
+                }
+
+                try {
+                    repository.updateModelDownloadStatus(
+                        id = modelId,
+                        isDownloaded = true,
+                        progress = 100,
+                        path = modelFile.absolutePath,
+                        fileSize = totalBytesRead
+                    )
+                } catch (_: Exception) {}
+
+            } catch (e: Exception) {
+                updateModel(modelId) {
+                    it.copy(
+                        isDownloading = false,
+                        downloadStatusText = "Failed: ${e.localizedMessage ?: "Network error"}"
+                    )
+                }
+            }
 
             activeDownloadJobs.remove(modelId)
         }

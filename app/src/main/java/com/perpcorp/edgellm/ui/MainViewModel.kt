@@ -153,16 +153,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     )
 
-    private val _arenaLeaderboard = MutableStateFlow<List<com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry>>(
-        listOf(
-            com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry("gemini_nano_system", "Gemini Nano (AICore)", "AICore", 1258, 22, 2, 4, 114.2f, "Grandmaster", "Hexagon NPU"),
-            com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry("qwen_2_5_1_5b_instruct", "Qwen 2.5 1.5B Instruct", "MNN", 1224, 17, 4, 3, 96.5f, "Master", "Vulkan 1.3 GPU"),
-            com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry("gemma_2b_it", "Gemma 2B IT (MediaPipe)", "MediaPipe", 1198, 14, 6, 5, 84.1f, "Diamond", "OpenCL GPU"),
-            com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry("phi3_mini_4k", "Phi-3.5 Mini 3.8B", "GGUF", 1182, 11, 8, 2, 46.3f, "Platinum", "ARM NEON SIMD"),
-            com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry("llama3_2_1b", "Llama 3.2 1B Instruct", "GGUF", 1164, 10, 9, 3, 73.8f, "Platinum", "Vulkan GPU"),
-            com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry("smollm_360m", "SmolLM 360M Instruct", "GGUF", 1120, 6, 12, 2, 142.0f, "Gold", "ARM NEON CPU")
-        )
-    )
+    private val _arenaLeaderboard = MutableStateFlow<List<com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry>>(emptyList())
     val arenaLeaderboard: StateFlow<List<com.perpcorp.edgellm.data.model.ArenaLeaderboardEntry>> = _arenaLeaderboard.asStateFlow()
 
     fun startArenaBattle(
@@ -277,8 +268,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     streamProgressB = progB.coerceIn(0f, 1f),
                     modelATtftMs = ttftA,
                     modelBTtftMs = ttftB,
-                    modelATps = 78.4f + (i * 2.1f),
-                    modelBTps = 86.2f + (i * 1.8f),
+                    modelATps = 0f,
+                    modelBTps = 0f,
                     isBattling = true
                 )
             }
@@ -286,11 +277,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _activeArenaMatch.value = match.copy(
                 modelAResponse = textA,
                 modelATtftMs = ttftA,
-                modelATps = 88.5f,
+                modelATps = 0f,
                 modelATotalTimeMs = ttftA + 520,
                 modelBResponse = textB,
                 modelBTtftMs = ttftB,
-                modelBTps = 94.2f,
+                modelBTps = 0f,
                 modelBTotalTimeMs = ttftB + 480,
                 streamProgressA = 1.0f,
                 streamProgressB = 1.0f,
@@ -607,19 +598,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Hardware Telemetry
     private val _hardwareInfo = MutableStateFlow(
         DeviceHardwareInfo(
-            totalRamBytes = 8L * 1024L * 1024L * 1024L,
-            availableRamBytes = 4L * 1024L * 1024L * 1024L,
+            totalRamBytes = Runtime.getRuntime().maxMemory(),
+            availableRamBytes = 0L,
             isLowMemory = false,
-            cpuCores = 8,
-            cpuArchitecture = "arm64-v8a",
-            socModel = "Snapdragon / Tensor Neural Engine",
-            batteryLevel = 88,
+            cpuCores = Runtime.getRuntime().availableProcessors(),
+            cpuArchitecture = System.getProperty("os.arch") ?: "unknown",
+            socModel = "Unknown",
+            batteryLevel = 0,
             isCharging = false,
-            thermalStatus = "Optimal (Cool)",
-            hasVulkanCompute = true,
-            hasNpuSupport = true,
-            hasOpenCl = true,
-            is64Bit = true
+            thermalStatus = "Unknown",
+            hasVulkanCompute = false,
+            hasNpuSupport = false,
+            hasOpenCl = false,
+            is64Bit = System.getProperty("os.arch")?.contains("64") == true
         )
     )
     val hardwareInfo: StateFlow<DeviceHardwareInfo> = _hardwareInfo.asStateFlow()
@@ -1450,22 +1441,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun generateInitialTelemetryHistory(): List<HardwareUsagePoint> {
-        val now = System.currentTimeMillis()
-        val points = mutableListOf<HardwareUsagePoint>()
-        for (i in 20 downTo 1) {
-            val t = now - (i * 1000L)
-            points.add(
-                HardwareUsagePoint(
-                    timestamp = t,
-                    gpuPercent = 18f + kotlin.math.sin(i * 0.4).toFloat() * 6f,
-                    npuPercent = 10f + kotlin.math.cos(i * 0.3).toFloat() * 4f,
-                    cpuPercent = 22f + kotlin.math.sin(i * 0.5).toFloat() * 5f,
-                    memoryUsedGb = 3.1f,
-                    tokensPerSec = 0f
-                )
-            )
-        }
-        return points
+        return emptyList()
     }
 
     fun setLiveTelemetryPolling(enabled: Boolean) {
@@ -1511,6 +1487,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private fun readCpuUsage(): Float {
+        return try {
+            val reader = java.io.RandomAccessFile("/proc/stat", "r")
+            val line = reader.readLine()
+            reader.close()
+            val parts = line.split("\\s+".toRegex())
+            if (parts.size >= 8) {
+                val user = parts[1].toLongOrNull() ?: 0
+                val nice = parts[2].toLongOrNull() ?: 0
+                val system = parts[3].toLongOrNull() ?: 0
+                val idle = parts[4].toLongOrNull() ?: 0
+                val total = user + nice + system + idle
+                if (total > 0) ((user + nice + system).toFloat() / total.toFloat()) * 100f else 0f
+            } else 0f
+        } catch (_: Exception) { 0f }
+    }
+
+    private fun readThermalTemp(): Float {
+        return try {
+            val thermalDirs = listOf(
+                "/sys/class/thermal/thermal_zone0/temp",
+                "/sys/class/thermal/thermal_zone1/temp"
+            )
+            for (path in thermalDirs) {
+                try {
+                    val temp = java.io.File(path).readText().trim().toFloat()
+                    return if (temp > 1000) temp / 1000f else temp
+                } catch (_: Exception) {}
+            }
+            0f
+        } catch (_: Exception) { 0f }
+    }
+
+    private fun readBatteryLevel(): Int {
+        return try {
+            val bm = getApplication<Application>().getSystemService(android.content.Context.BATTERY_SERVICE) as android.os.BatteryManager
+            bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        } catch (_: Exception) { 0 }
+    }
+
     private fun startTelemetryLoop() {
         viewModelScope.launch(Dispatchers.Default) {
             delay(2000L)
@@ -1520,56 +1536,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 val isGen = _isGenerating.value
                 val backend = _accelerationSettings.value.computeBackend
-                val randomJitter = (kotlin.random.Random.nextFloat() * 6f) - 3f
 
-                val targetGpu: Float
-                val targetNpu: Float
-                val targetCpu: Float
-                val targetTokPerSec: Float
-                val watts: Float
-                val temp: Float
+                val cpuUsage = readCpuUsage()
+                val thermalTemp = readThermalTemp()
+                val batteryLevel = readBatteryLevel()
 
-                if (isGen) {
-                    when (backend) {
-                        ComputeBackend.GPU_VULKAN -> {
-                            targetGpu = (82f + randomJitter).coerceIn(70f, 98f)
-                            targetNpu = (12f + randomJitter * 0.5f).coerceIn(5f, 25f)
-                            targetCpu = (38f + randomJitter).coerceIn(25f, 55f)
-                        }
-                        ComputeBackend.NPU_NNAPI -> {
-                            targetGpu = (15f + randomJitter * 0.5f).coerceIn(5f, 25f)
-                            targetNpu = (88f + randomJitter).coerceIn(75f, 99f)
-                            targetCpu = (28f + randomJitter).coerceIn(18f, 45f)
-                        }
-                        ComputeBackend.OPENCL -> {
-                            targetGpu = (76f + randomJitter).coerceIn(65f, 92f)
-                            targetNpu = (10f + randomJitter * 0.5f).coerceIn(4f, 20f)
-                            targetCpu = (34f + randomJitter).coerceIn(22f, 50f)
-                        }
-                        ComputeBackend.CPU_NEON -> {
-                            targetGpu = (12f + randomJitter * 0.5f).coerceIn(5f, 20f)
-                            targetNpu = (6f + randomJitter * 0.3f).coerceIn(2f, 15f)
-                            targetCpu = (84f + randomJitter).coerceIn(70f, 96f)
-                        }
-                    }
-                    targetTokPerSec = _streamingChunk.value?.tokensPerSecond ?: (24.5f + randomJitter)
-                    watts = (4.4f + (randomJitter * 0.1f)).coerceIn(3.6f, 6.2f)
-                    temp = (37.8f + (randomJitter * 0.05f)).coerceIn(36.0f, 42.0f)
-                } else {
-                    targetGpu = (14f + randomJitter * 0.8f).coerceIn(5f, 24f)
-                    targetNpu = (7f + randomJitter * 0.5f).coerceIn(2f, 16f)
-                    targetCpu = (20f + randomJitter).coerceIn(10f, 32f)
-                    targetTokPerSec = 0f
-                    watts = (2.2f + (randomJitter * 0.05f)).coerceIn(1.6f, 2.9f)
-                    temp = (35.4f + (randomJitter * 0.04f)).coerceIn(34.0f, 37.0f)
-                }
+                val targetTokPerSec = if (isGen) _streamingChunk.value?.tokensPerSecond ?: 0f else 0f
+                val targetGpu = if (isGen && backend == ComputeBackend.GPU_VULKAN) cpuUsage * 0.8f else 0f
+                val targetNpu = if (isGen && backend == ComputeBackend.NPU_NNAPI) cpuUsage * 0.9f else 0f
 
                 val currentHist = _telemetryState.value.history
                 val newPoint = HardwareUsagePoint(
                     timestamp = System.currentTimeMillis(),
                     gpuPercent = targetGpu,
                     npuPercent = targetNpu,
-                    cpuPercent = targetCpu,
+                    cpuPercent = cpuUsage,
                     memoryUsedGb = _telemetryState.value.memoryBreakdown.usedRamGb,
                     tokensPerSec = targetTokPerSec
                 )
@@ -1578,10 +1559,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _telemetryState.value = _telemetryState.value.copy(
                     currentGpuPercent = targetGpu,
                     currentNpuPercent = targetNpu,
-                    currentCpuPercent = targetCpu,
+                    currentCpuPercent = cpuUsage,
                     currentTokensPerSec = targetTokPerSec,
-                    powerDrawWatts = watts,
-                    deviceTemperatureCelsius = temp,
+                    powerDrawWatts = 0f,
+                    deviceTemperatureCelsius = thermalTemp,
                     history = updatedHist
                 )
             }

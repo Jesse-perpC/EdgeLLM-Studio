@@ -203,10 +203,7 @@ fun EncryptedVaultScreen(
     if (showExportDialog) {
         var exportTitle by remember { mutableStateOf("On-Device Processing Report") }
         var exportContent by remember {
-            mutableStateOf(
-                if (prefilledExportContent.isNotBlank()) prefilledExportContent
-                else "=== ON-DEVICE CONFIDENTIAL LOG ===\nModel: TinyLlama 1.1B GGUF\nInference Time: 340ms\nPII Scrub: 100% Offline\nHash: Verified Local Silicon Execution"
-            )
+            mutableStateOf(prefilledExportContent)
         }
         var passphrase by remember { mutableStateOf("") }
         var selectedCloudTarget by remember { mutableStateOf(CloudStorageTarget.GOOGLE_DRIVE) }

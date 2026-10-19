@@ -130,34 +130,7 @@ fun ImageTaskScreen(
     )
 
     val imageHistory = remember {
-        mutableStateListOf(
-            GeneratedImageItem(
-                id = "img-1",
-                prompt = "Cybernetic android terminal with neon holographic glyphs",
-                mode = ImageTaskMode.TEXT_TO_IMAGE,
-                model = SdModel.SD_TURBO,
-                steps = 12,
-                cfgScale = 7.0f,
-                seed = 104293L,
-                generationTimeMs = 1240L,
-                sampleDrawableColorHex = 0xFF1E1B4B,
-                labelText = "SD Turbo • 12 it/s",
-                isUpscaled = false
-            ),
-            GeneratedImageItem(
-                id = "img-2",
-                prompt = "Minimalist architectural pavilion in alpine forest at dusk",
-                mode = ImageTaskMode.SUPER_RESOLUTION,
-                model = SdModel.SD_1_5,
-                steps = 20,
-                cfgScale = 8.0f,
-                seed = 981245L,
-                generationTimeMs = 2850L,
-                sampleDrawableColorHex = 0xFF0F291E,
-                labelText = "4× Neural Upscale",
-                isUpscaled = true
-            )
-        )
+        mutableStateListOf<GeneratedImageItem>()
     }
 
     LazyColumn(
@@ -230,9 +203,9 @@ fun ImageTaskScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "NPU / QNN Active",
+                                    text = if (hardwareInfo.hasNpuSupport) "NPU Active" else "NPU Not Detected",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF10B981),
+                                    color = if (hardwareInfo.hasNpuSupport) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -494,15 +467,9 @@ fun ImageTaskScreen(
                                 }
 
                                 if (generatedBase64 == null) {
-                                    val totalSteps = if (selectedModel == SdModel.SD_TURBO) 4 else steps.coerceAtMost(20)
-                                    for (i in 1..totalSteps) {
-                                        delay(70)
-                                        generationProgress = i.toFloat() / totalSteps.toFloat()
-                                        generationStatusText = "Denoising step $i/$totalSteps (${selectedModel.speedRating})..."
-                                    }
-                                    val bmp = generateProceduralNeuralBitmap(selectedRatio.width, selectedRatio.height, actualSeed, steps, promptText)
-                                    generatedBase64 = bitmapToBase64(bmp)
-                                    label = "${selectedModel.displayName} • Latent Synthesis"
+                                    generationStatusText = "Image generation not available. Please configure an on-device model or Gemini API key."
+                                    isGenerating = false
+                                    return@launch
                                 }
 
                                 val elapsed = System.currentTimeMillis() - startTime
