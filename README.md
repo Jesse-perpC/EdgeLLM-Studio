@@ -84,7 +84,7 @@ The Arena has been re-imagined as an electrifying, ultra-sophisticated on-device
 - **Curated Challenge Decks**: Instant challenge cards across *Quantum & Science*, *Logic & Paradoxes* (Three Gods riddle), *Code & Algorithms* (Lock-free ring buffers), *Speed Gauntlet*, *Cyberpunk Lore*, and *Multilingual Matrix*.
 - **Live Stream Velocity Clash**: Real-time side-by-side tok/s speedometers, Time-To-First-Token (`TTFT`) latency meters, and dynamic progress bars.
 - **Jury Verdict & Holographic Reveal**: Declare the victor with instant Elo rating shifts (`+18 ELO` / `-14 ELO`), trophy animations, and full architecture disclosures.
-- **Grounded Contenders**: Every battle response is generated through each model's own knowledge pipeline — no canned filler, on any engine.
+- **Grounded Contenders**: Real engines (GGUF / MediaPipe / ONNX / TFLite) generate through their own weights; unavailable engines report honest "Unavailable" errors.
 - **Classified Hall of Elo**: Tiered global leaderboard spanning Grandmaster, Master, Diamond, Platinum, and Gold brackets with match history.
 
 ---

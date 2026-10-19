@@ -587,11 +587,7 @@ class OllamaInferenceServer(
                 out.flush()
             }
         } else {
-            val responseText = inferenceEngine.generateOfflineIntelligence(
-                prompt = fullPrompt,
-                model = activeModel,
-                params = params
-            )
+            val responseText = inferenceEngine.buildUnavailableMessage()
             val tokens = inferenceEngine.tokenizeResponse(responseText)
             totalTokens = tokens.size
 
@@ -730,13 +726,7 @@ class OllamaInferenceServer(
                 out.flush()
             }
         } else {
-            val responseText = inferenceEngine.generateOfflineIntelligence(
-                prompt = fullPrompt,
-                model = activeModel,
-                params = params,
-                attachedImageUri = extractedImageUri,
-                attachedImageLabel = extractedImageLabel
-            )
+            val responseText = inferenceEngine.buildUnavailableMessage()
             val tokens = inferenceEngine.tokenizeResponse(responseText)
             totalTokens = tokens.size
 

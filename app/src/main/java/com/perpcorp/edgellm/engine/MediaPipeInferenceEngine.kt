@@ -222,7 +222,10 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         val nativeText = tryRealLlmInference(prompt, options)
         val usedFallback = nativeText == null
         val responseText = nativeText
-            ?: generateMediaPipeKnowledge(prompt, options, model, persona)
+            ?: "MediaPipe weights unavailable: no .task model file found at " +
+                "${options.modelPath.ifBlank { "(blank path)" }}. " +
+                "Download a MediaPipe GenAI .task bundle (Gemma 2B, Gemma 2 2B, " +
+                "Falcon-RW-1B, StableLM-3B, or Phi-2) and set its local path."
         val inferenceElapsedMs = System.currentTimeMillis() - startTime
 
         val words = responseText.split(" ")
@@ -270,41 +273,4 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         )
     }
 
-    /**
-     * Grounded generation: answer the ACTUAL user query using the shared
-     * knowledge base. Answer-only: no runtime marketing copy in chat text.
-     */
-    private fun generateMediaPipeKnowledge(
-        prompt: String,
-        options: MediaPipeLlmOptions,
-        model: ModelSpec? = null,
-        persona: AiPersona? = null
-    ): String {
-        val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-
-        // Code questions keep a useful config snippet AND a grounded answer.
-        if (model != null && (userQuery.contains("code", ignoreCase = true) || userQuery.contains("function", ignoreCase = true)) && userQuery.contains("mediapipe", ignoreCase = true)) {
-            return "```kotlin\n" +
-                    "// MediaPipe LLM Inference Configuration\n" +
-                    "val options = LlmInference.LlmInferenceOptions.builder()\n" +
-                    "    .setModelPath(\"${options.modelPath.ifBlank { "/data/local/tmp/gemma-2b-it-gpu.bin" }}\")\n" +
-                    "    .setMaxTokens(${options.maxTokens})\n" +
-                    "    .setTemperature(${options.temperature}f)\n" +
-                    "    .build()\n" +
-                    "```\n\n" +
-                    OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
-        }
-
-        // Default: full grounded answer for ANY model type. Answer-only: no
-        // runtime/telemetry footer in chat text (metadata travels via chunk fields).
-        if (model != null) {
-            return OutputVerificationEngine.verifyAndSanitizeText(
-                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona),
-                isKnowledgeBase = true
-            )
-        }
-
-        // Legacy fallback (no model handle): stay on-topic without echoing the jail.
-        return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
-    }
 }

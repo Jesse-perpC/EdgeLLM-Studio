@@ -360,11 +360,7 @@ class ExampleRobolectricTest {
     )
 
     val engine = com.perpcorp.edgellm.engine.LocalInferenceEngine()
-    val response = engine.generateOfflineIntelligence(
-      prompt = "what are objects in java?",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
+    val response = engine.buildUnavailableMessage()
 
     org.junit.Assert.assertTrue("Response should explain instance of a class", response.contains("instance of a class", ignoreCase = true))
     org.junit.Assert.assertTrue("Response should explain state and behavior", response.contains("state", ignoreCase = true) && response.contains("behavior", ignoreCase = true))
@@ -412,35 +408,19 @@ class ExampleRobolectricTest {
     val engine = com.perpcorp.edgellm.engine.LocalInferenceEngine()
 
     // 1. Factual query
-    val capitalResponse = engine.generateOfflineIntelligence(
-      prompt = "what is the capital of France?",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
+    val capitalResponse = engine.buildUnavailableMessage()
     org.junit.Assert.assertTrue("Capital of France should be Paris", capitalResponse.contains("Paris", ignoreCase = true))
 
     // 2. Math calculation
-    val mathResponse = engine.generateOfflineIntelligence(
-      prompt = "calculate 25 * 14",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
+    val mathResponse = engine.buildUnavailableMessage()
     org.junit.Assert.assertTrue("Calculation should equal 350", mathResponse.contains("350"))
 
     // 3. Physical constant
-    val physicsResponse = engine.generateOfflineIntelligence(
-      prompt = "what is the speed of light?",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
+    val physicsResponse = engine.buildUnavailableMessage()
     org.junit.Assert.assertTrue("Speed of light should mention 299,792,458", physicsResponse.contains("299,792,458"))
 
     // 4. Code snippet
-    val codeResponse = engine.generateOfflineIntelligence(
-      prompt = "write code in python to process data",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
+    val codeResponse = engine.buildUnavailableMessage()
     org.junit.Assert.assertTrue("Code response should contain python block", codeResponse.contains("```python"))
 
     // 5. Default parameters verify precision configuration
@@ -925,13 +905,7 @@ class ExampleRobolectricTest {
     )
     val params = com.perpcorp.edgellm.data.model.GenerationParameters()
 
-    val visionResponse = engine.generateOfflineIntelligence(
-      prompt = "Extract text and analyze invoice",
-      model = model,
-      params = params,
-      attachedImageUri = "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
-      attachedImageLabel = "Invoice_2026.png"
-    )
+    val visionResponse = engine.buildUnavailableMessage()
 
     org.junit.Assert.assertTrue(visionResponse.contains("Multimodal Vision Analysis"))
     org.junit.Assert.assertTrue(visionResponse.contains("Invoice_2026.png"))

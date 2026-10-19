@@ -243,12 +243,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val contenderB = modelB ?: downloadManager.getActiveModel()
             val groundedChunksA = chunkForStream(
                 OutputVerificationEngine.verifyAndSanitizeText(
-                    OfflineKnowledgeEngine.answerQuery(prompt, contenderA, _activePersona.value)
+                    inferenceEngine.buildUnavailableMessage()
                 )
             )
             val groundedChunksB = chunkForStream(
                 OutputVerificationEngine.verifyAndSanitizeText(
-                    OfflineKnowledgeEngine.answerQuery(prompt, contenderB, _activePersona.value)
+                    inferenceEngine.buildUnavailableMessage()
                 )
             )
 
