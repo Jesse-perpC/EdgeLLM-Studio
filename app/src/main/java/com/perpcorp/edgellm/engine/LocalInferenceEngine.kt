@@ -1,18 +1,16 @@
 package com.perpcorp.edgellm.engine
 
 import android.util.Log
-import com.perpcorp.edgellm.data.model.AiPersona
-import com.perpcorp.edgellm.data.model.ComputeBackend
-import com.perpcorp.edgellm.data.model.GenerationParameters
-import com.perpcorp.edgellm.data.model.HardwareAccelerationSettings
-import com.perpcorp.edgellm.data.model.KnowledgeDocument
-import com.perpcorp.edgellm.data.model.ModelCategory
-import com.perpcorp.edgellm.data.model.ModelSpec
-import com.perpcorp.edgellm.data.model.PowerProfile
-import kotlinx.coroutines.delay
+import com.perpcorporp.edgellm.data.model.AiPersona
+import com.perpcorporp.edgellm.data.model.ComputeBackend
+import com.perpcorporp.edgellm.data.model.GenerationParameters
+import com.perpcorporp.edgellm.data.model.HardwareAccelerationSettings
+import com.perpcorporp.edgellm.data.model.KnowledgeDocument
+import com.perpcorporp.edgellm.data.model.ModelCategory
+import com.perpcorporp.edgellm.data.model.ModelSpec
+import com.perpcorporp.edgellm.data.model.PowerProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlin.random.Random
 
 data class StreamTokenChunk(
     val token: String,
@@ -67,39 +65,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         val startTime = System.currentTimeMillis()
 
         val isTurbo = params.isTurboBoost || settings.turboBoostMode
-
-        // Calculate realistic speed based on hardware settings & power profile with Turbo Boost
-        val baseSpeed = when (settings.computeBackend) {
-            ComputeBackend.NPU_NNAPI -> if (isTurbo) 48f else 32f
-            ComputeBackend.GPU_VULKAN -> if (isTurbo) 40f else 24f
-            ComputeBackend.OPENCL -> if (isTurbo) 32f else 20f
-            ComputeBackend.CPU_NEON -> if (isTurbo) 24f else 14f
-        }
-        val powerMultiplier = when (settings.powerProfile) {
-            PowerProfile.HIGH_PERFORMANCE -> if (isTurbo) 1.55f else 1.35f
-            PowerProfile.BALANCED -> if (isTurbo) 1.25f else 1.0f
-            PowerProfile.BATTERY_SAVER -> 0.65f
-        }
-        val threadBonus = (settings.threadCount.coerceAtLeast(1) * (if (isTurbo) 0.14f else 0.08f))
-        val rawTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 65f)
-
-        // Time to first token (TTFT) & Prefix KV Cache Look-up
-        val docTokens = (attachedDoc?.tokenCountEstimate ?: 0)
-        val imageTokens = if (attachedImageUri != null || attachedImageLabel != null) 256 else 0
-        val memoryTokens = recalledMemories.sumOf { it.length / 4 }
-        val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1) + docTokens + imageTokens + memoryTokens
-
-        val (prefixEntry, isPrefixHit) = if (settings.enablePrefixCaching && params.enablePrefixCaching) {
-            PrefixKVCacheManager.getOrComputePrefix(model.id, params.systemPrompt, persona?.id)
-        } else Pair(null, false)
-
-        val prefillTimeMs = if (isPrefixHit) {
-            (6L + (promptTokens * 0.06f).toLong()).coerceIn(6L, 20L)
-        } else {
-            (40L + (promptTokens * 1.2f).toLong()).coerceIn(55L, 500L)
-        }
-        delay(prefillTimeMs)
-        val ttft = System.currentTimeMillis() - startTime
 
         val effectivePrompt = if (recalledMemories.isNotEmpty()) {
             "### Contextual Persistent Memories (Recalled via 128-D Vector Cosine Similarity):\n" +
@@ -312,51 +277,26 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return@flow
         }
 
-        val isCloudCandidate = !isAirGapped && geminiClient.isApiKeyConfigured() && attachedImageUri == null && attachedDoc == null && !params.enableToolCalling && !params.enforceJsonSchema && params.grammarMode == GrammarMode.NONE
-
-        val (responseText, backendUsed, isOfflineFallback) = if (isCloudCandidate) {
-            val geminiRes = geminiClient.generateContent(
-                prompt = effectivePrompt,
-                persona = persona,
-                systemInstructionOverride = params.systemPrompt,
-                temperature = params.temperature.coerceIn(0.1f, 1.0f),
-                topP = params.topP.coerceIn(0.1f, 1.0f),
-                maxOutputTokens = params.maxNewTokens.coerceAtLeast(256)
-            )
-            if (geminiRes.isSuccess) {
-                Triple(geminiRes.getOrThrow(), "Cloud Assist • Gemini 3.5 Flash", false)
-            } else {
-                Triple(
-                    generateOfflineIntelligence(strictExecutionPrompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
-                    "Offline Knowledge Base",
-                    true
+        // No native engine matched: report honestly that no on-device weights
+        // are available for this model format or its file is missing.
+        if (responseText.isEmpty()) {
+            emit(
+                StreamTokenChunk(
+                    token = "",
+                    accumulatedText = buildUnavailableMessage(),
+                    tokenCount = 0,
+                    tokensPerSecond = 0f,
+                    timeToFirstTokenMs = 0L,
+                    isComplete = true,
+                    backendUsed = "Unavailable",
+                    samplerName = "N/A",
+                    grammarModeUsed = params.grammarMode
                 )
-            }
-        } else {
-            val loraBadge = if (loraAdapter != null) " • LoRA: ${loraAdapter.name} (r=${loraAdapter.rank})" else ""
-            Triple(
-                generateOfflineIntelligence(strictExecutionPrompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
-                "Offline Knowledge Base$loraBadge",
-                true
             )
+            return@flow
         }
 
-        val specResult = if (!isOfflineFallback && !isCloudCandidate &&
-            (settings.enableSpeculativeDecoding || isTurbo)) {
-            SpeculativeDecodingEngine.evaluateSpeculativeBatch(
-                draftModel = null,
-                targetModel = model,
-                lookaheadK = if (isTurbo) (settings.speculativeLookaheadTokens + 2).coerceAtMost(8) else settings.speculativeLookaheadTokens,
-                temperature = params.temperature,
-                isTurboBoost = isTurbo
-            )
-        } else null
-
-        val speedupMultiplier = specResult?.metrics?.effectiveSpeedupMultiplier ?: 1.0f
-        val calculatedTokPerSec = (rawTokPerSec * speedupMultiplier).coerceIn(4f, 120f)
-        val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(6L, 250L)
-
-        val kvProfile = if (!isOfflineFallback && settings.enableAttentionSinksStreamingLLM) {
+        val kvProfile = if (isOfflineFallback && settings.enableAttentionSinksStreamingLLM) {
             AttentionSinkManager.calculateCacheProfile(
                 totalTurnTokens = promptTokens + 280,
                 windowSize = settings.streamingLlmWindowTokens
@@ -384,34 +324,31 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             tokenCount++
             stringBuilder.append(token)
 
-            val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
-            val currentTps = if (elapsedSec > 0.05f) {
-                tokenCount / elapsedSec
-            } else {
-                calculatedTokPerSec
-            }
-
             emit(
                 StreamTokenChunk(
                     token = token,
                     accumulatedText = stringBuilder.toString(),
                     tokenCount = tokenCount,
-                    tokensPerSecond = ((currentTps * 10).toInt() / 10f),
+                    tokensPerSecond = 0f,
                     timeToFirstTokenMs = ttft,
                     isComplete = false,
                     backendUsed = backendUsed,
-                    speculativeSpeedup = speedupMultiplier,
-                    speculativeAcceptedTokens = specResult?.acceptedTokensThisPass ?: 0,
+                    speculativeSpeedup = 1.0f,
+                    speculativeAcceptedTokens = 0,
                     kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f,
                     isPrefixCacheHit = effectivePrefixHit,
                     isTurboBoost = effectiveTurbo,
-                    samplerName = "Min-P (${params.minP})",
-                    grammarModeUsed = params.grammarMode
+                    samplerName = "Offline fallback",
+                    grammarModeUsed = params.grammarMode,
+                    trustScore = 0f,
+                    factualAccuracyScore = 0f,
+                    sentimentToneScore = 0f,
+                    topicAdherenceScore = 0f,
+                    wasMultiAgentRefined = false,
+                    critiqueSummary = null,
+                    critiqueReasons = emptyList()
                 )
             )
-
-            val jitter = if (isTurbo) Random.nextLong(-1L, 3L) else Random.nextLong(-3L, 6L)
-            delay((delayPerTokenMs + jitter).coerceAtLeast(4L))
         }
 
         val totalElapsedSec = ((System.currentTimeMillis() - startTime) / 1000f).coerceAtLeast(0.1f)
@@ -420,142 +357,43 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 token = "",
                 accumulatedText = stringBuilder.toString(),
                 tokenCount = tokenCount,
-                tokensPerSecond = ((tokenCount / totalElapsedSec) * 10).toInt() / 10f,
+                tokensPerSecond = 0f,
                 timeToFirstTokenMs = ttft,
                 isComplete = true,
                 backendUsed = backendUsed,
-                speculativeSpeedup = speedupMultiplier,
-                speculativeAcceptedTokens = specResult?.acceptedTokensThisPass ?: 0,
+                speculativeSpeedup = 1.0f,
+                speculativeAcceptedTokens = 0,
                 kvCacheSavedPercent = kvProfile?.compressionRatioPercent ?: 0f,
                 isPrefixCacheHit = effectivePrefixHit,
                 isTurboBoost = effectiveTurbo,
-                samplerName = "Min-P (${params.minP})",
+                samplerName = "Offline fallback",
                 grammarModeUsed = params.grammarMode,
-                trustScore = verification.trustScore,
-                factualAccuracyScore = verification.factualAccuracyScore,
-                sentimentToneScore = verification.sentimentToneScore,
-                topicAdherenceScore = verification.topicAdherenceScore,
-                wasMultiAgentRefined = verification.wasMultiAgentRefined,
-                critiqueSummary = verification.multiAgentCritiqueSummary ?: if (verification.correctionsApplied.isNotEmpty()) verification.correctionsApplied.joinToString("; ") else null,
-                critiqueReasons = verification.correctionsApplied + verification.verificationFlags
+                trustScore = 0f,
+                factualAccuracyScore = 0f,
+                sentimentToneScore = 0f,
+                topicAdherenceScore = 0f,
+                wasMultiAgentRefined = false,
+                critiqueSummary = null,
+                critiqueReasons = emptyList()
             )
         )
     }
 
-    fun generateOfflineIntelligence(
-        prompt: String,
-        model: ModelSpec,
-        params: GenerationParameters,
-        persona: AiPersona? = null,
-        attachedDoc: KnowledgeDocument? = null,
-        attachedImageUri: String? = null,
-        attachedImageLabel: String? = null,
-        recalledMemories: List<String> = emptyList(),
-        loraAdapter: com.perpcorp.edgellm.data.model.LoraAdapter? = null
-    ): String {
-        val lower = prompt.trim().lowercase()
-
-        if (attachedImageUri != null || attachedImageLabel != null) {
-            val label = attachedImageLabel ?: "Visual Input"
-            val analysis = when {
-                lower.contains("diagram") || lower.contains("architecture") || lower.contains("flow") -> {
-                    "**Visual Architecture Inspection:**\n\n" +
-                        "- **File:** $label\n" +
-                        "- **Analysis:** Visual image attachment confirmed. Identified system architecture topology diagram.\n" +
-                        "- **Notice:** Full pixel-level vision tensor decoding requires a multimodal on-device vision checkpoint (such as MobileVLM or Qwen2-VL)."
-                }
-                lower.contains("ocr") || lower.contains("text") || lower.contains("extract") || lower.contains("read") -> {
-                    "**Visual Text Inspection:**\n\n" +
-                        "- **File:** $label\n" +
-                        "- **Analysis:** Image attachment detected ($label). Local on-device OCR requires a loaded vision/OCR model checkpoint."
-                }
-                else -> {
-                    "**Visual Input Inspection:**\n\n" +
-                        "- **File:** $label\n" +
-                        "- **Analysis:** Visual input received ($label). Ready for processing with on-device multimodal vision weights."
-                }
-            }
-            return "### 👁️ Multimodal Vision Analysis ($label)\n\n$analysis"
-        }
-
-        if (prompt.contains("[SCREEN_CONTEXT]")) {
-            val screenText = prompt.substringAfter("[SCREEN_CONTEXT]").substringBefore("[/SCREEN_CONTEXT]").trim()
-            val userQuestion = prompt.substringAfter("[/SCREEN_CONTEXT]").trim().ifBlank { "Summarize this on-screen content." }
-            val lines = screenText.lines().filter { it.isNotBlank() }.take(5)
-            val entityBullets = lines.joinToString("\n") { "• ${it.take(80)}" }
-            return "For \"$userQuestion\":\n\n$entityBullets"
-        }
-
-        if (params.enableToolCalling) {
-            val toolCall = OnDeviceToolEngine.parseToolCallFromPrompt(prompt)
-            if (toolCall != null) {
-                return toolCall.outputResult
-            }
-        }
-
-        if (params.enforceJsonSchema) {
-            val cleanQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-            val answer = OfflineKnowledgeEngine.answerQuery(cleanQuery, model, persona)
-            val safeAnswer = answer.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-            val safeQuery = cleanQuery.replace("\\", "\\\\").replace("\"", "\\\"").take(100)
-            return "{\n" +
-                "  \"status\": \"success\",\n" +
-                "  \"query\": \"$safeQuery\",\n" +
-                "  \"answer\": \"$safeAnswer\",\n" +
-                "  \"data\": {\n" +
-                "    \"type\": \"factual_response\",\n" +
-                "    \"verified\": false,\n" +
-                "    \"source\": \"offline_knowledge\",\n" +
-                "  }\n" +
-                "}"
-        }
-
-        if (attachedDoc != null) {
-            val docPreview = attachedDoc.content.take(400).replace("\n", " ")
-            return "From `${attachedDoc.title}`:\n\n" +
-                "- **Focus:** ${attachedDoc.summary}\n" +
-                "> \"$docPreview...\""
-        }
-
-        val rawBody = when {
-            lower.contains("what do you remember") || lower.contains("do you remember") || lower.contains("my preference") || lower.contains("my memory") || lower.contains("remember me") -> {
-                if (recalledMemories.isNotEmpty()) {
-                    recalledMemories.joinToString("\n") { "• $it" }
-                } else {
-                    "I don't have any saved memories yet."
-                }
-            }
-            lower.contains("hello") || lower.contains("hi") || lower == "hey" -> {
-                "Hello! How can I help you today?"
-            }
-            else -> {
-                OfflineKnowledgeEngine.answerQuery(prompt, model, persona)
-            }
-        }
-
-        val body = when (params.grammarMode) {
-            GrammarMode.JSON_STRICT -> {
-                val safePrompt = prompt.replace("\"", "\\\"").take(60)
-                "{\n  \"status\": \"success\",\n  \"query\": \"$safePrompt\",\n  \"grammar_mode\": \"JSON_STRICT\",\n  \"data\": {\n    \"content\": \"${rawBody.lines().firstOrNull()?.replace("\"", "\\\"") ?: ""}\"\n  }\n}"
-            }
-            GrammarMode.PYTHON_CODE -> {
-                if (rawBody.contains("```python")) rawBody else "```python\n# Constrained Python 3 Output\ndef solution():\n    \"\"\"Generated on-device without cloud API\"\"\"\n    return True\n```"
-            }
-            GrammarMode.SQL_QUERY -> {
-                "SELECT id, model_name, inference_speed, accuracy_score\nFROM on_device_models\nWHERE is_active = 1\nORDER BY inference_speed DESC;"
-            }
-            GrammarMode.REGEX_PATTERN -> {
-                if (params.customRegexPattern.isNotBlank()) "2026-09-15" else rawBody
-            }
-            GrammarMode.GBNF_STRICT_FACTUAL -> {
-                val factual = llamaCppEngine.generateStrictFactualResponse(prompt, model)
-                factual.toJsonString()
-            }
-            else -> rawBody
-        }
-
-        return body
-    }
+    /**
+     * Honest message returned when no on-device inference engine can answer
+     * the request. This is NOT a knowledge base: it tells the user exactly
+     * what is missing so they can take action (load a model, enable Cloud
+     * Assist, or switch formats).
+     *
+     * The previous implementation of this method returned canned factual
+     * text from a hardcoded knowledge base and presented it as model output.
+     * That was misleading, so it is replaced here.
+     */
+    fun buildUnavailableMessage(): String =
+        "No on-device inference engine is available for this model format or " +
+            "the model file is missing. Download a GGUF / MediaPipe / ONNX model " +
+            "in the Models tab, or enable Cloud Assist in Settings for Gemini " +
+            "3.5 Flash via the cloud API."
 
     fun clearPrefixCache() {
         PrefixKVCacheManager.clearCache()
