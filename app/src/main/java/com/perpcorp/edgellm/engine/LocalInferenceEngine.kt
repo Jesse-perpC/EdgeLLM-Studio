@@ -8,11 +8,9 @@ import com.perpcorp.edgellm.data.model.HardwareAccelerationSettings
 import com.perpcorp.edgellm.data.model.KnowledgeDocument
 import com.perpcorp.edgellm.data.model.ModelCategory
 import com.perpcorp.edgellm.data.model.ModelSpec
-import com.perpcorp.edgellm.data.model.PowerProfile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlin.random.Random
 
 data class StreamTokenChunk(
     val token: String,
@@ -68,22 +66,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
 
         val isTurbo = params.isTurboBoost || settings.turboBoostMode
 
-        // Calculate realistic speed based on hardware settings & power profile with Turbo Boost
-        val baseSpeed = when (settings.computeBackend) {
-            ComputeBackend.NPU_NNAPI -> if (isTurbo) 48f else 32f
-            ComputeBackend.GPU_VULKAN -> if (isTurbo) 40f else 24f
-            ComputeBackend.OPENCL -> if (isTurbo) 32f else 20f
-            ComputeBackend.CPU_NEON -> if (isTurbo) 24f else 14f
-        }
-        val powerMultiplier = when (settings.powerProfile) {
-            PowerProfile.HIGH_PERFORMANCE -> if (isTurbo) 1.55f else 1.35f
-            PowerProfile.BALANCED -> if (isTurbo) 1.25f else 1.0f
-            PowerProfile.BATTERY_SAVER -> 0.65f
-        }
-        val threadBonus = (settings.threadCount.coerceAtLeast(1) * (if (isTurbo) 0.14f else 0.08f))
-        val rawTokPerSec = (baseSpeed * powerMultiplier + threadBonus).coerceIn(4f, 65f)
-
-        // Time to first token (TTFT) & Prefix KV Cache Look-up
         val docTokens = (attachedDoc?.tokenCountEstimate ?: 0)
         val imageTokens = if (attachedImageUri != null || attachedImageLabel != null) 256 else 0
         val memoryTokens = recalledMemories.sumOf { it.length / 4 }
@@ -93,12 +75,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             PrefixKVCacheManager.getOrComputePrefix(model.id, params.systemPrompt, persona?.id)
         } else Pair(null, false)
 
-        val prefillTimeMs = if (isPrefixHit) {
-            (6L + (promptTokens * 0.06f).toLong()).coerceIn(6L, 20L)
-        } else {
-            (40L + (promptTokens * 1.2f).toLong()).coerceIn(55L, 500L)
-        }
-        delay(prefillTimeMs)
         val ttft = System.currentTimeMillis() - startTime
 
         val effectivePrompt = if (recalledMemories.isNotEmpty()) {
@@ -353,9 +329,6 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         } else null
 
         val speedupMultiplier = specResult?.metrics?.effectiveSpeedupMultiplier ?: 1.0f
-        val calculatedTokPerSec = (rawTokPerSec * speedupMultiplier).coerceIn(4f, 120f)
-        val delayPerTokenMs = (1000f / calculatedTokPerSec).toLong().coerceIn(6L, 250L)
-
         val kvProfile = if (!isOfflineFallback && settings.enableAttentionSinksStreamingLLM) {
             AttentionSinkManager.calculateCacheProfile(
                 totalTurnTokens = promptTokens + 280,
@@ -388,7 +361,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             val currentTps = if (elapsedSec > 0.05f) {
                 tokenCount / elapsedSec
             } else {
-                calculatedTokPerSec
+                0f
             }
 
             emit(
@@ -410,8 +383,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 )
             )
 
-            val jitter = if (isTurbo) Random.nextLong(-1L, 3L) else Random.nextLong(-3L, 6L)
-            delay((delayPerTokenMs + jitter).coerceAtLeast(4L))
+            delay(16L)
         }
 
         val totalElapsedSec = ((System.currentTimeMillis() - startTime) / 1000f).coerceAtLeast(0.1f)

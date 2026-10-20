@@ -7,6 +7,7 @@ plugins {
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
+  alias(libs.plugins.ktlint)
 }
 
 android {
@@ -29,6 +30,32 @@ android {
     buildConfigField("boolean", "GGML_VULKAN_COMPILED", "false")
     buildConfigField("String", "FLAVOR", "\"standard\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    ndk {
+      abiFilters += listOf("arm64-v8a", "x86_64")
+    }
+  }
+
+  flavorDimensions += "backend"
+  productFlavors {
+    create("cpu") {
+      dimension = "backend"
+      buildConfigField("boolean", "GGML_VULKAN_COMPILED", "false")
+    }
+    create("vulkan") {
+      dimension = "backend"
+      applicationIdSuffix = ".vulkan"
+      versionNameSuffix = "-vulkan"
+      buildConfigField("boolean", "GGML_VULKAN_COMPILED", "true")
+      externalNativeBuild {
+        cmake {
+          arguments += "-DEDGELLM_GPU_VULKAN=ON"
+          System.getenv("SPIRV_HEADERS_DIR")?.takeIf { it.isNotBlank() }?.let {
+            arguments += "-DSPIRV-Headers_DIR=$it"
+          }
+        }
+      }
+    }
   }
 
   signingConfigs {

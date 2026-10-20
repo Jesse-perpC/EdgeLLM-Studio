@@ -8,7 +8,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import java.io.File
-import kotlin.random.Random
 
 /**
  * Alibaba MNN (Mobile Neural Network) & MNN-LLM Inference Engine.
@@ -82,48 +81,9 @@ class AlibabaMnnEngine(private val context: Context? = null) {
         val startTime = System.currentTimeMillis()
         val promptTokens = prompt.split(" ", "\n").filter { it.isNotBlank() }.size.coerceAtLeast(1)
 
-        // Phase 1: Prefill (Prompt evaluation in MNN tensor runtime)
-        val promptCacheHit = config.enablePromptCache && prompt.length > 40 && Random.nextFloat() > 0.35f
-        val prefillTps = when (config.backend) {
-            MnnBackend.NPU_NNAPI -> 320.0f
-            MnnBackend.OPENCL -> 260.0f
-            MnnBackend.VULKAN -> 240.0f
-            MnnBackend.CPU_NEON -> (110.0f * (config.threadCount / 4.0f).coerceIn(0.5f, 2.0f))
-        }
-
-        val prefillDurationMs = if (promptCacheHit) {
-            Random.nextLong(4L, 12L) // Cache hit: instant lookup
-        } else {
-            ((promptTokens / prefillTps) * 1000f).toLong().coerceIn(15L, 250L)
-        }
-        delay(prefillDurationMs)
+        val promptCacheHit = config.enablePromptCache && prompt.length > 40
 
         val ttft = System.currentTimeMillis() - startTime
-
-        // Phase 2: Autoregressive Decode (Token by token generation)
-        val baseDecodeSpeed = when (config.backend) {
-            MnnBackend.NPU_NNAPI -> 44.0f
-            MnnBackend.OPENCL -> 36.0f
-            MnnBackend.VULKAN -> 32.0f
-            MnnBackend.CPU_NEON -> (20.0f * (config.threadCount / 4.0f).coerceIn(0.6f, 1.8f))
-        }
-
-        val quantMultiplier = when (config.quantization) {
-            MnnQuantization.W4A16 -> 1.35f
-            MnnQuantization.W8A16 -> 1.15f
-            MnnQuantization.FP16 -> 0.85f
-            MnnQuantization.KV_INT8 -> 1.25f
-        }
-
-        val targetDecodeTps = (baseDecodeSpeed * quantMultiplier).coerceIn(8f, 75f)
-        val delayPerToken = (1000f / targetDecodeTps).toLong().coerceIn(10L, 120L)
-
-        val estimatedMemoryMb = (380L + (promptTokens * 0.12f).toLong() + when (config.quantization) {
-            MnnQuantization.W4A16 -> 450L
-            MnnQuantization.W8A16 -> 850L
-            MnnQuantization.FP16 -> 1600L
-            MnnQuantization.KV_INT8 -> 320L
-        })
 
         val generatedText = generateMnnResponseContent(prompt, config, model, persona)
         val words = generatedText.split(" ")
@@ -135,36 +95,37 @@ class AlibabaMnnEngine(private val context: Context? = null) {
             val token = if (i == 0) words[i] else " ${words[i]}"
             sb.append(token)
 
-            val elapsedDecodeSec = (System.currentTimeMillis() - startTime - prefillDurationMs) / 1000f
-            val currentDecodeTps = if (elapsedDecodeSec > 0.05f) tokenCount / elapsedDecodeSec else targetDecodeTps
+            val elapsedSec = (System.currentTimeMillis() - startTime) / 1000f
+            val currentTps = if (elapsedSec > 0.05f) tokenCount / elapsedSec else 0f
 
             emit(
                 MnnTokenChunk(
                     token = token,
                     accumulatedText = sb.toString(),
                     tokenCount = tokenCount,
-                    currentDecodeSpeedTps = ((currentDecodeTps * 10).toInt() / 10f),
-                    prefillSpeedTps = prefillTps,
+                    currentDecodeSpeedTps = ((currentTps * 10).toInt() / 10f),
+                    prefillSpeedTps = 0f,
                     timeToFirstTokenMs = ttft,
-                    peakMemoryMb = estimatedMemoryMb,
+                    peakMemoryMb = 0L,
                     isComplete = false,
                     backendUsed = config.backend,
                     promptCacheHit = promptCacheHit
                 )
             )
 
-            delay(delayPerToken + Random.nextLong(-2L, 4L))
+            delay(16L)
         }
 
+        val totalElapsedSec = ((System.currentTimeMillis() - startTime) / 1000f).coerceAtLeast(0.1f)
         emit(
             MnnTokenChunk(
                 token = "",
                 accumulatedText = sb.toString(),
                 tokenCount = tokenCount,
-                currentDecodeSpeedTps = targetDecodeTps,
-                prefillSpeedTps = prefillTps,
+                currentDecodeSpeedTps = ((tokenCount / totalElapsedSec) * 10).toInt() / 10f,
+                prefillSpeedTps = 0f,
                 timeToFirstTokenMs = ttft,
-                peakMemoryMb = estimatedMemoryMb,
+                peakMemoryMb = 0L,
                 isComplete = true,
                 backendUsed = config.backend,
                 promptCacheHit = promptCacheHit

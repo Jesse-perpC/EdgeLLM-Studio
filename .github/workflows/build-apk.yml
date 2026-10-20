@@ -60,8 +60,8 @@ jobs:
           chmod +x ./gradlew
           keytool -genkeypair -v             -keystore debug.keystore             -storepass android             -alias androiddebugkey             -keypass android             -keyalg RSA -keysize 2048 -validity 10000             -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Run debug build, lint, and unit tests
-        run: ./gradlew --no-daemon --stacktrace assembleDebug lintDebug testDebugUnitTest
+      - name: Run CPU debug build, lint, static analysis, and unit tests
+        run: ./gradlew --no-daemon --stacktrace assembleCpuDebug lintCpuDebug ktlintCheck testCpuDebugUnitTest
 
       - name: Upload debug APK for testing
         uses: actions/upload-artifact@v4
@@ -136,8 +136,8 @@ jobs:
           if [[ -f .env.example ]]; then cp .env.example .env; else touch .env; fi
           chmod +x ./gradlew
 
-      - name: Build signed production APK
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
+      - name: Build signed production CPU APK
+        run: ./gradlew --no-daemon --stacktrace assembleCpuRelease
 
       - name: Verify APK and calculate checksum
         shell: bash
