@@ -14,7 +14,11 @@ data class ApiServerConfig(
      * to the whole network and must be an explicit user choice in settings.
      */
     val bindToLan: Boolean = false,
-    val allowCors: Boolean = true,
+    /**
+     * CORS is off by default. Cross-origin browser access to the local server
+     * is a footgun; enable it deliberately from settings.
+     */
+    val allowCors: Boolean = false,
     val enableOpenAiCompat: Boolean = true,
     val batteryProtectionThreshold: Int = 15,
     val maxConcurrentRequests: Int = 4,

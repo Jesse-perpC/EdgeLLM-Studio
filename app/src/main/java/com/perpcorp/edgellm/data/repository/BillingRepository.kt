@@ -57,10 +57,6 @@ class BillingRepository(context: Context) {
         private const val PREF_SUPABASE_KEY = "pref_supabase_key"
         private const val PREF_STRIPE_PUB_KEY = "pref_stripe_pub_key"
         private const val PREF_STRIPE_PAYMENT_LINK = "pref_stripe_payment_link"
-
-        const val DEFAULT_SUPABASE_URL = "https://dkjwtvxzezcawizhibcz.supabase.co"
-        const val DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrand0dnh6ZXpjYXdpemhpYmN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NDg4MTksImV4cCI6MjEwNDUyNDgxOX0.lCdP7v_ldcAKlpQxGxmTsgknN7T7rYfBTVnkV1QmpDE"
-        const val DEFAULT_STRIPE_PUBLISHABLE_KEY = "pk_test_LTsnLXAZKhKJqVczf2JjYTLk00g98H1Nl1"
     }
 
     private fun loadInitialStripeConfig(): com.perpcorp.edgellm.data.model.StripeBillingConfig {
@@ -72,12 +68,11 @@ class BillingRepository(context: Context) {
             BuildConfig::class.java.getField("STRIPE_PAYMENT_LINK_PRO").get(null) as? String
         } catch (e: Exception) { null }?.takeIf { it.startsWith("http") } ?: ""
 
-        val savedPubKey = prefs.getString(PREF_STRIPE_PUB_KEY, null)?.takeIf { it.startsWith("pk_") }
-            ?: buildStripeKey
-            ?: DEFAULT_STRIPE_PUBLISHABLE_KEY
+        val savedPubKey = (prefs.getString(PREF_STRIPE_PUB_KEY, null)?.takeIf { it.startsWith("pk_") }
+            ?: buildStripeKey).orEmpty()
 
-        val savedLink = prefs.getString(PREF_STRIPE_PAYMENT_LINK, null)?.takeIf { it.startsWith("http") }
-            ?: buildPaymentLink
+        val savedLink = (prefs.getString(PREF_STRIPE_PAYMENT_LINK, null)?.takeIf { it.startsWith("http") }
+            ?: buildPaymentLink).orEmpty()
 
         val isLive = savedPubKey.startsWith("pk_live_")
         val isTest = savedPubKey.startsWith("pk_test_")
@@ -93,13 +88,13 @@ class BillingRepository(context: Context) {
     }
 
     private fun loadInitialProfile(): UserSubscriptionProfile {
-        val userId = prefs.getString(PREF_USER_ID, "usr_creator_8921") ?: "usr_creator_8921"
-        val email = prefs.getString(PREF_EMAIL, "jesselepota.com@gmail.com") ?: "jesselepota.com@gmail.com"
+        val userId = prefs.getString(PREF_USER_ID, "") ?: ""
+        val email = prefs.getString(PREF_EMAIL, "") ?: ""
         val tierId = prefs.getString(PREF_TIER, SubscriptionTier.FREE.id) ?: SubscriptionTier.FREE.id
         val tier = SubscriptionTier.fromId(tierId)
-        val used = prefs.getInt(PREF_USED_ALLOCATIONS, 1_420)
+        val used = prefs.getInt(PREF_USED_ALLOCATIONS, 0)
         val max = prefs.getInt(PREF_MAX_ALLOCATIONS, tier.maxAllocations)
-        val periodEnd = prefs.getString(PREF_PERIOD_END, "Oct 01, 2026") ?: "Oct 01, 2026"
+        val periodEnd = prefs.getString(PREF_PERIOD_END, "") ?: ""
 
         return UserSubscriptionProfile(
             userId = userId,
@@ -115,13 +110,11 @@ class BillingRepository(context: Context) {
         val buildUrl = try { BuildConfig::class.java.getField("SUPABASE_URL").get(null) as? String } catch (e: Exception) { null }?.takeIf { it.startsWith("http") } ?: ""
         val buildKey = try { BuildConfig::class.java.getField("SUPABASE_ANON_KEY").get(null) as? String } catch (e: Exception) { null }?.takeIf { it.length > 30 } ?: ""
 
-        val savedUrl = prefs.getString(PREF_SUPABASE_URL, null)?.takeIf { it.startsWith("http") }
-            ?: buildUrl.takeIf { it.startsWith("http") }
-            ?: DEFAULT_SUPABASE_URL
+        val savedUrl = (prefs.getString(PREF_SUPABASE_URL, null)?.takeIf { it.startsWith("http") }
+            ?: buildUrl.takeIf { it.startsWith("http") }).orEmpty()
 
-        val savedKey = prefs.getString(PREF_SUPABASE_KEY, null)?.takeIf { it.length > 30 }
-            ?: buildKey.takeIf { it.length > 30 }
-            ?: DEFAULT_SUPABASE_KEY
+        val savedKey = (prefs.getString(PREF_SUPABASE_KEY, null)?.takeIf { it.length > 30 }
+            ?: buildKey.takeIf { it.length > 30 }).orEmpty()
 
         val isConfigured = savedUrl.isNotBlank() && !savedUrl.contains("your-project") && savedKey.isNotBlank() && !savedKey.contains("your-anon-key")
 

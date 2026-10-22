@@ -2,11 +2,10 @@ package com.perpcorp.edgellm.agent.linux
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
-import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 /**
  * Execution result of a Linux shell or PRoot command.
@@ -106,28 +105,48 @@ echo "Workspace: ${workspaceDir.absolutePath}"
                 .redirectErrorStream(false)
                 .start()
 
-            val stdoutReader = BufferedReader(InputStreamReader(process.inputStream))
-            val stderrReader = BufferedReader(InputStreamReader(process.errorStream))
-
-            val stdout = StringBuilder()
-            val stderr = StringBuilder()
-
-            var line: String?
-            while (stdoutReader.readLine().also { line = it } != null) {
-                if (stdout.length < 50_000) stdout.appendLine(line)
+            // Drain stdout and stderr concurrently so a full stderr pipe can
+            // never deadlock the process while we block on stdout.
+            val stdoutDeferred = async(Dispatchers.IO) {
+                process.inputStream.bufferedReader().use { reader ->
+                    buildString {
+                        var line = reader.readLine()
+                        while (line != null) {
+                            if (length < 50_000) appendLine(line)
+                            line = reader.readLine()
+                        }
+                    }
+                }
             }
-            while (stderrReader.readLine().also { line = it } != null) {
-                if (stderr.length < 20_000) stderr.appendLine(line)
+            val stderrDeferred = async(Dispatchers.IO) {
+                process.errorStream.bufferedReader().use { reader ->
+                    buildString {
+                        var line = reader.readLine()
+                        while (line != null) {
+                            if (length < 20_000) appendLine(line)
+                            line = reader.readLine()
+                        }
+                    }
+                }
             }
 
-            val exitCode = process.waitFor()
-            val dur = System.currentTimeMillis() - start
+            val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                return@withContext ShellCommandResult(
+                    exitCode = 124,
+                    stdout = runCatching { stdoutDeferred.await() }.getOrDefault("").trimEnd(),
+                    stderr = "TIMEOUT: Command exceeded ${timeoutMs}ms and was terminated.",
+                    durationMs = System.currentTimeMillis() - start
+                )
+            }
 
             ShellCommandResult(
-                exitCode = exitCode,
-                stdout = stdout.toString().trimEnd(),
-                stderr = stderr.toString().trimEnd(),
-                durationMs = dur
+                exitCode = process.exitValue(),
+                stdout = stdoutDeferred.await().trimEnd(),
+                stderr = stderrDeferred.await().trimEnd(),
+                durationMs = System.currentTimeMillis() - start
             )
         } catch (e: Exception) {
             ShellCommandResult(

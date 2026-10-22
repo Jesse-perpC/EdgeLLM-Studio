@@ -120,6 +120,7 @@ import com.perpcorp.edgellm.ui.components.EdgeLiveVoiceSheet
 import com.perpcorp.edgellm.ui.components.GrammarSelectorSheet
 import com.perpcorp.edgellm.ui.components.ModelCapabilityInspectorSheet
 import com.perpcorp.edgellm.ui.components.AgentToolsBottomSheet
+import com.perpcorp.edgellm.ui.components.ToolConfirmationDialog
 import com.perpcorp.edgellm.ui.components.AgentFeedbackLogsBottomSheet
 import com.perpcorp.edgellm.ui.components.LoraAdapterSelectorSheet
 import com.perpcorp.edgellm.ui.components.StructuredOutputSchemaSheet
@@ -184,6 +185,7 @@ fun InferenceScreen(
     var showAgentToolsSheet by remember { mutableStateOf(false) }
     val agentTools by viewModel.agentTools.collectAsState()
     val lastAgentToolResult by viewModel.lastAgentToolResult.collectAsState()
+    val pendingAgentApproval by viewModel.pendingAgentApproval.collectAsState()
     var showGrammarSheet by remember { mutableStateOf(false) }
     var showStructuredSchemaSheet by remember { mutableStateOf(false) }
     var showCapabilityInspectorSheet by remember { mutableStateOf(false) }
@@ -1563,6 +1565,15 @@ fun InferenceScreen(
                 viewModel.executeAgentTool(toolId, args)
             },
             onDismiss = { showAgentToolsSheet = false }
+        )
+    }
+
+    // Default-deny approval gate for RESTRICTED agent tools
+    pendingAgentApproval?.let { request ->
+        ToolConfirmationDialog(
+            request = request,
+            onApprove = { viewModel.resolveAgentApproval(approved = true) },
+            onDeny = { viewModel.resolveAgentApproval(approved = false) }
         )
     }
 

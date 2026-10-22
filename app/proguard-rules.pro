@@ -60,3 +60,6 @@
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# BuildConfig is read reflectively by BillingRepository; keep its fields.
+-keep class com.perpcorp.edgellm.BuildConfig { *; }

@@ -70,6 +70,7 @@ import com.perpcorp.edgellm.ui.components.InstalledPluginCard
 import com.perpcorp.edgellm.ui.components.McpServerCard
 import com.perpcorp.edgellm.ui.components.AgentToolCard
 import com.perpcorp.edgellm.ui.components.LinuxWorkspaceCard
+import com.perpcorp.edgellm.ui.components.ShellConfirmationDialog
 import com.perpcorp.edgellm.ui.components.TelegramBotCard
 import com.perpcorp.edgellm.ui.components.SshRemoteCard
 
@@ -88,6 +89,7 @@ fun PluginPipelineScreen(
     val agentTools by viewModel.agentTools.collectAsState()
     val lastAgentResult by viewModel.lastAgentToolResult.collectAsState()
     val linuxOutput by viewModel.linuxShellOutput.collectAsState()
+    val pendingShellApproval by viewModel.pendingShellApproval.collectAsState()
     val telegramConfig by viewModel.agentTelegramConfig.collectAsState()
     val telegramTestRes by viewModel.telegramTestResult.collectAsState()
     val sshProfiles by viewModel.agentSshProfiles.collectAsState()
@@ -637,6 +639,15 @@ fun PluginPipelineScreen(
         item {
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    // Default-deny approval gate for raw shell commands
+    pendingShellApproval?.let { command ->
+        ShellConfirmationDialog(
+            command = command,
+            onApprove = { viewModel.resolveShellApproval(approved = true) },
+            onDeny = { viewModel.resolveShellApproval(approved = false) }
+        )
     }
 
     // Run Test Dialog

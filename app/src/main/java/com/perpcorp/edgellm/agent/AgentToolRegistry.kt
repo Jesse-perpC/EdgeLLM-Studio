@@ -15,6 +15,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 /**
+ * A RESTRICTED tool invocation waiting for explicit user approval.
+ * Execution is default-deny until [AgentToolRegistry.resolveApproval] is
+ * called with approval.
+ */
+data class AgentApprovalRequest(
+    val toolId: String,
+    val toolName: String,
+    val description: String,
+    val arguments: Map<String, String>
+)
+
+/**
  * Central registry and dispatcher for all RikkaHub Agent features, tools, and services:
  * - 30+ Device, Communication, Productivity, and Diagnostic tools
  * - Linux Workspace & PRoot execution
@@ -46,6 +58,9 @@ class AgentToolRegistry(private val context: Context) {
     private val _lastExecutionLog = MutableStateFlow<String?>(null)
     val lastExecutionLog: StateFlow<String?> = _lastExecutionLog.asStateFlow()
 
+    private val _pendingApproval = MutableStateFlow<AgentApprovalRequest?>(null)
+    val pendingApproval: StateFlow<AgentApprovalRequest?> = _pendingApproval.asStateFlow()
+
     init {
         val initialList = mutableListOf<AgentTool>()
         initialList.addAll(DeviceControlTools.allTools)
@@ -71,13 +86,59 @@ class AgentToolRegistry(private val context: Context) {
     fun getToolsByCategory(category: AgentToolCategory): List<AgentTool> =
         _tools.value.filter { it.category == category }
 
+    fun requiresApproval(toolId: String): Boolean =
+        getTool(toolId)?.securityLevel == AgentSecurityLevel.RESTRICTED
+
+    /**
+     * Dispatch a tool invocation. RESTRICTED tools are default-deny: instead
+     * of running, an [AgentApprovalRequest] is published and the caller must
+     * resolve it explicitly. Non-restricted tools run immediately.
+     */
     suspend fun executeTool(toolId: String, arguments: Map<String, String>): AgentToolResult {
         val tool = getTool(toolId) ?: return AgentToolResult(
             isSuccess = false,
             output = "Tool with ID \"$toolId\" not found in AgentToolRegistry."
         )
 
+        if (tool.securityLevel == AgentSecurityLevel.RESTRICTED) {
+            _pendingApproval.value = AgentApprovalRequest(
+                toolId = tool.id,
+                toolName = tool.name,
+                description = tool.description,
+                arguments = arguments
+            )
+            return AgentToolResult(
+                isSuccess = false,
+                output = "Approval required: \"${tool.name}\" is a RESTRICTED tool and did not run.",
+                requiresUserConfirmation = true
+            )
+        }
+
         val result = tool.execute(context, arguments)
+        _lastExecutionLog.value = "[${tool.id}] Success=${result.isSuccess} (${result.executionTimeMs}ms): ${result.output.take(120)}"
+        return result
+    }
+
+    /**
+     * Resolve the pending RESTRICTED invocation. Only an explicit approval
+     * executes it; a denial clears the request without side effects.
+     */
+    suspend fun resolveApproval(approved: Boolean): AgentToolResult {
+        val request = _pendingApproval.value
+        _pendingApproval.value = null
+
+        if (request == null) {
+            return AgentToolResult(isSuccess = false, output = "No tool approval is pending.")
+        }
+        if (!approved) {
+            return AgentToolResult(isSuccess = false, output = "Execution cancelled by user.")
+        }
+
+        val tool = getTool(request.toolId) ?: return AgentToolResult(
+            isSuccess = false,
+            output = "Tool with ID \"${request.toolId}\" not found."
+        )
+        val result = tool.execute(context, request.arguments)
         _lastExecutionLog.value = "[${tool.id}] Success=${result.isSuccess} (${result.executionTimeMs}ms): ${result.output.take(120)}"
         return result
     }

@@ -98,7 +98,7 @@ fun DownloadCustomModelDialog(
         derivedStateOf {
             modelName.isNotBlank() &&
                     downloadUrl.isNotBlank() &&
-                    (downloadUrl.startsWith("http://") || downloadUrl.startsWith("https://")) &&
+                    downloadUrl.startsWith("https://") &&
                     fileSizeMb > 0
         }
     }

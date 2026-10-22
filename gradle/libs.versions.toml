@@ -45,7 +45,7 @@ mediapipeTasksGenai = "0.10.35"   # LLM task library (published)
 mediapipeImageGen = "0.10.26"     # Image generator (tasks-vision-image-generator)
 onnxRuntime = "1.22.0"
 # Google Generative AI client (includes on-device Gemini Nano when available via AI Core)
-generativeAi = "0.7.0"
+generativeAi = "0.9.0"
 # TensorFlow Lite (Maven Central, org.tensorflow) for .tflite classifiers.
 # LiteRT was evaluated first but its 2.2.0 runtime and api AARs declare the
 # same manifest namespace, which fails the build, and no fixed release exists.
@@ -114,7 +114,7 @@ mediapipe-tasks-vision-image-generator = { group = "com.google.mediapipe", name 
 # engine uses to report which backend actually served each node.
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxRuntime" }
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflowLite" }
-generative-ai = { group = "com.google.ai.client", name = "generative-ai", version.ref = "generativeAi" }
+generative-ai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "generativeAi" }
 
 
 [plugins]

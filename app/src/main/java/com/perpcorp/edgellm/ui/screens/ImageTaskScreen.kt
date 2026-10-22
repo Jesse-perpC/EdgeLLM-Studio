@@ -103,6 +103,7 @@ fun ImageTaskScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
+    val hardwareInfo by viewModel.hardwareInfo.collectAsState()
 
     var selectedMode by remember { mutableStateOf(ImageTaskMode.TEXT_TO_IMAGE) }
     var selectedModel by remember { mutableStateOf(SdModel.SD_TURBO) }

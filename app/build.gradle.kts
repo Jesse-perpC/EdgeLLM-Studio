@@ -10,6 +10,10 @@ plugins {
   alias(libs.plugins.ktlint)
 }
 
+val releaseKeystorePath = System.getenv("KEYSTORE_PATH") ?: "$rootDir/my-upload-key.jks"
+val hasReleaseKeystore = file(releaseKeystorePath).exists()
+val allowDebugSignedRelease = System.getenv("ALLOW_DEBUG_SIGNED_RELEASE") == "true"
+
 android {
   namespace = "com.perpcorp.edgellm"
   ndkVersion = "27.3.13750724"
@@ -19,8 +23,9 @@ android {
     applicationId = "com.aistudio.edgellm.qvmxrp"
     minSdk = 24
     targetSdk = 36
-    val gitCommitCount = providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
-      .standardOutput.asText.get().trim().toIntOrNull() ?: 1
+    val gitCommitCount =
+      providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+        .standardOutput.asText.get().trim().toIntOrNull() ?: 1
     val buildNumber = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull() ?: gitCommitCount
     versionCode = buildNumber
     versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.$buildNumber"
@@ -60,35 +65,12 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      val releaseKeystore = file(keystorePath)
-      if (releaseKeystore.exists()) {
-        storeFile = releaseKeystore
+      if (hasReleaseKeystore) {
+        storeFile = file(releaseKeystorePath)
         storePassword = System.getenv("STORE_PASSWORD")
         keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
         keyPassword = System.getenv("KEY_PASSWORD")
-      } else if (System.getenv("ALLOW_DEBUG_SIGNED_RELEASE") == "true") {
-        // CI ONLY, explicitly opted in via env. A debug-signed "release" APK
-        // must never be published: it carries the publicly known android
-        // debug key and Play will reject it. Local release builds without a
-        // real key fail below instead of silently producing one.
-        storeFile = file("${rootDir}/debug.keystore")
-        storePassword = "android"
-        keyAlias = "androiddebugkey"
-        keyPassword = "android"
-      } else {
-        throw GradleException(
-          "Release keystore not found at $keystorePath. Provide a real upload key " +
-            "via KEYSTORE_PATH (+ STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD), or set " +
-            "ALLOW_DEBUG_SIGNED_RELEASE=true for CI-only debug-signed artifacts."
-        )
       }
-    }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
     }
   }
 
@@ -98,9 +80,17 @@ android {
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      when {
+        hasReleaseKeystore -> signingConfig = signingConfigs.getByName("release")
+        // CI ONLY, explicitly opted in via env. A debug-signed "release" APK
+        // must never be published: it carries the publicly known android
+        // debug key and Play will reject it.
+        allowDebugSignedRelease -> signingConfig = signingConfigs.getByName("debug")
+        // Otherwise leave unsigned and fail loudly only when a release APK is
+        // actually packaged (see the guard below), so debug/lint/test tasks
+        // still work without a keystore.
+      }
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -119,6 +109,20 @@ android {
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
+  }
+}
+
+// Fail loudly only when a release APK is actually packaged without a real key,
+// so debug, lint, and test tasks work on machines without signing material.
+tasks.configureEach {
+  if (name.startsWith("package") && name.endsWith("Release") && !hasReleaseKeystore && !allowDebugSignedRelease) {
+    doFirst {
+      throw GradleException(
+        "Release keystore not found at $releaseKeystorePath. Provide a real upload key " +
+          "via KEYSTORE_PATH (+ STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD), or set " +
+          "ALLOW_DEBUG_SIGNED_RELEASE=true for CI-only debug-signed artifacts.",
+      )
+    }
   }
 }
 
@@ -189,7 +193,7 @@ dependencies {
   // Replaces the path that answered classification prompts from the
   // hardcoded knowledge engine.
   implementation(libs.tensorflow.lite)
-implementation(libs.generative.ai)
+  implementation(libs.generative.ai)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

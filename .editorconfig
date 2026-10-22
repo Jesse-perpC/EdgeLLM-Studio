@@ -1,0 +1,20 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+
+[*.kt]
+indent_size = 4
+max_line_length = off
+
+[*.kts]
+indent_size = 2
+max_line_length = off
+
+[*.{xml,json,yml,yaml,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

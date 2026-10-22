@@ -354,6 +354,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastAgentToolResult = MutableStateFlow<com.perpcorp.edgellm.agent.AgentToolResult?>(null)
     val lastAgentToolResult: StateFlow<com.perpcorp.edgellm.agent.AgentToolResult?> = _lastAgentToolResult.asStateFlow()
 
+    private val _pendingAgentApproval = MutableStateFlow<com.perpcorp.edgellm.agent.AgentApprovalRequest?>(null)
+    val pendingAgentApproval: StateFlow<com.perpcorp.edgellm.agent.AgentApprovalRequest?> = _pendingAgentApproval.asStateFlow()
+
+    private val _pendingShellApproval = MutableStateFlow<String?>(null)
+    val pendingShellApproval: StateFlow<String?> = _pendingShellApproval.asStateFlow()
+
     private val _linuxShellOutput = MutableStateFlow<String?>(null)
     val linuxShellOutput: StateFlow<String?> = _linuxShellOutput.asStateFlow()
 
@@ -367,10 +373,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = agentToolRegistry.executeTool(toolId, arguments)
             _lastAgentToolResult.value = result
+            if (result.requiresUserConfirmation) {
+                _pendingAgentApproval.value = agentToolRegistry.pendingApproval.value
+            }
         }
     }
 
+    fun resolveAgentApproval(approved: Boolean) {
+        viewModelScope.launch {
+            val result = agentToolRegistry.resolveApproval(approved)
+            _lastAgentToolResult.value = result
+            _pendingAgentApproval.value = null
+        }
+    }
+
+    /**
+     * Shell execution is default-deny: the command is held for explicit user
+     * approval and only runs once [resolveShellApproval] approves it.
+     */
     fun executeLinuxCommand(command: String) {
+        if (command.isBlank()) return
+        _pendingShellApproval.value = command
+    }
+
+    fun resolveShellApproval(approved: Boolean) {
+        val command = _pendingShellApproval.value
+        _pendingShellApproval.value = null
+        if (!approved || command.isNullOrBlank()) return
         viewModelScope.launch {
             val res = agentToolRegistry.linuxManager.executeCommand(command)
             _linuxShellOutput.value = if (res.exitCode == 0) {

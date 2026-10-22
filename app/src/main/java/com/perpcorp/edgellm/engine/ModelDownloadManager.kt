@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okio.buffer
+import okio.sink
+import okio.source
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -52,7 +55,7 @@ class ModelDownloadManager(
             description = "Ultra-compact high-speed conversational LLM. Extremely fast on all mobile CPUs with minimal battery draw.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
-            sha256Checksum = "9b64ea22fa706dfa2ce47e923e3c0f65349e5d4e112d7b5ea5f0612c77d94f21",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = true
         ),
@@ -68,7 +71,7 @@ class ModelDownloadManager(
             description = "Featherweight model trained on high-quality synthetic datasets.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/HuggingFaceTB/SmolLM-360M-Instruct-GGUF/resolve/main/smollm-360m-instruct-q4_k_m.gguf",
-            sha256Checksum = "4a1801fb297e68bc43d1a8e639dc281533adbf81ea42f5342bc490656e297801",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = false
         ),
@@ -84,7 +87,7 @@ class ModelDownloadManager(
             description = "State-of-the-art open reasoning model distilled from DeepSeek-R1. Features autonomous Chain-of-Thought <think> reflection natively on mobile devices.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
-            sha256Checksum = "7b2e9124ad5f4039aa36081efbc97e1328bb678c187d9050d53c30628e833441",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = false
         ),
@@ -100,7 +103,7 @@ class ModelDownloadManager(
             description = "Meta's state-of-the-art ultra-compact instruction tuned LLM. Optimized for on-device assistant tasks, tool calling, and long-context understanding.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-            sha256Checksum = "4c520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb51",
+            sha256Checksum = "",
             isDownloaded = false,
             isActive = false
         ),
@@ -116,7 +119,7 @@ class ModelDownloadManager(
             description = "Google's 2026 flagship open lightweight model. Engineered specifically for mobile hardware, Android AppFunctions tool-calling, and multimodal grounding.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/google/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
-            sha256Checksum = "8c620be91280a5facd517729215bb41fca9402a5585ee5f58356f9fa6da0bc92",
+            sha256Checksum = "",
             isDownloaded = false,
             isActive = false
         ),
@@ -132,7 +135,7 @@ class ModelDownloadManager(
             description = "Breakthrough 1-bit LLM architecture (-1, 0, 1 weights). Replaces matrix multiplication with integer addition, cutting mobile power consumption by 85%.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/microsoft/BitNet-b1.58-1B-GGUF/resolve/main/bitnet-b1.58-1b-tl1.gguf",
-            sha256Checksum = "3e710bf91280b5facd517729215bb41fca9402a5585ee5f58356f9fa6da0be11",
+            sha256Checksum = "",
             isDownloaded = false,
             isActive = false
         ),
@@ -148,7 +151,7 @@ class ModelDownloadManager(
             description = "TensorFlow Lite quantized BERT for lightning-fast on-device document classification, PII identification, and intent matching.",
             category = ModelCategory.EMBEDDINGS_CLASSIFICATION,
             downloadUrl = "https://storage.googleapis.com/tfhub-modules/tensorflow/mobilebert/1.tflite",
-            sha256Checksum = "e5192bf61a9bc3489115d7f1c1e95b0042cf63116664d97d022137951c89fbf2",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = false
         ),
@@ -164,7 +167,7 @@ class ModelDownloadManager(
             description = "Google Gemma architecture ported to TensorFlow Lite / LiteRT runtime with Qualcomm HTP and GPU delegates.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://storage.googleapis.com/kaggle-models/google/gemma/tflite/gemma-2b-it-cpu-int8.bin",
-            sha256Checksum = "55c4d32a9efb89182315ccad098fe11b23908ff9483dc47f631102ec3818e954",
+            sha256Checksum = "",
             isDownloaded = false,
             isActive = false
         ),
@@ -180,7 +183,7 @@ class ModelDownloadManager(
             description = "Deep reasoning and code synthesis model. Highly capable; best suited for devices with 8GB+ RAM and GPU acceleration.",
             category = ModelCategory.CODE_ANALYSIS,
             downloadUrl = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
-            sha256Checksum = "d48a605f63901ba6378e90769cf6e01a89c3be5a570c4bc79d233c09ea52881a",
+            sha256Checksum = "",
             isDownloaded = false,
             isActive = false
         ),
@@ -196,7 +199,7 @@ class ModelDownloadManager(
             description = "Multilingual lightweight model with extended context window. Excellent reasoning per parameter size.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
-            sha256Checksum = "8c6b7f32a5ef1299c159e13a45c0882e391cb09f87e51c8901b2034988e00fc1",
+            sha256Checksum = "",
             isDownloaded = false,
             isActive = false
         ),
@@ -212,7 +215,7 @@ class ModelDownloadManager(
             description = "High-speed sentence embedding and semantic similarity engine for offline clustering and vector retrieval.",
             category = ModelCategory.EMBEDDINGS_CLASSIFICATION,
             downloadUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
-            sha256Checksum = "1a837c3905e921d2830f0fca1029c7d424b967d6c547841103f6984eec031802",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = false
         ),
@@ -228,7 +231,7 @@ class ModelDownloadManager(
             description = "Google's system foundation model built directly into Android OS via Android AICore. Zero APK overhead, hardware-isolated TPU/NPU acceleration, and 100% private.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://developer.android.com/blog/posts/build-intelligent-android-apps-on-device-inference",
-            sha256Checksum = "android-aicore-gemini-nano-system-hash",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = false
         ),
@@ -244,7 +247,7 @@ class ModelDownloadManager(
             description = "Google MediaPipe LLM Inference API bundle for Gemma 2. Features GPU OpenCL/Vulkan delegate acceleration, dynamic LoRA rank merging, and streaming token response.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm_inference/gemma2-2b-it-gpu-int8.bin",
-            sha256Checksum = "8c6b7f32a5ef1299c159e13a45c0882e391cb09f87e51c8901b2034988e00fc2",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = false
         ),
@@ -260,7 +263,7 @@ class ModelDownloadManager(
             description = "Alibaba's official Mobile Neural Network runtime for Qwen 2.5. Features high-speed prefill operator fusion, low memory footprint, and disk-backed prompt caching.",
             category = ModelCategory.CHAT_REASONING,
             downloadUrl = "https://huggingface.co/Alibaba-MNN/Qwen2.5-1.5B-Instruct-MNN/resolve/main/model.mnn",
-            sha256Checksum = "9c710bf91280b5facd517729215bb41fca9402a5585ee5f58356f9fa6da0be22",
+            sha256Checksum = "",
             isDownloaded = true,
             isActive = false
         ),
@@ -276,7 +279,7 @@ class ModelDownloadManager(
             description = "Alibaba MNN vision-language model. Supports camera vision input, document scanning, and OCR visual grounding entirely on mobile device.",
             category = ModelCategory.VISION_MULTIMODAL,
             downloadUrl = "https://huggingface.co/Alibaba-MNN/Qwen2-VL-2B-Instruct-MNN/resolve/main/model.mnn",
-            sha256Checksum = "7d520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb62",
+            sha256Checksum = "",
             supportsVision = true,
             isDownloaded = false,
             isActive = false
@@ -293,7 +296,7 @@ class ModelDownloadManager(
             description = "Microsoft Phi-2 packaged for Google MediaPipe LLM Inference API on Android with GPU delegate and top-K sampling.",
             category = ModelCategory.CODE_ANALYSIS,
             downloadUrl = "https://storage.googleapis.com/mediapipe-models/llm_inference/phi2-gpu-int4.bin",
-            sha256Checksum = "5c520ad96180a5fbcd517729215bb41fca9402a5585ee5f58356f9fa6da0bb73",
+            sha256Checksum = "",
             isDownloaded = false,
             isActive = false
         )
@@ -460,7 +463,7 @@ class ModelDownloadManager(
                 activeImportJob = scope.launch {
                     _importProgressState.value = _importProgressState.value.copy(
                         isImporting = false,
-                        hasError = true,
+                        isCompleted = false,
                         errorMessage = "Model file not found or too small: $filename. Please download models first."
                     )
                 }

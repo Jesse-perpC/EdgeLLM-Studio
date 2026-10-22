@@ -63,13 +63,13 @@ enum class SubscriptionTier(
 }
 
 data class UserSubscriptionProfile(
-    val userId: String = "usr_creator_8921",
-    val email: String = "jesselepota.com@gmail.com",
+    val userId: String = "",
+    val email: String = "",
     val tier: SubscriptionTier = SubscriptionTier.FREE,
-    val usedAllocations: Int = 1_420,
+    val usedAllocations: Int = 0,
     val maxAllocations: Int = SubscriptionTier.FREE.maxAllocations,
-    val currentPeriodEnd: String = "Oct 01, 2026",
-    val isAutoRenew: Boolean = true
+    val currentPeriodEnd: String = "",
+    val isAutoRenew: Boolean = false
 ) {
     val isPro: Boolean get() = tier == SubscriptionTier.PRO_CREATOR || tier == SubscriptionTier.ENTERPRISE
     val remainingAllocations: Int get() = maxOf(0, maxAllocations - usedAllocations)
@@ -107,12 +107,12 @@ enum class StripeAccountMode {
 }
 
 data class StripeBillingConfig(
-    val publishableKey: String = "pk_test_LTsnLXAZKhKJqVczf2JjYTLk00g98H1Nl1",
+    val publishableKey: String = "",
     val paymentLinkUrl: String = "",
-    val mode: StripeAccountMode = StripeAccountMode.TEST_MODE,
+    val mode: StripeAccountMode = StripeAccountMode.UNCONFIGURED,
     val currency: String = "USD",
     val proMonthlyPriceId: String = "price_pro_creator_monthly",
-    val statusMessage: String = "Stripe Test Mode active (pk_test_...1Nl1). Ready for client checkout."
+    val statusMessage: String = "Stripe not configured. Add your publishable key in settings."
 ) {
     val isConfigured: Boolean get() = publishableKey.isNotBlank() && publishableKey.startsWith("pk_")
 }

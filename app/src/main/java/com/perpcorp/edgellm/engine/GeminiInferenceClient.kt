@@ -44,7 +44,7 @@ class GeminiInferenceClient {
         enableChainOfThoughtValidation: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        if (apiKey.isNullOrBlank()) {
+        if (apiKey.isNullOrBlank() || apiKey.startsWith("YOUR_")) {
             return@withContext Result.failure(IllegalStateException("GEMINI_API_KEY is not configured in BuildConfig"))
         }
 
@@ -151,7 +151,7 @@ Structure your response into two sequential phases:
         modelName: String = "gemini-2.5-flash-image"
     ): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.GEMINI_API_KEY
-        if (apiKey.isNullOrBlank()) {
+        if (apiKey.isNullOrBlank() || apiKey.startsWith("YOUR_")) {
             return@withContext Result.failure(IllegalStateException("GEMINI_API_KEY is not configured in BuildConfig"))
         }
 
