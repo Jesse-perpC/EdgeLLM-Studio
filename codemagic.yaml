@@ -1,0 +1,125 @@
+# Codemagic CI/CD for EdgeLLM-Studio
+#
+# Codemagic automatically uses this file when it is present in the repository
+# root. Select the "YAML" build configuration for the app in Codemagic, then
+# start a build (or let the webhook trigger it).
+#
+# Required Codemagic application/team variable group for release builds:
+#   edgellm_signing
+#     CM_KEYSTORE           base64-encoded release upload keystore (*.jks)
+#     CM_KEYSTORE_PASSWORD  keystore password
+#     CM_KEY_ALIAS          key alias
+#     CM_KEY_PASSWORD       key password
+#
+# Optional build-time secrets (otherwise .env.example placeholders are used):
+#   GEMINI_API_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_PAYMENT_LINK_PRO,
+#   SUPABASE_URL, SUPABASE_ANON_KEY
+
+workflows:
+  android-verify:
+    name: Android verify (ktlint, unit tests, CPU debug APK)
+    max_build_duration: 60
+    environment:
+      java: 21
+      ndk: 27.3.13750724
+      ubuntu: 24.04
+      vars:
+        GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8"
+    cache:
+      cache_paths:
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+        - ~/.android
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+        - pattern: master
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Install Android SDK components
+        script: |
+          set -euo pipefail
+          SDKMGR="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-36" "build-tools;36.0.0" "cmake;3.22.1" "ndk;27.3.13750724" >/dev/null
+      - name: Prepare workspace
+        script: |
+          set -euo pipefail
+          chmod +x gradlew
+          git submodule update --init --recursive
+          if [ ! -f .env ]; then cp .env.example .env; fi
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+      - name: Static analysis and unit tests
+        script: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace ktlintCheck testCpuDebugUnitTest
+      - name: Assemble CPU debug APK
+        script: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace assembleCpuDebug
+    artifacts:
+      - app/build/outputs/apk/**/*.apk
+      - app/build/reports/ktlint/**/*.txt
+      - app/build/reports/tests/**/*.html
+
+  android-release:
+    name: Android release (signed CPU APK)
+    max_build_duration: 90
+    environment:
+      java: 21
+      ndk: 27.3.13750724
+      ubuntu: 24.04
+      groups:
+        - edgellm_signing
+      vars:
+        GRADLE_OPTS: "-Xmx4g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8"
+    cache:
+      cache_paths:
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+        - ~/.android
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: "v*"
+          include: true
+      cancel_previous_builds: false
+    scripts:
+      - name: Install Android SDK components
+        script: |
+          set -euo pipefail
+          SDKMGR="$(command -v sdkmanager || echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager")"
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-36" "build-tools;36.0.0" "cmake;3.22.1" "ndk;27.3.13750724" >/dev/null
+      - name: Configure signing and assemble release APK
+        script: |
+          set -euo pipefail
+          chmod +x gradlew
+          git submodule update --init --recursive
+          if [ ! -f .env ]; then cp .env.example .env; fi
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+          if [ -z "${CM_KEYSTORE:-}" ]; then
+            echo "CM_KEYSTORE is not set. Configure the edgellm_signing variable group." >&2
+            exit 1
+          fi
+          echo "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/release-upload-key.jks"
+          export KEYSTORE_PATH="$CM_BUILD_DIR/release-upload-key.jks"
+          export STORE_PASSWORD="$CM_KEYSTORE_PASSWORD"
+          export KEY_ALIAS="${CM_KEY_ALIAS:-upload}"
+          export KEY_PASSWORD="$CM_KEY_PASSWORD"
+
+          ./gradlew --no-daemon --stacktrace ktlintCheck testCpuDebugUnitTest
+          ./gradlew --no-daemon --stacktrace assembleCpuRelease
+    artifacts:
+      - app/build/outputs/apk/**/*.apk
+      - app/build/outputs/mapping/**/mapping.txt
+      - app/build/reports/ktlint/**/*.txt

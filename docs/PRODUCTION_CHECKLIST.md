@@ -11,6 +11,8 @@ repository, not merely planned.
   (`assembleCpuDebug`, `assembleCpuRelease`).
 - [x] R8 minification and resource shrinking enabled for release.
 - [x] `versionCode` derived from commit count; `versionName` from the build.
+- [x] Codemagic workflows defined in `codemagic.yaml` (verify + signed release).
+- [ ] Codemagic verify workflow green on hosted infrastructure.
 - [ ] Signed release APK produced by CI (requires signing secrets).
 - [ ] Full `assembleCpuDebug` / `assembleCpuRelease` verified (blocked by
   musl-based CI environment; requires a glibc/Android-native toolchain).
