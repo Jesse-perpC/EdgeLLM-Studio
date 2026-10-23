@@ -1,218 +1,125 @@
 package com.perpcorp.edgellm.ui.theme
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+
+/**
+ * Runtime gradient tokens derived from the active [AccentPalette]. Screens can
+ * read these through [LocalEdgeGradients] to paint hero surfaces, glow rings,
+ * and the animated aurora without hardcoding colors.
+ */
+data class EdgeGradientTheme(
+    val accentA: Color,
+    val accentB: Color,
+    val accentC: Color,
+    val brandGradient: Brush,
+    val auroraStops: List<Color>,
+)
+
+val LocalEdgeGradients = staticCompositionLocalOf {
+    EdgeGradientTheme(
+        accentA = Color(0xFF22D3EE),
+        accentB = Color(0xFF6366F1),
+        accentC = Color(0xFFF472B6),
+        brandGradient = Brush.linearGradient(
+            listOf(Color(0xFF22D3EE), Color(0xFF6366F1), Color(0xFFF472B6)),
+        ),
+        auroraStops = listOf(Color(0xFF22D3EE), Color(0xFF6366F1), Color(0xFFF472B6)),
+    )
+}
 
 private fun createColorScheme(palette: AccentPalette, isDark: Boolean): ColorScheme {
-    return when (palette) {
-        AccentPalette.CYBER_CYAN -> if (isDark) {
-            darkColorScheme(
-                primary = CyanPrimaryDark,
-                onPrimary = Color(0xFF030712),
-                secondary = CyanSecondaryDark,
-                onSecondary = Color(0xFF030712),
-                tertiary = CyanTertiaryDark,
-                onTertiary = Color(0xFF030712),
-                background = CyanBackgroundDark,
-                onBackground = Color(0xFFF1F5F9),
-                surface = CyanSurfaceDark,
-                onSurface = Color(0xFFF1F5F9),
-                surfaceVariant = CyanSurfaceVariantDark,
-                onSurfaceVariant = Color(0xFFCBD5E1),
-                outline = CyanOutlineDark
-            )
-        } else {
-            lightColorScheme(
-                primary = CyanPrimaryLight,
-                onPrimary = Color.White,
-                secondary = CyanSecondaryLight,
-                onSecondary = Color.White,
-                tertiary = CyanTertiaryLight,
-                onTertiary = Color.White,
-                background = CyanBackgroundLight,
-                onBackground = Color(0xFF0F172A),
-                surface = CyanSurfaceLight,
-                onSurface = Color(0xFF0F172A),
-                surfaceVariant = CyanSurfaceVariantLight,
-                onSurfaceVariant = Color(0xFF334155),
-                outline = CyanOutlineLight
-            )
-        }
+    val primary = if (isDark) palette.primaryPreview else palette.lightPrimary
+    val secondary = if (isDark) palette.secondaryPreview else palette.lightSecondary
+    val tertiary = if (isDark) palette.accentGlow else palette.lightTertiary
 
-        AccentPalette.NEURAL_VIOLET -> if (isDark) {
-            darkColorScheme(
-                primary = VioletPrimaryDark,
-                onPrimary = Color(0xFF05030A),
-                secondary = VioletSecondaryDark,
-                onSecondary = Color(0xFF05030A),
-                tertiary = VioletTertiaryDark,
-                onTertiary = Color(0xFF05030A),
-                background = VioletBackgroundDark,
-                onBackground = Color(0xFFF5F3FF),
-                surface = VioletSurfaceDark,
-                onSurface = Color(0xFFF5F3FF),
-                surfaceVariant = VioletSurfaceVariantDark,
-                onSurfaceVariant = Color(0xFFDDD6FE),
-                outline = VioletOutlineDark
-            )
-        } else {
-            lightColorScheme(
-                primary = VioletPrimaryLight,
-                onPrimary = Color.White,
-                secondary = VioletSecondaryLight,
-                onSecondary = Color.White,
-                tertiary = VioletTertiaryLight,
-                onTertiary = Color.White,
-                background = VioletBackgroundLight,
-                onBackground = Color(0xFF1E1B4B),
-                surface = VioletSurfaceLight,
-                onSurface = Color(0xFF1E1B4B),
-                surfaceVariant = VioletSurfaceVariantLight,
-                onSurfaceVariant = Color(0xFF4C1D95),
-                outline = VioletOutlineLight
-            )
-        }
-
-        AccentPalette.EMERALD_MATRIX -> if (isDark) {
-            darkColorScheme(
-                primary = EmeraldPrimaryDark,
-                onPrimary = Color(0xFF020C06),
-                secondary = EmeraldSecondaryDark,
-                onSecondary = Color(0xFF020C06),
-                tertiary = EmeraldTertiaryDark,
-                onTertiary = Color(0xFF020C06),
-                background = EmeraldBackgroundDark,
-                onBackground = Color(0xFFECFDF5),
-                surface = EmeraldSurfaceDark,
-                onSurface = Color(0xFFECFDF5),
-                surfaceVariant = EmeraldSurfaceVariantDark,
-                onSurfaceVariant = Color(0xFFA7F3D0),
-                outline = EmeraldOutlineDark
-            )
-        } else {
-            lightColorScheme(
-                primary = EmeraldPrimaryLight,
-                onPrimary = Color.White,
-                secondary = EmeraldSecondaryLight,
-                onSecondary = Color.White,
-                tertiary = EmeraldTertiaryLight,
-                onTertiary = Color.White,
-                background = EmeraldBackgroundLight,
-                onBackground = Color(0xFF022C22),
-                surface = EmeraldSurfaceLight,
-                onSurface = Color(0xFF022C22),
-                surfaceVariant = EmeraldSurfaceVariantLight,
-                onSurfaceVariant = Color(0xFF064E3B),
-                outline = EmeraldOutlineLight
-            )
-        }
-
-        AccentPalette.SOLAR_PLASMA -> if (isDark) {
-            darkColorScheme(
-                primary = SolarPrimaryDark,
-                onPrimary = Color(0xFF0E0802),
-                secondary = SolarSecondaryDark,
-                onSecondary = Color(0xFF0E0802),
-                tertiary = SolarTertiaryDark,
-                onTertiary = Color(0xFF0E0802),
-                background = SolarBackgroundDark,
-                onBackground = Color(0xFFFFFBEB),
-                surface = SolarSurfaceDark,
-                onSurface = Color(0xFFFFFBEB),
-                surfaceVariant = SolarSurfaceVariantDark,
-                onSurfaceVariant = Color(0xFFFDE68A),
-                outline = SolarOutlineDark
-            )
-        } else {
-            lightColorScheme(
-                primary = SolarPrimaryLight,
-                onPrimary = Color.White,
-                secondary = SolarSecondaryLight,
-                onSecondary = Color.White,
-                tertiary = SolarTertiaryLight,
-                onTertiary = Color.White,
-                background = SolarBackgroundLight,
-                onBackground = Color(0xFF451A03),
-                surface = SolarSurfaceLight,
-                onSurface = Color(0xFF451A03),
-                surfaceVariant = SolarSurfaceVariantLight,
-                onSurfaceVariant = Color(0xFF78350F),
-                outline = SolarOutlineLight
-            )
-        }
-
-        AccentPalette.CRIMSON_VALKYRIE -> if (isDark) {
-            darkColorScheme(
-                primary = CrimsonPrimaryDark,
-                onPrimary = Color(0xFF0D0307),
-                secondary = CrimsonSecondaryDark,
-                onSecondary = Color(0xFF0D0307),
-                tertiary = CrimsonTertiaryDark,
-                onTertiary = Color(0xFF0D0307),
-                background = CrimsonBackgroundDark,
-                onBackground = Color(0xFFFFF1F2),
-                surface = CrimsonSurfaceDark,
-                onSurface = Color(0xFFFFF1F2),
-                surfaceVariant = CrimsonSurfaceVariantDark,
-                onSurfaceVariant = Color(0xFFFECDD3),
-                outline = CrimsonOutlineDark
-            )
-        } else {
-            lightColorScheme(
-                primary = CrimsonPrimaryLight,
-                onPrimary = Color.White,
-                secondary = CrimsonSecondaryLight,
-                onSecondary = Color.White,
-                tertiary = CrimsonTertiaryLight,
-                onTertiary = Color.White,
-                background = CrimsonBackgroundLight,
-                onBackground = Color(0xFF4C0519),
-                surface = CrimsonSurfaceLight,
-                onSurface = Color(0xFF4C0519),
-                surfaceVariant = CrimsonSurfaceVariantLight,
-                onSurfaceVariant = Color(0xFF881337),
-                outline = CrimsonOutlineLight
-            )
-        }
-
-        AccentPalette.OBSIDIAN_STEALTH -> if (isDark) {
-            darkColorScheme(
-                primary = ObsidianPrimaryDark,
-                onPrimary = Color.Black,
-                secondary = ObsidianSecondaryDark,
-                onSecondary = Color.Black,
-                tertiary = ObsidianTertiaryDark,
-                onTertiary = Color.Black,
-                background = ObsidianBackgroundDark,
-                onBackground = Color(0xFFF8FAFC),
-                surface = ObsidianSurfaceDark,
-                onSurface = Color(0xFFF8FAFC),
-                surfaceVariant = ObsidianSurfaceVariantDark,
-                onSurfaceVariant = Color(0xFF94A3B8),
-                outline = ObsidianOutlineDark
-            )
-        } else {
-            lightColorScheme(
-                primary = ObsidianPrimaryLight,
-                onPrimary = Color.White,
-                secondary = ObsidianSecondaryLight,
-                onSecondary = Color.White,
-                tertiary = ObsidianTertiaryLight,
-                onTertiary = Color.White,
-                background = ObsidianBackgroundLight,
-                onBackground = Color(0xFF09090B),
-                surface = ObsidianSurfaceLight,
-                onSurface = Color(0xFF09090B),
-                surfaceVariant = ObsidianSurfaceVariantLight,
-                onSurfaceVariant = Color(0xFF27272A),
-                outline = ObsidianOutlineLight
-            )
-        }
+    return if (isDark) {
+        darkColorScheme(
+            primary = primary,
+            onPrimary = Color(0xFF03101A),
+            primaryContainer = lerp(VoidSurface, primary, 0.22f),
+            onPrimaryContainer = lerp(primary, Color.White, 0.62f),
+            inversePrimary = palette.lightPrimary,
+            secondary = secondary,
+            onSecondary = Color(0xFF03101A),
+            secondaryContainer = lerp(VoidSurface, secondary, 0.22f),
+            onSecondaryContainer = lerp(secondary, Color.White, 0.62f),
+            tertiary = tertiary,
+            onTertiary = Color(0xFF03101A),
+            tertiaryContainer = lerp(VoidSurface, tertiary, 0.18f),
+            onTertiaryContainer = lerp(tertiary, Color.White, 0.62f),
+            background = VoidBlack,
+            onBackground = VoidTextHigh,
+            surface = VoidSurface,
+            onSurface = VoidTextHigh,
+            surfaceVariant = VoidSurfaceVariant,
+            onSurfaceVariant = VoidTextMid,
+            surfaceTint = primary,
+            inverseSurface = Color(0xFFE9EEFC),
+            inverseOnSurface = VoidSurface,
+            error = Color(0xFFFF6B81),
+            onError = Color(0xFF2A0409),
+            errorContainer = Color(0xFF3A0D16),
+            onErrorContainer = Color(0xFFFFC2CB),
+            outline = VoidOutline,
+            outlineVariant = VoidOutlineVariant,
+            scrim = Color.Black,
+        )
+    } else {
+        lightColorScheme(
+            primary = primary,
+            onPrimary = Color.White,
+            primaryContainer = lerp(PorcelainSurface, primary, 0.15f),
+            onPrimaryContainer = lerp(primary, Color.Black, 0.45f),
+            inversePrimary = palette.primaryPreview,
+            secondary = secondary,
+            onSecondary = Color.White,
+            secondaryContainer = lerp(PorcelainSurface, secondary, 0.14f),
+            onSecondaryContainer = lerp(secondary, Color.Black, 0.45f),
+            tertiary = tertiary,
+            onTertiary = Color.White,
+            tertiaryContainer = lerp(PorcelainSurface, tertiary, 0.14f),
+            onTertiaryContainer = lerp(tertiary, Color.Black, 0.45f),
+            background = PorcelainBackground,
+            onBackground = PorcelainTextHigh,
+            surface = PorcelainSurface,
+            onSurface = PorcelainTextHigh,
+            surfaceVariant = PorcelainSurfaceVariant,
+            onSurfaceVariant = PorcelainTextMid,
+            surfaceTint = primary,
+            inverseSurface = PorcelainTextHigh,
+            inverseOnSurface = PorcelainBackground,
+            error = Color(0xFFD7263D),
+            onError = Color.White,
+            errorContainer = Color(0xFFFFD9DE),
+            onErrorContainer = Color(0xFF4A0410),
+            outline = PorcelainOutline,
+            outlineVariant = PorcelainOutlineVariant,
+            scrim = Color.Black,
+        )
     }
 }
 
@@ -220,7 +127,7 @@ private fun createColorScheme(palette: AccentPalette, isDark: Boolean): ColorSch
 fun MyApplicationTheme(
     themeMode: AppThemeMode = AppThemeMode.DARK,
     accentPalette: AccentPalette = AccentPalette.CYBER_CYAN,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
     val isDark = when (themeMode) {
         AppThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -228,11 +135,112 @@ fun MyApplicationTheme(
         AppThemeMode.DARK -> true
     }
 
-    val colorScheme = createColorScheme(accentPalette, isDark)
+    val colorScheme = remember(accentPalette, isDark) { createColorScheme(accentPalette, isDark) }
+    val gradients = remember(accentPalette, isDark) {
+        val a = if (isDark) accentPalette.primaryPreview else accentPalette.lightPrimary
+        val b = if (isDark) accentPalette.secondaryPreview else accentPalette.lightSecondary
+        val c = if (isDark) accentPalette.accentGlow else accentPalette.lightTertiary
+        EdgeGradientTheme(
+            accentA = a,
+            accentB = b,
+            accentC = c,
+            brandGradient = Brush.linearGradient(
+                listOf(accentPalette.gradientStart, accentPalette.gradientMid, accentPalette.gradientEnd),
+            ),
+            auroraStops = listOf(
+                accentPalette.gradientStart,
+                accentPalette.gradientMid,
+                accentPalette.gradientEnd,
+            ),
+        )
+    }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+    CompositionLocalProvider(LocalEdgeGradients provides gradients) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = AppShapes,
+            content = content,
+        )
+    }
+}
+
+/**
+ * Ambient animated aurora. Draws a slow-moving neon nebula behind content; the
+ * animation is intentionally subtle so text contrast is preserved.
+ */
+@Composable
+fun EdgeAuroraCanvas(modifier: Modifier = Modifier) {
+    val gradients = LocalEdgeGradients.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    val transition = rememberInfiniteTransition(label = "edge-aurora")
+    val drift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 16000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "aurora-drift",
     )
+    val pulse by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 7000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "aurora-pulse",
+    )
+
+    val blobA = gradients.accentA.copy(alpha = if (isDark) 0.22f else 0.13f)
+    val blobB = gradients.accentB.copy(alpha = if (isDark) 0.20f else 0.11f)
+    val blobC = gradients.accentC.copy(alpha = if (isDark) 0.16f else 0.09f)
+    val base = MaterialTheme.colorScheme.background
+    val washTop = if (isDark) lerp(base, gradients.accentB, 0.06f) else lerp(base, gradients.accentA, 0.05f)
+    val washBottom = if (isDark) lerp(base, gradients.accentC, 0.05f) else lerp(base, gradients.accentB, 0.04f)
+
+    Box(
+        modifier = modifier.drawBehind {
+            drawRect(Brush.verticalGradient(listOf(washTop, base, washBottom)))
+
+            val radius = size.maxDimension * (0.52f + pulse * 0.18f)
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(blobA, Color.Transparent),
+                    center = Offset(size.width * (0.10f + drift * 0.12f), size.height * 0.16f),
+                    radius = radius,
+                ),
+            )
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(blobB, Color.Transparent),
+                    center = Offset(size.width * (0.90f - drift * 0.14f), size.height * 0.44f),
+                    radius = radius * 1.08f,
+                ),
+            )
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(blobC, Color.Transparent),
+                    center = Offset(size.width * (0.28f + drift * 0.22f), size.height * 0.90f),
+                    radius = radius * 0.92f,
+                ),
+            )
+        },
+    )
+}
+
+/**
+ * Convenience wrapper that paints the aurora and hosts content above it.
+ */
+@Composable
+fun EdgeAuroraBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(modifier = modifier) {
+        EdgeAuroraCanvas(modifier = Modifier.matchParentSize())
+        content()
+    }
 }

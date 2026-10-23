@@ -93,6 +93,7 @@ import com.perpcorp.edgellm.ui.screens.ModelArenaScreen
 import com.perpcorp.edgellm.ui.screens.PluginPipelineScreen
 import com.perpcorp.edgellm.ui.screens.RagDebugScreen
 import com.perpcorp.edgellm.ui.screens.SettingsScreen
+import com.perpcorp.edgellm.ui.theme.EdgeAuroraCanvas
 import com.perpcorp.edgellm.ui.theme.MyApplicationTheme
 import androidx.compose.material.icons.filled.Hub
 
@@ -356,6 +357,7 @@ fun EdgeLLMApp(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                EdgeAuroraCanvas(modifier = Modifier.matchParentSize())
                 if (isInSettings) {
                     SettingsScreen(viewModel = viewModel)
                 } else {

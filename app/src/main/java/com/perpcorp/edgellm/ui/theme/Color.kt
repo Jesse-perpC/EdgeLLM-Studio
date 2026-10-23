@@ -5,158 +5,121 @@ import androidx.compose.ui.graphics.Color
 enum class AppThemeMode(val title: String, val subtitle: String) {
     DARK("Futuristic Dark", "OLED Deep Void & Quantum Accents"),
     LIGHT("Precision Light", "High-Contrast Laboratory White"),
-    SYSTEM("System Adaptive", "Synchronizes with Android OS Schedule")
+    SYSTEM("System Adaptive", "Synchronizes with Android OS Schedule"),
 }
 
+/**
+ * Signature accent systems. Each palette carries a dark-mode brand triple, a
+ * tuned light-mode triple, and the three-stop gradient used by the aurora
+ * background, chips, and hero surfaces.
+ */
 enum class AccentPalette(
     val title: String,
     val subtitle: String,
     val primaryPreview: Color,
     val secondaryPreview: Color,
-    val accentGlow: Color
+    val accentGlow: Color,
+    val lightPrimary: Color,
+    val lightSecondary: Color,
+    val lightTertiary: Color,
+    val gradientStart: Color,
+    val gradientMid: Color,
+    val gradientEnd: Color,
 ) {
     CYBER_CYAN(
         title = "Quantum Cyber",
-        subtitle = "Electric Cyan & Deep Obsidian",
-        primaryPreview = Color(0xFF00F0FF),
-        secondaryPreview = Color(0xFF0077FE),
-        accentGlow = Color(0xFF00F0FF)
+        subtitle = "Electric Cyan • Indigo Pulse • Hyper Magenta",
+        primaryPreview = Color(0xFF22D3EE),
+        secondaryPreview = Color(0xFF6366F1),
+        accentGlow = Color(0xFFF472B6),
+        lightPrimary = Color(0xFF0891B2),
+        lightSecondary = Color(0xFF4F46E5),
+        lightTertiary = Color(0xFFDB2777),
+        gradientStart = Color(0xFF06B6D4),
+        gradientMid = Color(0xFF6366F1),
+        gradientEnd = Color(0xFFEC4899),
     ),
     NEURAL_VIOLET(
         title = "Neural Violet",
-        subtitle = "Synthetic Synapse & Hyper-Magenta",
-        primaryPreview = Color(0xFFB066FF),
+        subtitle = "Synthetic Synapse • Ultraviolet • Neon Rose",
+        primaryPreview = Color(0xFFA855F7),
         secondaryPreview = Color(0xFFEC4899),
-        accentGlow = Color(0xFFB066FF)
+        accentGlow = Color(0xFF22D3EE),
+        lightPrimary = Color(0xFF7C3AED),
+        lightSecondary = Color(0xFFDB2777),
+        lightTertiary = Color(0xFF0891B2),
+        gradientStart = Color(0xFF7C3AED),
+        gradientMid = Color(0xFFEC4899),
+        gradientEnd = Color(0xFF22D3EE),
     ),
     EMERALD_MATRIX(
         title = "Emerald Matrix",
-        subtitle = "Terminal Bio-Green & Quantum Jade",
-        primaryPreview = Color(0xFF00FFA3),
-        secondaryPreview = Color(0xFF10B981),
-        accentGlow = Color(0xFF00FFA3)
+        subtitle = "Bio-Luminescent Green • Quantum Jade • Lime",
+        primaryPreview = Color(0xFF34D399),
+        secondaryPreview = Color(0xFF06B6D4),
+        accentGlow = Color(0xFFA3E635),
+        lightPrimary = Color(0xFF059669),
+        lightSecondary = Color(0xFF0891B2),
+        lightTertiary = Color(0xFF65A30D),
+        gradientStart = Color(0xFF10B981),
+        gradientMid = Color(0xFF06B6D4),
+        gradientEnd = Color(0xFF84CC16),
     ),
     SOLAR_PLASMA(
         title = "Solar Plasma",
-        subtitle = "Fusion Reactor Amber & Flare Orange",
-        primaryPreview = Color(0xFFFF9F1C),
-        secondaryPreview = Color(0xFFFF5E00),
-        accentGlow = Color(0xFFFF9F1C)
+        subtitle = "Fusion Amber • Reactor Coral • Solar Flare",
+        primaryPreview = Color(0xFFFB923C),
+        secondaryPreview = Color(0xFFF43F5E),
+        accentGlow = Color(0xFFFACC15),
+        lightPrimary = Color(0xFFEA580C),
+        lightSecondary = Color(0xFFE11D48),
+        lightTertiary = Color(0xFFCA8A04),
+        gradientStart = Color(0xFFF97316),
+        gradientMid = Color(0xFFEF4444),
+        gradientEnd = Color(0xFFFACC15),
     ),
     CRIMSON_VALKYRIE(
         title = "Crimson Valkyrie",
-        subtitle = "Hyperpunk Laser Red & Cyber Ruby",
-        primaryPreview = Color(0xFFFF2A6D),
-        secondaryPreview = Color(0xFFFA0559),
-        accentGlow = Color(0xFFFF2A6D)
+        subtitle = "Hyperpunk Laser Red • Cyber Ruby • Ice Blue",
+        primaryPreview = Color(0xFFFB7185),
+        secondaryPreview = Color(0xFFF43F5E),
+        accentGlow = Color(0xFF38BDF8),
+        lightPrimary = Color(0xFFE11D48),
+        lightSecondary = Color(0xFFBE123C),
+        lightTertiary = Color(0xFF0284C7),
+        gradientStart = Color(0xFFE11D48),
+        gradientMid = Color(0xFFF43F5E),
+        gradientEnd = Color(0xFF38BDF8),
     ),
     OBSIDIAN_STEALTH(
         title = "Obsidian Stealth",
-        subtitle = "Pure Zero-Luminance OLED Monochrome",
-        primaryPreview = Color(0xFFF8FAFC),
+        subtitle = "Zero-Luminance OLED • Titanium • Cold Plasma",
+        primaryPreview = Color(0xFFE2E8F0),
         secondaryPreview = Color(0xFF94A3B8),
-        accentGlow = Color(0xFF38BDF8)
-    )
+        accentGlow = Color(0xFF38BDF8),
+        lightPrimary = Color(0xFF0F172A),
+        lightSecondary = Color(0xFF475569),
+        lightTertiary = Color(0xFF0284C7),
+        gradientStart = Color(0xFF64748B),
+        gradientMid = Color(0xFF94A3B8),
+        gradientEnd = Color(0xFF38BDF8),
+    ),
 }
 
-// 1. Quantum Cyber Palette (Default Signature Futuristic Look)
-val CyanPrimaryDark = Color(0xFF00F0FF)
-val CyanSecondaryDark = Color(0xFF0077FE)
-val CyanTertiaryDark = Color(0xFF00FFB2)
-val CyanBackgroundDark = Color(0xFF050811)
-val CyanSurfaceDark = Color(0xFF0B1322)
-val CyanSurfaceVariantDark = Color(0xFF132238)
-val CyanOutlineDark = Color(0xFF1E3A5F)
+// Shared deep-space neutrals. Kept almost black so neon accents carry the UI.
+val VoidBlack = Color(0xFF05060E)
+val VoidSurface = Color(0xFF0A0C1A)
+val VoidSurfaceVariant = Color(0xFF141830)
+val VoidOutline = Color(0xFF2A3252)
+val VoidOutlineVariant = Color(0xFF1A2038)
+val VoidTextHigh = Color(0xFFF2F5FF)
+val VoidTextMid = Color(0xFFAEB9D9)
 
-val CyanPrimaryLight = Color(0xFF0077FE)
-val CyanSecondaryLight = Color(0xFF00A3FF)
-val CyanTertiaryLight = Color(0xFF00BFA5)
-val CyanBackgroundLight = Color(0xFFF1F5F9)
-val CyanSurfaceLight = Color(0xFFFFFFFF)
-val CyanSurfaceVariantLight = Color(0xFFE2E8F0)
-val CyanOutlineLight = Color(0xFF94A3B8)
-
-// 2. Neural Violet Palette
-val VioletPrimaryDark = Color(0xFFB066FF)
-val VioletSecondaryDark = Color(0xFFF43F5E)
-val VioletTertiaryDark = Color(0xFF38BDF8)
-val VioletBackgroundDark = Color(0xFF090614)
-val VioletSurfaceDark = Color(0xFF130E26)
-val VioletSurfaceVariantDark = Color(0xFF231842)
-val VioletOutlineDark = Color(0xFF452C7B)
-
-val VioletPrimaryLight = Color(0xFF8B5CF6)
-val VioletSecondaryLight = Color(0xFFEC4899)
-val VioletTertiaryLight = Color(0xFF0284C7)
-val VioletBackgroundLight = Color(0xFFFAF5FF)
-val VioletSurfaceLight = Color(0xFFFFFFFF)
-val VioletSurfaceVariantLight = Color(0xFFF3E8FF)
-val VioletOutlineLight = Color(0xFFC084FC)
-
-// 3. Emerald Matrix Palette
-val EmeraldPrimaryDark = Color(0xFF00FFA3)
-val EmeraldSecondaryDark = Color(0xFF10B981)
-val EmeraldTertiaryDark = Color(0xFFA3E635)
-val EmeraldBackgroundDark = Color(0xFF030D08)
-val EmeraldSurfaceDark = Color(0xFF081A12)
-val EmeraldSurfaceVariantDark = Color(0xFF123324)
-val EmeraldOutlineDark = Color(0xFF1B593E)
-
-val EmeraldPrimaryLight = Color(0xFF059669)
-val EmeraldSecondaryLight = Color(0xFF0D9488)
-val EmeraldTertiaryLight = Color(0xFF65A30D)
-val EmeraldBackgroundLight = Color(0xFFF0FDF4)
-val EmeraldSurfaceLight = Color(0xFFFFFFFF)
-val EmeraldSurfaceVariantLight = Color(0xFFDCFCE7)
-val EmeraldOutlineLight = Color(0xFF86EFAC)
-
-// 4. Solar Plasma Palette
-val SolarPrimaryDark = Color(0xFFFF9F1C)
-val SolarSecondaryDark = Color(0xFFFF5E00)
-val SolarTertiaryDark = Color(0xFFFFD166)
-val SolarBackgroundDark = Color(0xFF0E0903)
-val SolarSurfaceDark = Color(0xFF1C1307)
-val SolarSurfaceVariantDark = Color(0xFF33220E)
-val SolarOutlineDark = Color(0xFF664319)
-
-val SolarPrimaryLight = Color(0xFFD97706)
-val SolarSecondaryLight = Color(0xFFEA580C)
-val SolarTertiaryLight = Color(0xFFCA8A04)
-val SolarBackgroundLight = Color(0xFFFFFBEB)
-val SolarSurfaceLight = Color(0xFFFFFFFF)
-val SolarSurfaceVariantLight = Color(0xFFFEF3C7)
-val SolarOutlineLight = Color(0xFFFCD34D)
-
-// 5. Crimson Valkyrie Palette
-val CrimsonPrimaryDark = Color(0xFFFF2A6D)
-val CrimsonSecondaryDark = Color(0xFFFA0559)
-val CrimsonTertiaryDark = Color(0xFF05D9E8)
-val CrimsonBackgroundDark = Color(0xFF0F0408)
-val CrimsonSurfaceDark = Color(0xFF1D0911)
-val CrimsonSurfaceVariantDark = Color(0xFF361221)
-val CrimsonOutlineDark = Color(0xFF6B2240)
-
-val CrimsonPrimaryLight = Color(0xFFE11D48)
-val CrimsonSecondaryLight = Color(0xFFBE123C)
-val CrimsonTertiaryLight = Color(0xFF0284C7)
-val CrimsonBackgroundLight = Color(0xFFFFF1F2)
-val CrimsonSurfaceLight = Color(0xFFFFFFFF)
-val CrimsonSurfaceVariantLight = Color(0xFFFFE4E6)
-val CrimsonOutlineLight = Color(0xFFFDA4AF)
-
-// 6. Obsidian Stealth Palette (Pure Black OLED)
-val ObsidianPrimaryDark = Color(0xFFF8FAFC)
-val ObsidianSecondaryDark = Color(0xFF94A3B8)
-val ObsidianTertiaryDark = Color(0xFF38BDF8)
-val ObsidianBackgroundDark = Color(0xFF000000)
-val ObsidianSurfaceDark = Color(0xFF09090B)
-val ObsidianSurfaceVariantDark = Color(0xFF18181B)
-val ObsidianOutlineDark = Color(0xFF27272A)
-
-val ObsidianPrimaryLight = Color(0xFF0F172A)
-val ObsidianSecondaryLight = Color(0xFF475569)
-val ObsidianTertiaryLight = Color(0xFF0284C7)
-val ObsidianBackgroundLight = Color(0xFFFFFFFF)
-val ObsidianSurfaceLight = Color(0xFFF8FAFC)
-val ObsidianSurfaceVariantLight = Color(0xFFE2E8F0)
-val ObsidianOutlineLight = Color(0xFFCBD5E1)
+// Shared porcelain neutrals for the light theme.
+val PorcelainBackground = Color(0xFFF2F5FC)
+val PorcelainSurface = Color(0xFFFFFFFF)
+val PorcelainSurfaceVariant = Color(0xFFE6EBF7)
+val PorcelainOutline = Color(0xFFB9C3DB)
+val PorcelainOutlineVariant = Color(0xFFD5DCEC)
+val PorcelainTextHigh = Color(0xFF0B1020)
+val PorcelainTextMid = Color(0xFF46506B)
