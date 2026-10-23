@@ -17,7 +17,7 @@
 
 workflows:
   android-verify:
-    name: Android verify (ktlint, unit tests, CPU debug APK)
+    name: Android verify (ktlint, unit tests, debug APK)
     max_build_duration: 60
     environment:
       java: 21
@@ -56,21 +56,28 @@ workflows:
           git submodule update --init --recursive
           if [ ! -f .env ]; then cp .env.example .env; fi
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
       - name: Static analysis and unit tests
         script: |
           set -euo pipefail
-          ./gradlew --no-daemon --stacktrace ktlintCheck testCpuDebugUnitTest
-      - name: Assemble CPU debug APK
+          ./gradlew --no-daemon --stacktrace ktlintCheck testDebugUnitTest
+      - name: Assemble debug APK
         script: |
           set -euo pipefail
-          ./gradlew --no-daemon --stacktrace assembleCpuDebug
+          ./gradlew --no-daemon --stacktrace assembleDebug
     artifacts:
       - app/build/outputs/apk/**/*.apk
       - app/build/reports/ktlint/**/*.txt
       - app/build/reports/tests/**/*.html
 
   android-release:
-    name: Android release (signed CPU APK)
+    name: Android release (signed APK)
     max_build_duration: 90
     environment:
       java: 21
@@ -117,8 +124,8 @@ workflows:
           export KEY_ALIAS="${CM_KEY_ALIAS:-upload}"
           export KEY_PASSWORD="$CM_KEY_PASSWORD"
 
-          ./gradlew --no-daemon --stacktrace ktlintCheck testCpuDebugUnitTest
-          ./gradlew --no-daemon --stacktrace assembleCpuRelease
+          ./gradlew --no-daemon --stacktrace ktlintCheck testDebugUnitTest
+          ./gradlew --no-daemon --stacktrace assembleRelease
     artifacts:
       - app/build/outputs/apk/**/*.apk
       - app/build/outputs/mapping/**/mapping.txt

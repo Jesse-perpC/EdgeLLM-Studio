@@ -16,6 +16,7 @@ val allowDebugSignedRelease = System.getenv("ALLOW_DEBUG_SIGNED_RELEASE") == "tr
 
 android {
   namespace = "com.perpcorp.edgellm"
+  ndkVersion = "27.3.13750724"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
