@@ -16,17 +16,13 @@ val allowDebugSignedRelease = System.getenv("ALLOW_DEBUG_SIGNED_RELEASE") == "tr
 
 android {
   namespace = "com.perpcorp.edgellm"
-  ndkVersion = "27.3.13750724"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
     applicationId = "com.aistudio.edgellm.qvmxrp"
     minSdk = 24
     targetSdk = 36
-    val gitCommitCount =
-      providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
-        .standardOutput.asText.get().trim().toIntOrNull() ?: 1
-    val buildNumber = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull() ?: gitCommitCount
+    val buildNumber = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull() ?: 1
     versionCode = buildNumber
     versionName = System.getenv("APP_VERSION_NAME") ?: "1.0.$buildNumber"
 
@@ -41,29 +37,13 @@ android {
     }
   }
 
-  flavorDimensions += "backend"
-  productFlavors {
-    create("cpu") {
-      dimension = "backend"
-      buildConfigField("boolean", "GGML_VULKAN_COMPILED", "false")
-    }
-    create("vulkan") {
-      dimension = "backend"
-      applicationIdSuffix = ".vulkan"
-      versionNameSuffix = "-vulkan"
-      buildConfigField("boolean", "GGML_VULKAN_COMPILED", "true")
-      externalNativeBuild {
-        cmake {
-          arguments += "-DEDGELLM_GPU_VULKAN=ON"
-          System.getenv("SPIRV_HEADERS_DIR")?.takeIf { it.isNotBlank() }?.let {
-            arguments += "-DSPIRV-Headers_DIR=$it"
-          }
-        }
-      }
-    }
-  }
-
   signingConfigs {
+    create("debugConfig") {
+      storeFile = file("${rootDir}/debug.keystore")
+      storePassword = "android"
+      keyAlias = "androiddebugkey"
+      keyPassword = "android"
+    }
     create("release") {
       if (hasReleaseKeystore) {
         storeFile = file(releaseKeystorePath)
@@ -75,6 +55,9 @@ android {
   }
 
   buildTypes {
+    debug {
+      signingConfig = signingConfigs.getByName("debugConfig")
+    }
     release {
       isCrunchPngs = true
       isMinifyEnabled = true
