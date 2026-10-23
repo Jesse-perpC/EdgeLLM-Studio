@@ -7,7 +7,7 @@ import com.perpcorporp.edgellm.data.model.GenerationParameters
 import com.perpcorporp.edgellm.data.model.HardwareAccelerationSettings
 import com.perpcorporp.edgellm.data.model.KnowledgeDocument
 import com.perpcorporp.edgellm.data.model.ModelCategory
-import com.perpcorporp.edgellm.data.model.ModelSpec
+import com.perpcorp.edgellm.data.model.ModelSpec
 import com.perpcorporp.edgellm.data.model.PowerProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
