@@ -313,17 +313,16 @@ class ExampleUnitTest {
       sha256Checksum = "sha256_tool"
     )
 
-    var output = ""
-    engine.generateStreamingResponse(
+    // The streaming path needs a real GGUF file, but the offline engine still
+    // dispatches parsed tool calls deterministically, so exercise that path.
+    val output = engine.generateOfflineIntelligence(
       prompt = "Please calculate 250 * 4",
       model = dummyModel,
-      settings = HardwareAccelerationSettings(),
       params = com.perpcorp.edgellm.data.model.GenerationParameters(enableToolCalling = true)
-    ).collect { chunk ->
-      output = chunk.accumulatedText
-    }
+    )
 
-    assertTrue("Output should contain executed tool call indicator", output.contains("Tool Executed") || output.contains("calculate") || output.contains("1000"))
+    assertTrue("Engine should execute the calculate tool and return 1000", output.contains("1000"))
+    assertFalse("Tool execution must not report an inference failure", output.contains("GGUF inference failed"))
   }
 
   @Test

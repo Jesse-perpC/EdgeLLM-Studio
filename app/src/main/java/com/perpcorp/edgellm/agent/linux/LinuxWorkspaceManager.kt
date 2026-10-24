@@ -1,6 +1,7 @@
 package com.perpcorp.edgellm.agent.linux
 
 import android.content.Context
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
@@ -130,10 +131,18 @@ echo "Workspace: ${workspaceDir.absolutePath}"
                 }
             }
 
-            val finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            val finished = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            } else {
+                awaitExitCompat(process, timeoutMs)
+            }
             if (!finished) {
-                process.destroyForcibly()
-                process.waitFor(2, TimeUnit.SECONDS)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    process.destroyForcibly()
+                    process.waitFor(2, TimeUnit.SECONDS)
+                } else {
+                    process.destroy()
+                }
                 return@withContext ShellCommandResult(
                     exitCode = 124,
                     stdout = runCatching { stdoutDeferred.await() }.getOrDefault("").trimEnd(),
@@ -156,6 +165,19 @@ echo "Workspace: ${workspaceDir.absolutePath}"
                 durationMs = System.currentTimeMillis() - start
             )
         }
+    }
+
+    private fun awaitExitCompat(process: Process, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                process.exitValue()
+                return true
+            } catch (_: IllegalThreadStateException) {
+                Thread.sleep(50)
+            }
+        }
+        return false
     }
 
     fun listScripts(): List<File> {

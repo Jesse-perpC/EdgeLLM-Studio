@@ -63,6 +63,18 @@ jobs:
       - name: Run debug build, lint, static analysis, and unit tests
         run: ./gradlew --no-daemon --stacktrace assembleDebug lintDebug ktlintCheck testDebugUnitTest
 
+      - name: Upload lint report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report-${{ github.run_number }}
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-debug.txt
+            app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload debug APK for testing
         uses: actions/upload-artifact@v4
         with:
