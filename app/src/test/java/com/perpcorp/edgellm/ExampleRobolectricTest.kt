@@ -56,6 +56,7 @@ class ExampleRobolectricTest {
   fun `demo folder import populates catalog and marks models ready`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val manager = com.perpcorp.edgellm.engine.ModelDownloadManager(context)
+    seedDemoModelFiles(context)
 
     manager.importDemoModelFolder()
 
@@ -171,6 +172,7 @@ class ExampleRobolectricTest {
     kotlinx.coroutines.runBlocking {
       val context = ApplicationProvider.getApplicationContext<Context>()
       val manager = com.perpcorp.edgellm.engine.ModelDownloadManager(context)
+      seedDemoModelFiles(context)
       manager.importDemoModelFolder()
 
       val importedModel = manager.modelsState.value.first { it.isImported }
@@ -267,6 +269,12 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertTrue("Stats should show running", server.serverStats.value.isRunning)
     assertEquals(testPort, server.serverStats.value.port)
 
+    val authHeader = "Bearer ${server.config.authToken}"
+    org.junit.Assert.assertTrue(
+      "Server should expose a non-blank bearer token",
+      server.config.authToken.isNotBlank()
+    )
+
     try {
       // Connect to the running server socket directly
       val url = java.net.URL("http://127.0.0.1:$testPort/api/version")
@@ -274,6 +282,7 @@ class ExampleRobolectricTest {
       conn.connectTimeout = 3000
       conn.readTimeout = 3000
       conn.requestMethod = "GET"
+      conn.setRequestProperty("Authorization", authHeader)
       assertEquals(200, conn.responseCode)
       val body = conn.inputStream.bufferedReader().readText()
       org.junit.Assert.assertTrue(body.contains("0.4.0-edge-android"))
@@ -285,6 +294,7 @@ class ExampleRobolectricTest {
       tagsConn.connectTimeout = 3000
       tagsConn.readTimeout = 3000
       tagsConn.requestMethod = "GET"
+      tagsConn.setRequestProperty("Authorization", authHeader)
       assertEquals(200, tagsConn.responseCode)
       val tagsBody = tagsConn.inputStream.bufferedReader().readText()
       org.junit.Assert.assertTrue(tagsBody.contains("test-llama"))
@@ -298,6 +308,7 @@ class ExampleRobolectricTest {
       genConn.requestMethod = "POST"
       genConn.doOutput = true
       genConn.setRequestProperty("Content-Type", "application/json")
+      genConn.setRequestProperty("Authorization", authHeader)
       val genPayload = """{"model":"test-llama","prompt":"what are objects in java?","stream":false}"""
       genConn.outputStream.use { it.write(genPayload.toByteArray(java.nio.charset.StandardCharsets.UTF_8)) }
       assertEquals(200, genConn.responseCode)
@@ -314,6 +325,7 @@ class ExampleRobolectricTest {
       chatConn.requestMethod = "POST"
       chatConn.doOutput = true
       chatConn.setRequestProperty("Content-Type", "application/json")
+      chatConn.setRequestProperty("Authorization", authHeader)
       val chatPayload = """{"model":"test-llama","messages":[{"role":"user","content":"Hello"}],"stream":false}"""
       chatConn.outputStream.use { it.write(chatPayload.toByteArray(java.nio.charset.StandardCharsets.UTF_8)) }
       assertEquals(200, chatConn.responseCode)
@@ -329,6 +341,7 @@ class ExampleRobolectricTest {
       oaiConn.requestMethod = "POST"
       oaiConn.doOutput = true
       oaiConn.setRequestProperty("Content-Type", "application/json")
+      oaiConn.setRequestProperty("Authorization", authHeader)
       val oaiPayload = """{"model":"test-llama","messages":[{"role":"user","content":"Say hi"}],"stream":false}"""
       oaiConn.outputStream.use { it.write(oaiPayload.toByteArray(java.nio.charset.StandardCharsets.UTF_8)) }
       assertEquals(200, oaiConn.responseCode)
@@ -667,7 +680,7 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `llama cpp engine generates deterministic strict factual response`() {
+  fun `llama cpp engine reports unavailable context instead of fabricating facts`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val engine = com.perpcorp.edgellm.engine.LlamaCppEngine(context)
 
@@ -686,13 +699,17 @@ class ExampleRobolectricTest {
       sha256Checksum = "dummy"
     )
 
-    // On-topic factual question
+    // No native GGUF model is loaded in a JVM unit test, so the engine must
+    // fail closed instead of fabricating a confident on-topic answer.
     val response = engine.generateStrictFactualResponse("what are objects in java?", model)
-    org.junit.Assert.assertTrue(response.isOnTopic)
-    org.junit.Assert.assertTrue("Direct answer should not be empty", response.answer.isNotBlank())
-    org.junit.Assert.assertTrue(response.confidenceScore in 0.8f..1.0f)
+    org.junit.Assert.assertFalse(
+      "Without a loaded model the engine must not claim an on-topic answer",
+      response.isOnTopic
+    )
+    org.junit.Assert.assertTrue("Answer should explain the unavailability", response.answer.isNotBlank())
+    assertEquals(0.0f, response.confidenceScore, 0.001f)
 
-    // Verify serialization matches strict_response.gbnf layout
+    // Verify serialization still matches the strict_response.gbnf layout
     val jsonStr = response.toJsonString()
     val validation = engine.validateStrictGbnfResponse(jsonStr)
     org.junit.Assert.assertTrue("Generated output must pass GBNF validation", validation.isValid)
@@ -948,5 +965,17 @@ class ExampleRobolectricTest {
 
     org.junit.Assert.assertTrue(thought.contains("Step 1: Check battery state"))
     assertEquals("The Vulkan acceleration engine is active and ready.", finalAnswer)
+  }
+
+  private fun seedDemoModelFiles(context: Context) {
+    val folder = java.io.File(context.filesDir, "sample_models").apply { mkdirs() }
+    val payload = ByteArray(2048) { 0x20.toByte() }
+    listOf(
+      "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+      "DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",
+      "Whisper-Tiny-Multilingual-FP16.tflite"
+    ).forEach { name ->
+      java.io.File(folder, name).writeBytes(payload)
+    }
   }
 }

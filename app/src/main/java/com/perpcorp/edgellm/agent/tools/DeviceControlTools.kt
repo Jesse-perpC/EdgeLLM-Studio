@@ -80,6 +80,15 @@ object DeviceControlTools {
             val start = System.currentTimeMillis()
             val enable = arguments["state"]?.toBooleanStrictOrNull() ?: true
             return try {
+                if (context.checkSelfPermission(android.Manifest.permission.CAMERA) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    return AgentToolResult(
+                        isSuccess = false,
+                        output = "Camera permission is required to control the flashlight.",
+                        executionTimeMs = System.currentTimeMillis() - start
+                    )
+                }
                 val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? android.hardware.camera2.CameraManager
                 val cameraId = cameraManager?.cameraIdList?.firstOrNull { id ->
                     val characteristics = cameraManager.getCameraCharacteristics(id)

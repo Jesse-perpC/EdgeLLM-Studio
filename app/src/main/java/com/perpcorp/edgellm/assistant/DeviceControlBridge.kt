@@ -100,6 +100,11 @@ object DeviceControlBridge {
                     "Timer set for ${action.minutes} minutes"
                 }
                 is AssistantMobileAction.ToggleTorch -> {
+                    if (context.checkSelfPermission(android.Manifest.permission.CAMERA) !=
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        return "Camera permission is required to control the flashlight"
+                    }
                     val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? android.hardware.camera2.CameraManager
                     val cameraId = cameraManager?.cameraIdList?.firstOrNull { id ->
                         val characteristics = cameraManager.getCameraCharacteristics(id)

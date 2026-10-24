@@ -159,6 +159,12 @@ class InferenceServerService : Service() {
         monitorJob = serviceScope.launch {
             server.serverStats.collect { stats ->
                 if (stats.isRunning) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        return@collect
+                    }
                     try {
                         val notification = buildForegroundNotification(stats)
                         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
