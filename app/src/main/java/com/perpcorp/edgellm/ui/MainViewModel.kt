@@ -162,18 +162,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         category: String = "Reasoning & Logic"
     ) {
         val allModels = models.value
-        val modelA = allModels.firstOrNull { it.id == customModelAId }
-            ?: allModels.firstOrNull { it.isDownloaded }
-            ?: allModels.firstOrNull()
+        val usableActive = downloadManager.getUsableActiveModel()
+        val modelA = allModels.firstOrNull { it.id == customModelAId && it.isDownloaded }
+            ?: usableActive
+            ?: allModels.firstOrNull { it.id == customModelAId }
 
         val modelAName = modelA?.name ?: "Gemma 2B IT"
         val modelAFormat = modelA?.format?.displayName ?: "MediaPipe"
         val modelAId = modelA?.id ?: "gemma_2b"
 
-        val modelB = allModels.firstOrNull { it.id == customModelBId }
-            ?: allModels.filter { it.id != modelAId }.firstOrNull { it.isDownloaded }
-            ?: allModels.filter { it.id != modelAId }.firstOrNull()
-            ?: allModels.getOrNull(1)
+        val modelB = allModels.firstOrNull { it.id == customModelBId && it.isDownloaded }
+            ?: usableActive?.takeIf { it.id != modelAId }
+            ?: allModels.firstOrNull { it.isDownloaded && it.id != modelAId }
+            ?: allModels.firstOrNull { it.id == customModelBId }
             ?: modelA
 
         val modelBName = modelB?.name ?: "Qwen 2.5 1.5B"
