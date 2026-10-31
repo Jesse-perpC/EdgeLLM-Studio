@@ -452,7 +452,7 @@ class ExampleRobolectricTest {
       val response = engine.generateOfflineIntelligence(
         prompt = query,
         model = dummyModel,
-        params = com.perpcorp.edgellm.data.model.GenerationParameters()
+        params = com.perpcorp.edgellm.data.model.GenerationParameters(enableToolCalling = false)
       )
       org.junit.Assert.assertTrue(
         "Query '$query' must fail honestly when no weights exist",
