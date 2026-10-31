@@ -21,8 +21,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 
@@ -41,13 +44,13 @@ data class EdgeGradientTheme(
 
 val LocalEdgeGradients = staticCompositionLocalOf {
     EdgeGradientTheme(
-        accentA = Color(0xFF22D3EE),
-        accentB = Color(0xFF6366F1),
-        accentC = Color(0xFFF472B6),
+        accentA = Color(0xFF6FE7FF),
+        accentB = Color(0xFF9F8CFF),
+        accentC = Color(0xFFFFC978),
         brandGradient = Brush.linearGradient(
-            listOf(Color(0xFF22D3EE), Color(0xFF6366F1), Color(0xFFF472B6)),
+            listOf(Color(0xFF4FD8FF), Color(0xFF8E7BFF), Color(0xFFFFD08A)),
         ),
-        auroraStops = listOf(Color(0xFF22D3EE), Color(0xFF6366F1), Color(0xFFF472B6)),
+        auroraStops = listOf(Color(0xFF4FD8FF), Color(0xFF8E7BFF), Color(0xFFFFD08A)),
     )
 }
 
@@ -126,7 +129,7 @@ private fun createColorScheme(palette: AccentPalette, isDark: Boolean): ColorSch
 @Composable
 fun MyApplicationTheme(
     themeMode: AppThemeMode = AppThemeMode.DARK,
-    accentPalette: AccentPalette = AccentPalette.CYBER_CYAN,
+    accentPalette: AccentPalette = AccentPalette.AETHER_ION,
     content: @Composable () -> Unit,
 ) {
     val isDark = when (themeMode) {
@@ -174,58 +177,122 @@ fun EdgeAuroraCanvas(modifier: Modifier = Modifier) {
     val gradients = LocalEdgeGradients.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
-    val transition = rememberInfiniteTransition(label = "edge-aurora")
+    val transition = rememberInfiniteTransition(label = "edge-aether")
     val drift by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 16000, easing = LinearEasing),
+            animation = tween(durationMillis = 26000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "aurora-drift",
+        label = "aether-drift",
     )
     val pulse by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.8f,
+        initialValue = 0.3f,
+        targetValue = 0.85f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 7000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 6400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "aurora-pulse",
+        label = "aether-pulse",
+    )
+    val scan by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "aether-scan",
     )
 
-    val blobA = gradients.accentA.copy(alpha = if (isDark) 0.22f else 0.13f)
-    val blobB = gradients.accentB.copy(alpha = if (isDark) 0.20f else 0.11f)
-    val blobC = gradients.accentC.copy(alpha = if (isDark) 0.16f else 0.09f)
+    val glowA = gradients.accentA.copy(alpha = if (isDark) 0.18f else 0.11f)
+    val glowB = gradients.accentB.copy(alpha = if (isDark) 0.15f else 0.09f)
     val base = MaterialTheme.colorScheme.background
-    val washTop = if (isDark) lerp(base, gradients.accentB, 0.06f) else lerp(base, gradients.accentA, 0.05f)
-    val washBottom = if (isDark) lerp(base, gradients.accentC, 0.05f) else lerp(base, gradients.accentB, 0.04f)
+    val washTop = if (isDark) lerp(base, gradients.accentB, 0.07f) else lerp(base, gradients.accentA, 0.05f)
+    val washBottom = if (isDark) lerp(base, gradients.accentC, 0.04f) else lerp(base, gradients.accentB, 0.03f)
+    val gridColor = if (isDark) Color.White.copy(alpha = 0.05f) else Color(0xFF0B1020).copy(alpha = 0.045f)
+    val arcColor = gradients.accentA.copy(alpha = if (isDark) 0.18f else 0.13f)
 
     Box(
         modifier = modifier.drawBehind {
             drawRect(Brush.verticalGradient(listOf(washTop, base, washBottom)))
 
-            val radius = size.maxDimension * (0.52f + pulse * 0.18f)
+            // Soft ion haze anchors the composition without washing out text.
+            val hazeRadius = size.maxDimension * (0.6f + pulse * 0.16f)
             drawRect(
                 brush = Brush.radialGradient(
-                    colors = listOf(blobA, Color.Transparent),
-                    center = Offset(size.width * (0.10f + drift * 0.12f), size.height * 0.16f),
-                    radius = radius,
+                    colors = listOf(glowA, Color.Transparent),
+                    center = Offset(size.width * (0.12f + drift * 0.10f), size.height * 0.14f),
+                    radius = hazeRadius,
                 ),
             )
             drawRect(
                 brush = Brush.radialGradient(
-                    colors = listOf(blobB, Color.Transparent),
-                    center = Offset(size.width * (0.90f - drift * 0.14f), size.height * 0.44f),
-                    radius = radius * 1.08f,
+                    colors = listOf(glowB, Color.Transparent),
+                    center = Offset(size.width * (0.88f - drift * 0.12f), size.height * 0.42f),
+                    radius = hazeRadius * 1.05f,
                 ),
             )
+
+            // Orbital telemetry arcs in the upper corner.
+            val arcCenter = Offset(size.width * 0.94f, size.height * 0.05f)
+            val dash = PathEffect.dashPathEffect(floatArrayOf(14f, 20f), drift * 48f)
+            for (ring in 1..3) {
+                drawCircle(
+                    color = arcColor.copy(alpha = arcColor.alpha / ring),
+                    radius = size.minDimension * (0.10f + ring * 0.07f),
+                    center = arcCenter,
+                    style = Stroke(width = 1.2f, pathEffect = dash),
+                )
+            }
+
+            // Perspective lattice floor.
+            val horizon = size.height * 0.64f
+            val vanishX = size.width * (0.5f + (drift - 0.5f) * 0.08f)
+            for (lane in -7..7) {
+                drawLine(
+                    color = gridColor,
+                    start = Offset(vanishX + lane * size.width * 0.012f, horizon),
+                    end = Offset(size.width * 0.5f + lane * size.width * 0.17f, size.height),
+                    strokeWidth = 1f,
+                )
+            }
+            var lineY = horizon + size.height * 0.008f
+            var lineGap = size.height * 0.008f
+            while (lineY < size.height) {
+                drawLine(gridColor, Offset(0f, lineY), Offset(size.width, lineY), strokeWidth = 1f)
+                lineY += lineGap
+                lineGap *= 1.3f
+            }
+
+            // Slow vertical scan band, like a sensor sweep.
+            val scanCenter = size.height * (0.1f + scan * 0.85f)
             drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(blobC, Color.Transparent),
-                    center = Offset(size.width * (0.28f + drift * 0.22f), size.height * 0.90f),
-                    radius = radius * 0.92f,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        gradients.accentA.copy(alpha = if (isDark) 0.055f else 0.045f),
+                        Color.Transparent,
+                    ),
+                    startY = scanCenter - 90f,
+                    endY = scanCenter + 90f,
                 ),
+                topLeft = Offset(0f, (scanCenter - 90f).coerceAtLeast(0f)),
+                size = Size(size.width, 180f),
+            )
+
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        Color.Transparent,
+                        gradients.accentA.copy(alpha = 0.45f),
+                        gradients.accentB.copy(alpha = 0.35f),
+                        Color.Transparent,
+                    ),
+                ),
+                topLeft = Offset.Zero,
+                size = Size(size.width, 1.5f),
             )
         },
     )

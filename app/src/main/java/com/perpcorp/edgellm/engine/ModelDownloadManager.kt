@@ -1,17 +1,16 @@
 package com.perpcorp.edgellm.engine
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.util.Log
 import com.perpcorp.edgellm.data.local.AppDatabase
 import com.perpcorp.edgellm.data.model.ModelCategory
 import com.perpcorp.edgellm.data.model.ModelFormat
 import com.perpcorp.edgellm.data.model.ModelImportProgress
 import com.perpcorp.edgellm.data.model.ModelSpec
 import com.perpcorp.edgellm.data.repository.EdgeLLMRepository
-import com.perpcorp.edgellm.service.ModelDownloadService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +25,7 @@ import okio.source
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
@@ -309,23 +309,26 @@ class ModelDownloadManager(
     val importProgressState: StateFlow<ModelImportProgress> = _importProgressState.asStateFlow()
 
     init {
-        // Seed Room Database with initial models if empty
+        // Seed Room, then reconcile the catalog with what is actually on disk.
         scope.launch {
             try {
                 if (repository.getModelCount() == 0) {
-                    val populated = initialModels.map { m ->
-                        val ext = formatToExtension(m.format)
-                        val targetFile = File(modelsDir, "${m.id}.$ext")
-                        val actuallyExists = targetFile.exists() && targetFile.length() > 50_000L
-                        m.copy(
-                            localFilePath = targetFile.absolutePath,
-                            isDownloaded = actuallyExists,
-                            isActive = actuallyExists && m.isActive
-                        )
-                    }
-                    repository.insertAllModels(populated)
+                    repository.insertAllModels(
+                        initialModels.map { m ->
+                            val resolved = resolveExistingModelFile(m)
+                            m.copy(
+                                localFilePath = resolved?.absolutePath ?: flatModelFile(m.id, m.format).absolutePath,
+                                isDownloaded = resolved != null,
+                                isActive = resolved != null && m.isActive,
+                                downloadedBytes = resolved?.length() ?: 0L
+                            )
+                        }
+                    )
                 }
-            } catch (_: Exception) {}
+                hydrateFromDatabase()
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not reconcile model catalog with disk: ${e.localizedMessage}")
+            }
         }
     }
 
@@ -358,6 +361,7 @@ class ModelDownloadManager(
                 delay(300)
 
                 val discoveredFiles = mutableListOf<DiscoveredModelFile>()
+                val sidecarFiles = mutableListOf<DiscoveredModelFile>()
 
                 try {
                     val docId = DocumentsContract.getTreeDocumentId(folderTreeUri)
@@ -386,6 +390,8 @@ class ModelDownloadManager(
 
                             if (isModelFile(name)) {
                                 discoveredFiles.add(DiscoveredModelFile(childUri, null, name, size))
+                            } else if (isSidecarFile(name)) {
+                                sidecarFiles.add(DiscoveredModelFile(childUri, null, name, size))
                             }
                         }
                     }
@@ -394,7 +400,7 @@ class ModelDownloadManager(
                 }
 
                 // If no files were found via SAF (e.g. empty folder or mocked folder), let's inform or handle
-                processDiscoveredModelList(discoveredFiles, folderName)
+                processDiscoveredModelList(discoveredFiles, folderName, sidecarFiles)
 
             } catch (e: Exception) {
                 _importProgressState.value = ModelImportProgress(
@@ -419,6 +425,7 @@ class ModelDownloadManager(
                 delay(200)
 
                 val discoveredFiles = mutableListOf<DiscoveredModelFile>()
+                val sidecarFiles = mutableListOf<DiscoveredModelFile>()
                 for (uri in fileUris) {
                     var name = "imported_model"
                     var size = 500L * 1024L * 1024L
@@ -432,10 +439,15 @@ class ModelDownloadManager(
                         }
                     }
 
-                    discoveredFiles.add(DiscoveredModelFile(uri, null, name, size))
+                    val item = DiscoveredModelFile(uri, null, name, size)
+                    if (isModelFile(name)) {
+                        discoveredFiles.add(item)
+                    } else if (isSidecarFile(name)) {
+                        sidecarFiles.add(item)
+                    }
                 }
 
-                processDiscoveredModelList(discoveredFiles, "Imported Files")
+                processDiscoveredModelList(discoveredFiles, "Imported Files", sidecarFiles)
             } catch (e: Exception) {
                 _importProgressState.value = ModelImportProgress(
                     isImporting = false,
@@ -459,63 +471,52 @@ class ModelDownloadManager(
         for ((filename, size) in demoFiles) {
             val f = File(sampleFolder, filename)
             if (!f.exists() || f.length() < 1024) {
-                activeImportJob?.cancel()
-                activeImportJob = scope.launch {
-                    _importProgressState.value = _importProgressState.value.copy(
-                        isImporting = false,
-                        isCompleted = false,
-                        errorMessage = "Model file not found or too small: $filename. Please download models first."
-                    )
-                }
+                _importProgressState.value = ModelImportProgress(
+                    isImporting = false,
+                    isCompleted = false,
+                    errorMessage = "Model file not found or too small: $filename. Please download models first."
+                )
                 return
             }
             discovered.add(DiscoveredModelFile(null, f, filename, size))
-            directSpecs.add(parseModelSpecFromFileName(filename, size, f.absolutePath, "Sample Models Folder"))
         }
 
-        // Immediately update modelsState so synchronous callers and unit tests observe imported models
-        val currentList = _modelsState.value.toMutableList()
-        for (newModel in directSpecs) {
-            val existingIndex = currentList.indexOfFirst { it.name.equals(newModel.name, ignoreCase = true) || it.id == newModel.id }
-            if (existingIndex >= 0) {
-                currentList[existingIndex] = newModel
-            } else {
-                currentList.add(0, newModel)
-            }
+        // Demo weights are local files, so import synchronously: callers observe
+        // ready-to-load models immediately.
+        for (item in discovered) {
+            importSingleFile(item, emptyList(), "Sample Models Folder")?.let { directSpecs.add(it) }
         }
-        val firstImported = directSpecs.firstOrNull()
-        if (firstImported != null) {
-            _modelsState.value = currentList.map { model ->
-                model.copy(isActive = (model.id == firstImported.id))
-            }
-        } else {
-            _modelsState.value = currentList
-        }
-        saveImportedModels(directSpecs)
 
-        activeImportJob?.cancel()
-        activeImportJob = scope.launch {
-            processDiscoveredModelList(discovered, "Sample Models Folder")
+        if (directSpecs.isEmpty()) {
+            _importProgressState.value = ModelImportProgress(
+                isImporting = false,
+                isCompleted = false,
+                errorMessage = "No compatible model files were imported."
+            )
+            return
         }
+
+        registerImportedModels(directSpecs, "Sample Models Folder", directSpecs.size, directSpecs.size)
     }
 
     private suspend fun processDiscoveredModelList(
         files: List<DiscoveredModelFile>,
-        folderName: String
+        folderName: String,
+        sidecarFiles: List<DiscoveredModelFile> = emptyList()
     ) {
         if (files.isEmpty()) {
             _importProgressState.value = ModelImportProgress(
                 isImporting = false,
                 isCompleted = false,
                 folderName = folderName,
-                errorMessage = "No compatible model files (.gguf, .tflite, .onnx, .bin) were found in this directory."
+                errorMessage = "No compatible model files (.gguf, .tflite, .onnx, .task, .mnn) were found in this directory."
             )
             return
         }
 
         val total = files.size
         val newImportedSpecs = mutableListOf<ModelSpec>()
-        val importedNames = mutableListOf<String>()
+        val failedFiles = mutableListOf<String>()
 
         _importProgressState.value = ModelImportProgress(
             isImporting = true,
@@ -523,9 +524,9 @@ class ModelDownloadManager(
             totalDiscovered = total,
             processedCount = 0,
             progressPercent = 15,
-            stageStatusText = "Found $total model file(s). Starting validation and registration..."
+            stageStatusText = "Found $total model file(s). Copying weights into app storage..."
         )
-        delay(400)
+        delay(200)
 
         for ((index, item) in files.withIndex()) {
             val currentNumber = index + 1
@@ -537,80 +538,198 @@ class ModelDownloadManager(
                 currentFileSizeFormatted = sizeFormatted,
                 processedCount = currentNumber,
                 progressPercent = basePct - 5,
-                stageStatusText = "Parsing tensor metadata for ${item.displayName} ($sizeFormatted)..."
-            )
-            delay(350)
-
-            val parsedSpec = parseModelSpecFromFileName(
-                fileName = item.displayName,
-                fileSizeBytes = item.sizeBytes,
-                filePathOrUri = item.uri?.toString() ?: item.file?.absolutePath ?: "",
-                folderName = folderName
+                stageStatusText = "Copying ${item.displayName} ($sizeFormatted) into app storage..."
             )
 
-            // Persist model weight container if needed
-            val modelBinFile = File(modelsDir, "${parsedSpec.id}.bin")
-            if (!modelBinFile.exists()) {
-                try {
-                    modelBinFile.writeBytes(ByteArray(0))
-                } catch (_: Exception) {}
+            val spec = importSingleFile(item, sidecarFiles, folderName)
+            if (spec != null) {
+                newImportedSpecs.add(spec)
+            } else {
+                failedFiles.add(item.displayName)
             }
-
-            newImportedSpecs.add(parsedSpec)
-            importedNames.add(parsedSpec.name)
 
             _importProgressState.value = _importProgressState.value.copy(
                 progressPercent = basePct,
-                stageStatusText = "Verified & allocated hardware delegates for ${parsedSpec.name}"
+                stageStatusText = if (spec != null) {
+                    "Copied and verified ${spec.name}"
+                } else {
+                    "Failed to copy ${item.displayName}"
+                }
             )
-            delay(250)
         }
 
-        // Final registration & auto-load
-        _importProgressState.value = _importProgressState.value.copy(
-            progressPercent = 95,
-            stageStatusText = "Registering models into hardware acceleration catalog..."
+        if (newImportedSpecs.isEmpty()) {
+            _importProgressState.value = ModelImportProgress(
+                isImporting = false,
+                isCompleted = false,
+                folderName = folderName,
+                errorMessage = "No model files could be copied: ${failedFiles.joinToString(", ")}. " +
+                    "The files may be inaccessible or empty."
+            )
+            return
+        }
+
+        registerImportedModels(newImportedSpecs, folderName, total, total)
+
+        if (failedFiles.isNotEmpty()) {
+            _importProgressState.value = _importProgressState.value.copy(
+                errorMessage = "Some files were skipped: ${failedFiles.joinToString(", ")}"
+            )
+        }
+    }
+
+    /**
+     * Copy a single discovered model (and any tokenizer sidecars) into the
+     * app-private models directory. Returns the ready-to-load spec, or null
+     * when the source is unreadable/empty. Never registers a phantom model.
+     */
+    private fun importSingleFile(
+        item: DiscoveredModelFile,
+        sidecarFiles: List<DiscoveredModelFile>,
+        folderName: String
+    ): ModelSpec? {
+        val parsed = parseModelSpecFromFileName(
+            fileName = item.displayName,
+            fileSizeBytes = item.sizeBytes,
+            filePathOrUri = "",
+            folderName = folderName
         )
-        delay(300)
+        val extension = formatToExtension(parsed.format)
+        val targetDir = File(modelsDir, parsed.id).apply { mkdirs() }
+        val target = File(targetDir, "model.$extension")
 
-        // Add to current models state, removing duplicates if existing by id or name
+        val copiedBytes = try {
+            copySourceToFile(item.uri, item.file, target)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy ${item.displayName}: ${e.localizedMessage}")
+            null
+        } ?: return null
+
+        if (copiedBytes <= 0L) {
+            target.delete()
+            return null
+        }
+
+        if (parsed.format == ModelFormat.ONNX || parsed.format == ModelFormat.MEDIAPIPE_TASK) {
+            copySidecars(targetDir, sidecarFiles)
+        }
+
+        return parsed.copy(
+            fileSizeBytes = copiedBytes,
+            isDownloaded = true,
+            downloadProgressPercent = 100,
+            isDownloading = false,
+            isPaused = false,
+            downloadSpeedFormatted = "Local Storage",
+            downloadedBytes = copiedBytes,
+            downloadStatusText = "Imported • Ready to load",
+            localFilePath = target.absolutePath
+        )
+    }
+
+    private fun copySourceToFile(uri: Uri?, file: File?, target: File): Long {
+        val sameFile = file != null && file.exists() && runCatching {
+            file!!.canonicalPath == target.canonicalPath
+        }.getOrDefault(false)
+        if (sameFile) {
+            return file!!.length()
+        }
+
+        target.parentFile?.mkdirs()
+        val temp = File(target.parentFile, "${target.name}.part")
+        if (temp.exists()) temp.delete()
+
+        try {
+            FileOutputStream(temp).use { output ->
+                when {
+                    uri != null -> {
+                        val input = context.contentResolver.openInputStream(uri)
+                            ?: throw java.io.FileNotFoundException("Cannot open imported model: $uri")
+                        input.use { it.copyTo(output, 1 shl 20) }
+                    }
+                    file != null -> {
+                        if (!file.isFile) throw java.io.FileNotFoundException("Missing model file: ${file.absolutePath}")
+                        file.inputStream().use { it.copyTo(output, 1 shl 20) }
+                    }
+                    else -> throw java.io.FileNotFoundException("No model source supplied")
+                }
+            }
+            val length = temp.length()
+            if (length <= 0L) {
+                temp.delete()
+                return 0L
+            }
+            if (target.exists()) target.delete()
+            if (!temp.renameTo(target)) {
+                temp.copyTo(target, overwrite = true)
+                temp.delete()
+            }
+            return target.length()
+        } catch (e: Exception) {
+            temp.delete()
+            throw e
+        }
+    }
+
+    private fun copySidecars(targetDir: File, sidecarFiles: List<DiscoveredModelFile>) {
+        for (sidecar in sidecarFiles) {
+            try {
+                val target = File(targetDir, sidecar.displayName)
+                copySourceToFile(sidecar.uri, sidecar.file, target)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not copy sidecar ${sidecar.displayName}: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private fun registerImportedModels(
+        specs: List<ModelSpec>,
+        folderName: String,
+        discoveredCount: Int,
+        processedCount: Int
+    ) {
         val currentList = _modelsState.value.toMutableList()
-        var autoActivatedName: String? = null
-
-        for (newModel in newImportedSpecs) {
-            val existingIndex = currentList.indexOfFirst { it.name.equals(newModel.name, ignoreCase = true) || it.id == newModel.id }
+        for (newModel in specs) {
+            val existingIndex = currentList.indexOfFirst {
+                it.name.equals(newModel.name, ignoreCase = true) || it.id == newModel.id
+            }
             if (existingIndex >= 0) {
                 currentList[existingIndex] = newModel
             } else {
-                currentList.add(0, newModel) // Add to top of list for instant visibility
+                currentList.add(0, newModel)
             }
         }
 
-        // Auto make available to load: Auto-activate the first imported model
-        val firstImported = newImportedSpecs.firstOrNull()
-        if (firstImported != null) {
-            autoActivatedName = firstImported.name
-            _modelsState.value = currentList.map { model ->
-                model.copy(isActive = (model.id == firstImported.id))
-            }
+        // A freshly imported, verified model becomes the active model so the
+        // next prompt runs against real weights instead of an unusable stub.
+        val firstImported = specs.firstOrNull()
+        val activeName = firstImported?.name
+        _modelsState.value = if (firstImported != null) {
+            currentList.map { model -> model.copy(isActive = (model.id == firstImported.id)) }
         } else {
-            _modelsState.value = currentList
+            currentList
         }
 
-        // Persist to local JSON
-        saveImportedModels(newImportedSpecs)
+        saveImportedModels(specs)
+        firstImported?.let { active ->
+            scope.launch {
+                try {
+                    repository.setActiveModel(active.id)
+                } catch (_: Exception) {}
+            }
+        }
 
         _importProgressState.value = ModelImportProgress(
             isImporting = false,
             isCompleted = true,
             folderName = folderName,
-            totalDiscovered = total,
-            processedCount = total,
-            importedCount = newImportedSpecs.size,
+            totalDiscovered = discoveredCount,
+            processedCount = processedCount,
+            importedCount = specs.size,
             progressPercent = 100,
-            stageStatusText = "Successfully imported ${newImportedSpecs.size} models! Auto-loaded '${autoActivatedName ?: ""}' ready for inference.",
-            importedModelNames = importedNames,
-            autoActivatedModelName = autoActivatedName
+            stageStatusText = "Imported ${specs.size} model(s). '${activeName ?: ""}' is loaded and ready for inference.",
+            importedModelNames = specs.map { it.name },
+            autoActivatedModelName = activeName
         )
     }
 
@@ -635,11 +754,11 @@ class ModelDownloadManager(
                 lower.endsWith(".onnx") ||
                 lower.endsWith(".task") ||
                 lower.endsWith(".mnn") ||
-                lower.endsWith(".aicore") ||
-                lower.endsWith(".bin") ||
-                lower.endsWith(".pt") ||
-                lower.endsWith(".safetensors")
+                lower.endsWith(".aicore")
     }
+
+    private fun isSidecarFile(name: String): Boolean =
+        SIDECAR_FILES.contains(name.lowercase(Locale.ROOT))
 
     fun parseModelSpecFromFileName(
         fileName: String,
@@ -656,7 +775,7 @@ class ModelDownloadManager(
             lower.endsWith(".task") -> ModelFormat.MEDIAPIPE_TASK
             lower.endsWith(".mnn") -> ModelFormat.MNN_LLM
             lower.endsWith(".aicore") -> ModelFormat.ANDROID_AICORE
-            else -> ModelFormat.GGUF
+            else -> ModelFormat.MEDIAPIPE_TASK
         }
 
         val quantization = when {
@@ -731,16 +850,16 @@ class ModelDownloadManager(
             category = category,
             downloadUrl = filePathOrUri,
             sha256Checksum = "local-imported-verified",
-            isDownloaded = true,
-            downloadProgressPercent = 100,
+            isDownloaded = false,
+            downloadProgressPercent = 0,
             isDownloading = false,
             isPaused = false,
-            downloadSpeedFormatted = "Local Storage",
-            downloadedBytes = fileSizeBytes,
-            downloadStatusText = "Imported • Ready to load",
+            downloadSpeedFormatted = "",
+            downloadedBytes = 0L,
+            downloadStatusText = "Ready to import",
             isActive = false,
             isImported = true,
-            localFilePath = filePathOrUri,
+            localFilePath = "",
             sourceFolder = folderName
         )
     }
@@ -754,17 +873,53 @@ class ModelDownloadManager(
         }
     }
 
+    // --- Model file resolution ---
+
+    /** Flat layout used by catalog downloads: `<models>/<id>.<ext>`. */
+    private fun flatModelFile(id: String, format: ModelFormat): File =
+        File(modelsDir, "$id.${formatToExtension(format)}")
+
+    /** Per-model directory used by imports so tokenizer sidecars stay isolated. */
+    private fun importedModelDir(id: String): File = File(modelsDir, id)
+
+    private fun importedModelFile(id: String, format: ModelFormat): File =
+        File(importedModelDir(id), "model.${formatToExtension(format)}")
+
+    /**
+     * Find the real weight file for a spec, tolerating old/blank paths.
+     * Returns null when the model is not actually present on disk.
+     */
+    private fun resolveExistingModelFile(spec: ModelSpec): File? {
+        val extension = formatToExtension(spec.format)
+        val candidates = mutableListOf<File>()
+        if (spec.localFilePath.isNotBlank()) candidates.add(File(spec.localFilePath))
+        candidates.add(flatModelFile(spec.id, spec.format))
+        candidates.add(importedModelFile(spec.id, spec.format))
+        val dir = importedModelDir(spec.id)
+        if (dir.isDirectory) {
+            dir.listFiles()?.forEach { candidate ->
+                if (candidate.isFile && candidate.extension.equals(extension, ignoreCase = true)) {
+                    candidates.add(candidate)
+                }
+            }
+        }
+        return candidates
+            .distinctBy { it.absolutePath }
+            .firstOrNull { it.isFile && it.length() > 0L }
+    }
+
     // --- Persistence for Imported Models ---
 
     private fun loadInitialWithPersistedModels(): List<ModelSpec> {
         val list = initialModels.map { m ->
-            val ext = formatToExtension(m.format)
-            val file = File(modelsDir, "${m.id}.$ext")
-            val actuallyExists = file.exists() && file.length() > 50_000L
+            val resolved = resolveExistingModelFile(m)
             m.copy(
-                localFilePath = file.absolutePath,
-                isDownloaded = actuallyExists,
-                isActive = actuallyExists && m.isActive
+                localFilePath = resolved?.absolutePath ?: flatModelFile(m.id, m.format).absolutePath,
+                isDownloaded = resolved != null,
+                isActive = resolved != null && m.isActive,
+                downloadProgressPercent = if (resolved != null) 100 else 0,
+                downloadedBytes = resolved?.length() ?: 0L,
+                downloadStatusText = if (resolved != null) "Installed" else "Not downloaded"
             )
         }.toMutableList()
         try {
@@ -773,7 +928,26 @@ class ModelDownloadManager(
                 val array = JSONArray(json)
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
-                    val spec = jsonToModelSpec(obj)
+                    val raw = jsonToModelSpec(obj)
+                    val resolved = resolveExistingModelFile(raw)
+                    val spec = if (resolved != null) {
+                        raw.copy(
+                            localFilePath = resolved.absolutePath,
+                            isDownloaded = true,
+                            downloadedBytes = resolved.length(),
+                            fileSizeBytes = resolved.length(),
+                            downloadProgressPercent = 100,
+                            downloadStatusText = "Imported • Ready to load"
+                        )
+                    } else {
+                        raw.copy(
+                            localFilePath = "",
+                            isDownloaded = false,
+                            downloadedBytes = 0L,
+                            downloadProgressPercent = 0,
+                            downloadStatusText = "File missing — re-import required"
+                        )
+                    }
                     if (list.none { it.id == spec.id }) {
                         list.add(0, spec)
                     }
@@ -781,6 +955,58 @@ class ModelDownloadManager(
             }
         } catch (_: Exception) {}
         return list
+    }
+
+    private suspend fun hydrateFromDatabase() {
+        val dbModels = try {
+            repository.getAllModelsOnce()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (dbModels.isEmpty()) return
+
+        val byId = LinkedHashMap<String, ModelSpec>()
+        _modelsState.value.forEach { byId[it.id] = it }
+
+        for (raw in dbModels) {
+            val resolved = resolveExistingModelFile(raw)
+            val db = raw.copy(
+                localFilePath = resolved?.absolutePath ?: raw.localFilePath,
+                isDownloaded = resolved != null,
+                downloadProgressPercent = if (resolved != null) 100 else raw.downloadProgressPercent,
+                downloadedBytes = resolved?.length() ?: 0L,
+                downloadStatusText = when {
+                    resolved != null -> "Installed"
+                    raw.isImported -> "File missing — re-import required"
+                    else -> "Not downloaded"
+                }
+            )
+            val existing = byId[db.id]
+            byId[db.id] = if (existing != null) {
+                existing.copy(
+                    fileSizeBytes = db.fileSizeBytes,
+                    isDownloaded = db.isDownloaded,
+                    localFilePath = db.localFilePath,
+                    downloadProgressPercent = db.downloadProgressPercent,
+                    downloadedBytes = db.downloadedBytes,
+                    downloadStatusText = db.downloadStatusText,
+                    isImported = db.isImported,
+                    isActive = db.isDownloaded && db.isActive
+                )
+            } else {
+                db.copy(isActive = db.isDownloaded && db.isActive)
+            }
+        }
+
+        val merged = byId.values.toList()
+        val active = merged.firstOrNull { it.isActive && it.isDownloaded }
+            ?: merged.firstOrNull { it.isDownloaded }
+        val reconciled = merged.map { it.copy(isActive = active != null && it.id == active.id) }
+
+        _modelsState.value = reconciled
+        try {
+            repository.insertAllModels(reconciled)
+        } catch (_: Exception) {}
     }
 
     private fun saveImportedModels(newModels: List<ModelSpec>) {
@@ -875,13 +1101,13 @@ class ModelDownloadManager(
             category = category,
             downloadUrl = obj.optString("downloadUrl", ""),
             sha256Checksum = obj.optString("sha256Checksum", "local-verified"),
-            isDownloaded = true,
-            downloadProgressPercent = 100,
+            isDownloaded = false,
+            downloadProgressPercent = 0,
             isDownloading = false,
             isPaused = false,
-            downloadSpeedFormatted = "Local Storage",
-            downloadedBytes = size,
-            downloadStatusText = "Imported • Ready to load",
+            downloadSpeedFormatted = "",
+            downloadedBytes = 0L,
+            downloadStatusText = "Imported",
             isActive = false,
             isImported = true,
             localFilePath = obj.optString("localFilePath", ""),
@@ -911,17 +1137,9 @@ class ModelDownloadManager(
         val totalBytes = initialModel.fileSizeBytes
         val startPercent = if (initialModel.isPaused) initialModel.downloadProgressPercent else 0
 
-        // Trigger Android ModelDownloadService for foreground processing
-        try {
-            val serviceIntent = Intent(context, ModelDownloadService::class.java).apply {
-                action = ModelDownloadService.ACTION_START_DOWNLOAD
-                putExtra(ModelDownloadService.EXTRA_MODEL_ID, modelId)
-                putExtra(ModelDownloadService.EXTRA_MODEL_NAME, initialModel.name)
-                putExtra(ModelDownloadService.EXTRA_FILE_SIZE, totalBytes)
-            }
-            context.startService(serviceIntent)
-        } catch (_: Exception) {}
-
+        // This manager is the single downloader. Starting ModelDownloadService
+        // as well used to race two writers against the same destination file,
+        // producing truncated/corrupted weights.
         val job = scope.launch {
             updateModel(modelId) {
                 it.copy(
@@ -1007,17 +1225,40 @@ class ModelDownloadManager(
                 sink.close()
                 source.close()
 
-                updateModel(modelId) {
-                    it.copy(
-                        isDownloading = false,
-                        isPaused = false,
-                        isDownloaded = true,
-                        downloadProgressPercent = 100,
-                        downloadedBytes = totalBytesRead,
-                        downloadSpeedFormatted = "Ready",
-                        downloadStatusText = "Installed",
-                        localFilePath = modelFile.absolutePath
-                    )
+                val writtenBytes = modelFile.length()
+                if (totalBytesRead <= 0L || writtenBytes <= 0L) {
+                    modelFile.delete()
+                    throw java.io.IOException("Downloaded file was empty")
+                }
+
+                val noActiveModel = getUsableActiveModel() == null
+                _modelsState.value = _modelsState.value.map { model ->
+                    if (model.id == modelId) {
+                        model.copy(
+                            isDownloading = false,
+                            isPaused = false,
+                            isDownloaded = true,
+                            isActive = if (noActiveModel) true else model.isActive,
+                            downloadProgressPercent = 100,
+                            downloadedBytes = writtenBytes,
+                            fileSizeBytes = writtenBytes,
+                            downloadSpeedFormatted = "Ready",
+                            downloadStatusText = "Installed",
+                            localFilePath = modelFile.absolutePath
+                        )
+                    } else if (noActiveModel) {
+                        model.copy(isActive = false)
+                    } else {
+                        model
+                    }
+                }
+
+                if (noActiveModel) {
+                    scope.launch {
+                        try {
+                            repository.setActiveModel(modelId)
+                        } catch (_: Exception) {}
+                    }
                 }
 
                 try {
@@ -1026,7 +1267,7 @@ class ModelDownloadManager(
                         isDownloaded = true,
                         progress = 100,
                         path = modelFile.absolutePath,
-                        fileSize = totalBytesRead
+                        fileSize = writtenBytes
                     )
                 } catch (_: Exception) {}
 
@@ -1045,14 +1286,6 @@ class ModelDownloadManager(
     }
 
     fun pauseDownload(modelId: String) {
-        try {
-            val intent = Intent(context, ModelDownloadService::class.java).apply {
-                action = ModelDownloadService.ACTION_PAUSE_DOWNLOAD
-                putExtra(ModelDownloadService.EXTRA_MODEL_ID, modelId)
-            }
-            context.startService(intent)
-        } catch (_: Exception) {}
-
         activeDownloadJobs[modelId]?.cancel()
         activeDownloadJobs.remove(modelId)
         updateModel(modelId) {
@@ -1066,14 +1299,6 @@ class ModelDownloadManager(
     }
 
     fun cancelDownload(modelId: String) {
-        try {
-            val intent = Intent(context, ModelDownloadService::class.java).apply {
-                action = ModelDownloadService.ACTION_CANCEL_DOWNLOAD
-                putExtra(ModelDownloadService.EXTRA_MODEL_ID, modelId)
-            }
-            context.startService(intent)
-        } catch (_: Exception) {}
-
         activeDownloadJobs[modelId]?.cancel()
         activeDownloadJobs.remove(modelId)
         updateModel(modelId) {
@@ -1086,6 +1311,11 @@ class ModelDownloadManager(
                 downloadStatusText = ""
             )
         }
+        // Remove the partial weight file so a later download starts clean.
+        for (ext in listOf("gguf", "onnx", "tflite", "task", "mnn", "aicore")) {
+            val file = File(modelsDir, "$modelId.$ext")
+            if (file.exists()) file.delete()
+        }
         scope.launch {
             try {
                 repository.updateModelDownloadStatus(modelId, false, 0, "", 0L)
@@ -1095,10 +1325,11 @@ class ModelDownloadManager(
 
     fun deleteModel(modelId: String) {
         cancelDownload(modelId)
-        for (ext in listOf("bin", "gguf", "onnx", "tflite")) {
+        for (ext in listOf("bin", "gguf", "onnx", "tflite", "task", "mnn", "aicore")) {
             val file = File(modelsDir, "$modelId.$ext")
             if (file.exists()) file.delete()
         }
+        importedModelDir(modelId).deleteRecursively()
 
         val target = _modelsState.value.firstOrNull { it.id == modelId }
 
@@ -1132,21 +1363,71 @@ class ModelDownloadManager(
         }
     }
 
-    fun setActiveModel(modelId: String) {
+    /** Activate a model only when its weights are actually present on disk. */
+    fun setActiveModel(modelId: String): Boolean {
+        val target = _modelsState.value.firstOrNull { it.id == modelId } ?: return false
+        val resolved = resolveExistingModelFile(target) ?: run {
+            updateModel(modelId) {
+                it.copy(
+                    isActive = false,
+                    isDownloaded = false,
+                    localFilePath = "",
+                    downloadStatusText = if (it.isImported) {
+                        "File missing — re-import required"
+                    } else {
+                        "Not downloaded"
+                    }
+                )
+            }
+            return false
+        }
+
         _modelsState.value = _modelsState.value.map { model ->
-            model.copy(isActive = (model.id == modelId && model.isDownloaded))
+            model.copy(
+                isActive = model.id == modelId,
+                isDownloaded = if (model.id == modelId) true else model.isDownloaded,
+                localFilePath = if (model.id == modelId) resolved.absolutePath else model.localFilePath,
+                fileSizeBytes = if (model.id == modelId) resolved.length() else model.fileSizeBytes
+            )
         }
         scope.launch {
             try {
                 repository.setActiveModel(modelId)
             } catch (_: Exception) {}
         }
+        return true
     }
 
-    fun getActiveModel(): ModelSpec {
-        return _modelsState.value.firstOrNull { it.isActive && it.isDownloaded }
-            ?: _modelsState.value.firstOrNull { it.isDownloaded }
-            ?: _modelsState.value.first()
+    /**
+     * Returns only a model whose weights are actually present on disk. There is
+     * deliberately no "first model" fallback: callers must handle null so the
+     * UI can say "no model loaded" instead of running a phantom checkpoint.
+     */
+    fun getActiveModel(): ModelSpec? = getUsableActiveModel()
+
+    /**
+     * Strict resolver for inference/API paths: returns a model whose weights
+     * really exist, or null so callers can report the truth instead of
+     * running against a phantom model.
+     */
+    fun getUsableActiveModel(): ModelSpec? {
+        val active = _modelsState.value.firstOrNull { it.isActive }
+        if (active != null) {
+            resolveExistingModelFile(active)?.let { file ->
+                return active.copy(
+                    isDownloaded = true,
+                    localFilePath = file.absolutePath,
+                    fileSizeBytes = file.length()
+                )
+            }
+        }
+        val fallback = _modelsState.value.firstOrNull { it.isDownloaded && resolveExistingModelFile(it) != null }
+            ?: _modelsState.value.firstNotNullOfOrNull { spec -> resolveExistingModelFile(spec)?.let { spec } }
+            ?: return null
+        return fallback.copy(
+            isDownloaded = true,
+            localFilePath = resolveExistingModelFile(fallback)?.absolutePath ?: fallback.localFilePath
+        )
     }
 
     fun addCustomModel(
@@ -1212,13 +1493,7 @@ class ModelDownloadManager(
                 onResult(false, "Model not found in library.")
                 return@launch
             }
-            val ext = formatToExtension(model.format)
-            val candidateFiles = listOf(
-                File(model.localFilePath),
-                File(modelsDir, "${model.id}.$ext"),
-                File(modelsDir, "${model.id}.bin")
-            )
-            val targetFile = candidateFiles.firstOrNull { it.exists() }
+            val targetFile = resolveExistingModelFile(model)
 
             if (targetFile == null) {
                 onResult(false, "Model weight file not found on disk at ${model.localFilePath.ifBlank { modelsDir.path }}")
@@ -1255,6 +1530,19 @@ class ModelDownloadManager(
     }
 
     companion object {
+        private const val TAG = "ModelDownloadManager"
+
+        private val SIDECAR_FILES = setOf(
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "special_tokens_map.json",
+            "vocab.json",
+            "vocab.txt",
+            "merges.txt",
+            "config.json",
+            "generation_config.json"
+        )
+
         fun formatToExtension(format: ModelFormat): String = when (format) {
             ModelFormat.GGUF -> "gguf"
             ModelFormat.ONNX -> "onnx"

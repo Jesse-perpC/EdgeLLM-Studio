@@ -30,8 +30,6 @@ import com.perpcorp.edgellm.engine.CryptoManager
 import com.perpcorp.edgellm.engine.HardwareCapabilityDetector
 import com.perpcorp.edgellm.engine.LocalInferenceEngine
 import com.perpcorp.edgellm.engine.ModelDownloadManager
-import com.perpcorp.edgellm.engine.OfflineKnowledgeEngine
-import com.perpcorp.edgellm.engine.OutputVerificationEngine
 import com.perpcorp.edgellm.engine.ShareDuration
 import com.perpcorp.edgellm.engine.StreamTokenChunk
 import com.perpcorp.edgellm.engine.TemporaryShareManager
@@ -203,92 +201,77 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _activeArenaMatch.value = match
 
         viewModelScope.launch {
-            val tStart = System.currentTimeMillis()
-            delay(160)
-            val ttftA = System.currentTimeMillis() - tStart
-            delay(80)
-            val ttftB = System.currentTimeMillis() - tStart
-
-            // Grounded answers for arbitrary prompts: route through each contender's
-            // real knowledge pipeline (answer-only, sanitized) so battles reflect
-            // loaded-model capabilities instead of runtime boilerplate.
-            // Curated challenge prompts below keep their hand-tuned responses.
-            fun chunkForStream(text: String): List<String> {
-                val sentences = text.split(Regex("(?<=[.!?\\n])\\s+"))
-                    .map { it.trim() }.filter { it.isNotBlank() }
-                if (sentences.isEmpty()) return listOf(text.ifBlank { "No response generated." })
-                val out = mutableListOf<String>()
-                val cur = StringBuilder()
-                for (s in sentences) {
-                    if (cur.length + s.length + 1 > 280 && cur.isNotEmpty()) {
-                        out.add(cur.toString() + " ")
-                        cur.clear()
-                    }
-                    if (cur.isNotEmpty()) cur.append(" ")
-                    cur.append(s)
-                }
-                if (cur.isNotEmpty()) out.add(cur.toString())
-                return out.ifEmpty { listOf(text) }
-            }
-            val contenderA = modelA ?: downloadManager.getActiveModel()
-            val contenderB = modelB ?: downloadManager.getActiveModel()
-            val groundedChunksA = chunkForStream(
-                OutputVerificationEngine.verifyAndSanitizeText(
-                    OfflineKnowledgeEngine.answerQuery(prompt, contenderA, _activePersona.value)
-                )
-            )
-            val groundedChunksB = chunkForStream(
-                OutputVerificationEngine.verifyAndSanitizeText(
-                    OfflineKnowledgeEngine.answerQuery(prompt, contenderB, _activePersona.value)
-                )
-            )
-
-            // Progressive streaming of grounded contender model responses
-            val chunksA = groundedChunksA
-            val chunksB = groundedChunksB
-
+            val settings = _accelerationSettings.value
+            val params = _generationParameters.value
+            val persona = _activePersona.value
+            val stableFallback = downloadManager.getUsableActiveModel()
+            val contenders = listOf(modelA ?: stableFallback, modelB ?: stableFallback)
             var textA = ""
             var textB = ""
-            val totalSteps = maxOf(chunksA.size, chunksB.size)
+            var ttftA = 0L
+            var ttftB = 0L
+            var tokensA = 0
+            var tokensB = 0
+            val started = System.currentTimeMillis()
 
-            for (i in 0 until totalSteps) {
-                delay(70)
-                if (i < chunksA.size) {
-                    textA += chunksA[i]
+            suspend fun runContender(contender: ModelSpec?, isA: Boolean) {
+                if (contender == null) {
+                    val msg = "**No response generated**\n\nNo usable model weights are loaded for this contender."
+                    if (isA) textA = msg else textB = msg
+                    return
                 }
-                if (i < chunksB.size) {
-                    textB += chunksB[i]
+                inferenceEngine.generateStreamingResponse(
+                    prompt = prompt,
+                    model = contender,
+                    settings = settings,
+                    params = params,
+                    persona = persona,
+                    isAirGapped = _isAirGappedMode.value
+                ).collect { chunk ->
+                    if (isA) {
+                        textA = chunk.accumulatedText
+                        if (ttftA == 0L && chunk.tokenCount > 0) ttftA = chunk.timeToFirstTokenMs
+                        tokensA = chunk.tokenCount
+                    } else {
+                        textB = chunk.accumulatedText
+                        if (ttftB == 0L && chunk.tokenCount > 0) ttftB = chunk.timeToFirstTokenMs
+                        tokensB = chunk.tokenCount
+                    }
+                    val snapshot = _activeArenaMatch.value ?: match
+                    _activeArenaMatch.value = snapshot.copy(
+                        modelAResponse = textA,
+                        modelBResponse = textB,
+                        modelATtftMs = ttftA,
+                        modelBTtftMs = ttftB,
+                        modelATps = if (isA) chunk.tokensPerSecond else snapshot.modelATps,
+                        modelBTps = if (isA) snapshot.modelBTps else chunk.tokensPerSecond,
+                        streamProgressA = if (isA) if (chunk.isComplete) 1f else 0.5f else snapshot.streamProgressA,
+                        streamProgressB = if (isA) snapshot.streamProgressB else if (chunk.isComplete) 1f else 0.5f,
+                        isBattling = true
+                    )
                 }
-                val progA = (i + 1).toFloat() / chunksA.size.toFloat()
-                val progB = (i + 1).toFloat() / chunksB.size.toFloat()
-                _activeArenaMatch.value = match.copy(
-                    modelAResponse = textA,
-                    modelBResponse = textB,
-                    streamProgressA = progA.coerceIn(0f, 1f),
-                    streamProgressB = progB.coerceIn(0f, 1f),
-                    modelATtftMs = ttftA,
-                    modelBTtftMs = ttftB,
-                    modelATps = 0f,
-                    modelBTps = 0f,
-                    isBattling = true
-                )
             }
 
+            val jobA = launch { runContender(contenders[0], true) }
+            val jobB = launch { runContender(contenders[1], false) }
+            jobA.join()
+            jobB.join()
+
+            val elapsed = (System.currentTimeMillis() - started).coerceAtLeast(1L)
             _activeArenaMatch.value = match.copy(
-                modelAResponse = textA,
+                modelAResponse = textA.ifBlank { "No response generated." },
+                modelBResponse = textB.ifBlank { "No response generated." },
                 modelATtftMs = ttftA,
-                modelATps = 0f,
-                modelATotalTimeMs = ttftA + 520,
-                modelBResponse = textB,
                 modelBTtftMs = ttftB,
-                modelBTps = 0f,
-                modelBTotalTimeMs = ttftB + 480,
+                modelATps = tokensA * 1000f / elapsed,
+                modelBTps = tokensB * 1000f / elapsed,
+                modelATotalTimeMs = elapsed,
+                modelBTotalTimeMs = elapsed,
                 streamProgressA = 1.0f,
                 streamProgressB = 1.0f,
                 isBattling = false
             )
         }
-    }
 
     fun voteArenaWinner(winner: com.perpcorp.edgellm.data.model.ArenaWinner) {
         val currentMatch = _activeArenaMatch.value ?: return
@@ -616,10 +599,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _accentPalette = MutableStateFlow(
         try {
-            val saved = themePrefs.getString("accent_palette", AccentPalette.CYBER_CYAN.name)
-            AccentPalette.valueOf(saved ?: AccentPalette.CYBER_CYAN.name)
+            val saved = themePrefs.getString("accent_palette", AccentPalette.AETHER_ION.name)
+            AccentPalette.valueOf(saved ?: AccentPalette.AETHER_ION.name)
         } catch (_: Exception) {
-            AccentPalette.CYBER_CYAN
+            AccentPalette.AETHER_ION
         }
     )
     val accentPalette: StateFlow<AccentPalette> = _accentPalette.asStateFlow()
@@ -961,6 +944,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _streamingChunk.value = null
 
             val activeModel = downloadManager.getActiveModel()
+            if (activeModel == null) {
+                _isGenerating.value = false
+                repository.insertMessage(
+                    InferenceMessage(
+                        id = UUID.randomUUID().toString(),
+                        sender = MessageSender.ASSISTANT,
+                        text = "**No model loaded**\n\nImport a local model or download one from the catalog first. No response was generated.",
+                        executionBackend = "No model loaded",
+                        modelId = "none"
+                    )
+                )
+                return@launch
+            }
             val currentSettings = _accelerationSettings.value
             val currentParams = _generationParameters.value
             val persona = _activePersona.value
@@ -1091,6 +1087,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _streamingChunk.value = null
 
             val activeModel = downloadManager.getActiveModel()
+            if (activeModel == null) {
+                _isGenerating.value = false
+                repository.insertMessage(
+                    InferenceMessage(
+                        id = UUID.randomUUID().toString(),
+                        sender = MessageSender.ASSISTANT,
+                        text = "**No model loaded**\n\nImport a local model or download one from the catalog first. No response was generated.",
+                        executionBackend = "No model loaded",
+                        modelId = "none"
+                    )
+                )
+                return@launch
+            }
             val currentSettings = _accelerationSettings.value
             val currentParams = _generationParameters.value
             val persona = _activePersona.value
@@ -1199,7 +1208,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     tokensPerSecond = current.tokensPerSecond,
                     timeToFirstTokenMs = current.timeToFirstTokenMs,
                     executionBackend = current.backendUsed,
-                    modelId = downloadManager.getActiveModel().name
+                    modelId = downloadManager.getActiveModel()?.name ?: "none"
                 )
                 repository.insertMessage(partialMessage)
             }
@@ -1318,7 +1327,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun runPlugin(pluginId: String, input: String) {
         viewModelScope.launch {
-            val model = downloadManager.getActiveModel()
+            val model = downloadManager.getActiveModel() ?: return@launch
             val result = pluginRegistry.executePlugin(pluginId, input, model, _accelerationSettings.value)
             _lastPluginResult.value = result
         }
@@ -1616,7 +1625,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         context = application,
         inferenceEngine = inferenceEngine,
         modelProvider = { models.value },
-        activeModelProvider = { models.value.firstOrNull { it.isActive } ?: models.value.firstOrNull { it.isDownloaded } },
+        activeModelProvider = { downloadManager.getUsableActiveModel() },
         accelerationSettingsProvider = { _accelerationSettings.value }
     )
 

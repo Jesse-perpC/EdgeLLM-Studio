@@ -164,6 +164,23 @@ class LlamaContext private constructor(
         get() = if (isAvailable) nativeGetChatTemplate(nativePtr) else ""
 
     /**
+     * Render a system+user exchange with the GGUF's own chat template via
+     * llama.cpp. Returns null when the model has no template or llama.cpp
+     * cannot render it, so callers can fall back to a raw prompt.
+     */
+    fun applyChatTemplate(systemPrompt: String?, userText: String): String? {
+        if (!isAvailable) return null
+        if (userText.isBlank()) return null
+        return try {
+            nativeApplyChatTemplate(nativePtr, systemPrompt ?: "", userText)
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: Throwable) {
+            Log.w(TAG, "applyChatTemplate failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
      * Measured counters from the last completion, straight out of llama.cpp.
      * Returns null before the first successful completion.
      */
@@ -256,7 +273,12 @@ class LlamaContext private constructor(
      *   string starting with "Error:" for every failure path; those never
      *   reach the caller as content.
      */
-    fun completion(prompt: String, onToken: ((String) -> Unit)? = null): String? {
+    fun completion(
+        prompt: String,
+        onToken: ((String) -> Unit)? = null,
+        addSpecial: Boolean = true,
+        parseSpecial: Boolean = false
+    ): String? {
         if (!isAvailable) return null
 
         val callback = onToken?.let { sink ->
@@ -266,7 +288,7 @@ class LlamaContext private constructor(
         }
 
         val result = try {
-            nativeCompletion(nativePtr, prompt, callback)
+            nativeCompletion(nativePtr, prompt, callback, addSpecial, parseSpecial)
         } catch (e: Throwable) {
             Log.e(TAG, "nativeCompletion threw", e)
             return null
@@ -294,7 +316,11 @@ class LlamaContext private constructor(
      * one token.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun completionStream(prompt: String): Flow<TokensEvent> = callbackFlow {
+    fun completionStream(
+        prompt: String,
+        addSpecial: Boolean = true,
+        parseSpecial: Boolean = false
+    ): Flow<TokensEvent> = callbackFlow {
         val ctx = this@LlamaContext
         if (!ctx.isAvailable) {
             close(IllegalStateException("llama.cpp native context unavailable"))
@@ -306,7 +332,9 @@ class LlamaContext private constructor(
 
         val worker = Thread({
             // Blocking decode; keep it off whatever dispatcher collects this flow.
-            val result = ctx.completion(prompt) { chunk -> runBlocking { scope.send(TokensEvent.Delta(chunk)) } }
+            val result = ctx.completion(prompt, { chunk ->
+                runBlocking { scope.send(TokensEvent.Delta(chunk)) }
+            }, addSpecial, parseSpecial)
             val stats = ctx.stats()
             if (result == null) {
                 close(IllegalStateException("native decode failed for prompt (${prompt.length} chars)"))
@@ -343,7 +371,14 @@ class LlamaContext private constructor(
         }
     }
 
-    private external fun nativeCompletion(handle: Long, prompt: String, callback: TokenCallback?): String
+    private external fun nativeCompletion(
+        handle: Long,
+        prompt: String,
+        callback: TokenCallback?,
+        addSpecial: Boolean,
+        parseSpecial: Boolean
+    ): String
+    private external fun nativeApplyChatTemplate(handle: Long, systemPrompt: String, userText: String): String?
     private external fun nativeSetSampling(
         handle: Long, temperature: Float, topP: Float, topK: Int,
         minP: Float, nPredict: Int, seed: Int

@@ -66,11 +66,15 @@ workflows:
       - name: Static analysis and unit tests
         script: |
           set -euo pipefail
-          ./gradlew --no-daemon --stacktrace ktlintCheck testDebugUnitTest
+          ./gradlew --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            ktlintCheck lintDebug testDebugUnitTest
       - name: Assemble debug APK
         script: |
           set -euo pipefail
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          ./gradlew --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            assembleDebug
     artifacts:
       - app/build/outputs/apk/**/*.apk
       - app/build/reports/ktlint/**/*.txt
@@ -124,8 +128,12 @@ workflows:
           export KEY_ALIAS="${CM_KEY_ALIAS:-upload}"
           export KEY_PASSWORD="$CM_KEY_PASSWORD"
 
-          ./gradlew --no-daemon --stacktrace ktlintCheck testDebugUnitTest
-          ./gradlew --no-daemon --stacktrace assembleRelease
+          ./gradlew --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            ktlintCheck testDebugUnitTest
+          ./gradlew --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            assembleRelease
     artifacts:
       - app/build/outputs/apk/**/*.apk
       - app/build/outputs/mapping/**/mapping.txt

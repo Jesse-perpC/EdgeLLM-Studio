@@ -22,9 +22,13 @@ env:
 
 jobs:
   verify:
-    name: Verify debug build, lint, and unit tests
+    name: Verify debug/release builds, lint, and unit tests
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      # CI-only: allows the release dry-run below to be debug-signed. The
+      # resulting APK is never uploaded or published.
+      ALLOW_DEBUG_SIGNED_RELEASE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,7 +54,15 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-36" "ndk;27.3.13750724" "cmake;3.22.1"
+          install_sdk() {
+            for attempt in 1 2 3; do
+              "$SDKMANAGER" "$@" && return 0
+              echo "sdkmanager failed (attempt $attempt); retrying in 5s" >&2
+              sleep 5
+            done
+            return 1
+          }
+          install_sdk "platforms;android-36" "ndk;27.3.13750724" "cmake;3.22.1"
 
       - name: Prepare non-secret build configuration
         shell: bash
@@ -60,8 +72,11 @@ jobs:
           chmod +x ./gradlew
           keytool -genkeypair -v             -keystore debug.keystore             -storepass android             -alias androiddebugkey             -keypass android             -keyalg RSA -keysize 2048 -validity 10000             -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Run debug build, lint, static analysis, and unit tests
-        run: ./gradlew --no-daemon --stacktrace assembleDebug lintDebug ktlintCheck testDebugUnitTest
+      - name: Run builds, lint, static analysis, and unit tests
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            assembleDebug assembleRelease lintDebug ktlintCheck testDebugUnitTest
 
       - name: Upload lint report
         if: failure()
@@ -130,7 +145,15 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-36" "ndk;27.3.13750724" "cmake;3.22.1"
+          install_sdk() {
+            for attempt in 1 2 3; do
+              "$SDKMANAGER" "$@" && return 0
+              echo "sdkmanager failed (attempt $attempt); retrying in 5s" >&2
+              sleep 5
+            done
+            return 1
+          }
+          install_sdk "platforms;android-36" "ndk;27.3.13750724" "cmake;3.22.1"
 
       - name: Configure release signing
         shell: bash
@@ -149,7 +172,10 @@ jobs:
           chmod +x ./gradlew
 
       - name: Build signed production APK
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            assembleRelease
 
       - name: Verify APK and calculate checksum
         shell: bash

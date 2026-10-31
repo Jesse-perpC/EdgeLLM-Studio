@@ -449,7 +449,7 @@ fun ThemeStudioBottomSheet(
                                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                                     color = MaterialTheme.colorScheme.onSurface
                                                 )
-                                                if (palette == AccentPalette.CYBER_CYAN) {
+                                                if (palette == AccentPalette.AETHER_ION) {
                                                     Spacer(modifier = Modifier.width(6.dp))
                                                     Surface(
                                                         shape = RoundedCornerShape(4.dp),
@@ -507,7 +507,7 @@ fun ThemeStudioBottomSheet(
                         OutlinedButton(
                             onClick = {
                                 viewModel.setThemeMode(AppThemeMode.DARK)
-                                viewModel.setAccentPalette(AccentPalette.CYBER_CYAN)
+                                viewModel.setAccentPalette(AccentPalette.AETHER_ION)
                             },
                             modifier = Modifier
                                 .weight(1f)

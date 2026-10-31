@@ -14,9 +14,9 @@ val Typography = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Black,
-        fontSize = 52.sp,
-        lineHeight = 58.sp,
-        letterSpacing = (-0.5f).sp,
+        fontSize = 50.sp,
+        lineHeight = 56.sp,
+        letterSpacing = (-0.75f).sp,
     ),
     displayMedium = TextStyle(
         fontFamily = FontFamily.Default,
@@ -114,6 +114,6 @@ val Typography = Typography(
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 15.sp,
-        letterSpacing = 1.sp,
+        letterSpacing = 1.4.sp,
     ),
 )

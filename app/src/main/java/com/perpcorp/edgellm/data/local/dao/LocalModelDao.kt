@@ -13,6 +13,9 @@ interface LocalModelDao {
     @Query("SELECT * FROM local_models ORDER BY isActive DESC, name ASC")
     fun getAllModels(): Flow<List<LocalModelEntity>>
 
+    @Query("SELECT * FROM local_models ORDER BY isActive DESC, name ASC")
+    suspend fun getAllModelsOnce(): List<LocalModelEntity>
+
     @Query("SELECT * FROM local_models WHERE id = :id")
     suspend fun getModelById(id: String): LocalModelEntity?
 

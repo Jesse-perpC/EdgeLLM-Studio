@@ -224,7 +224,7 @@ class ExampleUnitTest {
   }
 
   @Test
-  fun testMultimodalVisionInference() = runBlocking {
+  fun testMultimodalVisionFailsHonestlyForTextModel() = runBlocking {
     val engine = com.perpcorp.edgellm.engine.LocalInferenceEngine()
     val dummyModel = ModelSpec(
       id = "test_vision_model",
@@ -254,8 +254,13 @@ class ExampleUnitTest {
     }
 
     assertTrue("Vision output should not be blank", collectedResponse.isNotBlank())
-    assertTrue("Output should identify visual image or architecture", 
-      collectedResponse.contains("arch_topology_arm64.png") || collectedResponse.contains("Architecture") || collectedResponse.contains("Visual Analysis")
+    assertTrue(
+      "A text-only GGUF must refuse image input",
+      collectedResponse.contains("No response generated") && collectedResponse.contains("cannot see images")
+    )
+    assertFalse(
+      "No fabricated visual analysis may be produced",
+      collectedResponse.contains("Visual Architecture Inspection")
     )
   }
 
@@ -326,7 +331,7 @@ class ExampleUnitTest {
   }
 
   @Test
-  fun testJsonSchemaEnforcementInInferenceEngine() = runBlocking {
+  fun testJsonSchemaRequestFailsHonestlyWithoutWeights() = runBlocking {
     val engine = com.perpcorp.edgellm.engine.LocalInferenceEngine()
     val dummyModel = ModelSpec(
       id = "test_json_model",
@@ -353,9 +358,9 @@ class ExampleUnitTest {
       output = chunk.accumulatedText
     }
 
-    assertTrue("Output must start with JSON brace", output.trim().startsWith("{"))
-    assertTrue("Output must end with JSON brace", output.trim().endsWith("}"))
-    assertTrue("Output must contain schema-compliant keys", output.contains("\"status\"") && output.contains("\"data\""))
+    assertTrue("Missing weights must be reported", output.contains("GGUF inference failed"))
+    assertFalse("No synthetic JSON schema payload may be fabricated", output.contains("\"status\""))
+    assertFalse("No synthetic data object may be fabricated", output.contains("\"data\""))
   }
 
   @Test

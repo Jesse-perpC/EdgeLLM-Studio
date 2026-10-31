@@ -503,14 +503,21 @@ escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]
             ctx.setGrammar("")
         }
 
-        // Format the prompt with the GGUF's own chat template. Unknown
-        // families fall back to the raw text rather than a guessed format.
-        val templated = ChatTemplateFormatter.render(ctx.chatTemplate, params.systemPrompt, prompt)
-        if (templated == null) {
+        // Format the prompt with the GGUF's own chat template. llama.cpp's
+        // renderer understands far more families than our local table, so try
+        // it first; the local formatter and raw completion are fallbacks.
+        val nativeTemplated = ctx.applyChatTemplate(params.systemPrompt, prompt)
+        val localTemplated = if (nativeTemplated == null) {
+            ChatTemplateFormatter.render(ctx.chatTemplate, params.systemPrompt, prompt)
+        } else {
+            null
+        }
+        if (nativeTemplated == null && localTemplated == null) {
             Log.i(TAG, "No usable chat template for this GGUF; sending raw prompt")
         }
-        val finalPrompt = templated?.first ?: prompt
-        val templateFamily = templated?.second
+        val finalPrompt = nativeTemplated ?: localTemplated?.first ?: prompt
+        val templateFamily = localTemplated?.second
+        val usedTemplate = nativeTemplated != null || localTemplated != null
 
         val extractor = if (useGbnfGrammar && !params.enforceJsonSchema) JsonAnswerExtractor() else null
 
@@ -532,10 +539,17 @@ escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]
                 }
             )
             if (templateFamily != null) append(" • ${templateFamily.name}")
+            if (nativeTemplated != null) append(" • native chat template")
             if (useGbnfGrammar) append(" • GBNF")
         }
 
-        ctx.completionStream(finalPrompt).collect { event ->
+        // Special markers in a templated prompt must be parsed as special
+        // tokens; raw prompts keep BOS insertion and plain tokenization.
+        ctx.completionStream(
+            prompt = finalPrompt,
+            addSpecial = !usedTemplate,
+            parseSpecial = usedTemplate
+        ).collect { event ->
             when (event) {
                 is LlamaContext.TokensEvent.Delta -> {
                     // Mark the first decoded token even when it is part of the
@@ -668,12 +682,16 @@ escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]
             Log.w(TAG, "GBNF grammar rejected; generating without constraint")
         }
 
-        val raw = ctx.completion(prompt)
-            ?: return StrictFactualGbnfResponse(
-                isOnTopic = false,
-                answer = "Inference engine error while generating a response.",
-                confidenceScore = 0.0f
-            )
+        val templated = ctx.applyChatTemplate(null, prompt)
+        val raw = ctx.completion(
+            prompt = templated ?: prompt,
+            addSpecial = templated == null,
+            parseSpecial = templated != null
+        ) ?: return StrictFactualGbnfResponse(
+            isOnTopic = false,
+            answer = "Inference engine error while generating a response.",
+            confidenceScore = 0.0f
+        )
 
         val validation = validateStrictGbnfResponse(raw)
         if (validation.isValid && validation.parsedResponse != null) {

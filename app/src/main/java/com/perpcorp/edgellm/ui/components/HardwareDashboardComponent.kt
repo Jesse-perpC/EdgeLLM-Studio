@@ -55,7 +55,8 @@ fun HardwareDashboardComponent(
     val accelerationSettings by viewModel.accelerationSettings.collectAsState()
     val models by viewModel.models.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
-    val activeModel = models.firstOrNull { it.isActive }
+    val activeModel = models.firstOrNull { it.isActive && it.isDownloaded }
+        ?: models.firstOrNull { it.isDownloaded }
 
     Column(
         modifier = modifier

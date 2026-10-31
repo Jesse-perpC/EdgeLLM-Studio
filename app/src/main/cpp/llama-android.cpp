@@ -464,6 +464,67 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeGetChatTemplate(
 }
 
 /**
+ * Render a system+user exchange through the GGUF's own chat template.
+ *
+ * Returns the formatted prompt, or null when the model has no template or
+ * llama.cpp does not recognise it, so Kotlin can fall back to raw completion.
+ * This is the difference between a coherent answer and token soup on
+ * instruction-tuned GGUFs.
+ */
+JNIEXPORT jstring JNICALL
+Java_com_perpcorp_edgellm_engine_LlamaContext_nativeApplyChatTemplate(
+    JNIEnv * env,
+    jobject /* this */,
+    jlong handle,
+    jstring system_str,
+    jstring user_str
+) {
+    auto * ctx = reinterpret_cast<LlamaAndroidContext *>(handle);
+    if (ctx == nullptr || !ctx->initialized || ctx->chat_template.empty()) {
+        return nullptr;
+    }
+
+    const std::string system_prompt = jstring_to_utf8(env, system_str);
+    const std::string user_prompt = jstring_to_utf8(env, user_str);
+    if (user_prompt.empty()) return nullptr;
+
+    llama_chat_message messages[2];
+    size_t n_messages = 0;
+    if (!system_prompt.empty()) {
+        messages[n_messages].role = "system";
+        messages[n_messages].content = system_prompt.c_str();
+        ++n_messages;
+    }
+    messages[n_messages].role = "user";
+    messages[n_messages].content = user_prompt.c_str();
+    ++n_messages;
+
+    const size_t capacity = (system_prompt.size() + user_prompt.size()) * 2 + 1024;
+    std::string formatted(capacity, '\0');
+    int32_t written = llama_chat_apply_template(
+        ctx->chat_template.c_str(), messages, n_messages, /* add_ass */ true,
+        formatted.data(), (int32_t) formatted.size());
+    if (written < 0) {
+        LOGW("llama_chat_apply_template could not render this template");
+        return nullptr;
+    }
+    if ((size_t) written >= formatted.size()) {
+        // The return value is the required buffer length; add one for the
+        // terminating NUL that the next call will want to write.
+        formatted.resize((size_t) written + 1);
+        written = llama_chat_apply_template(
+            ctx->chat_template.c_str(), messages, n_messages, /* add_ass */ true,
+            formatted.data(), (int32_t) formatted.size());
+        if (written < 0 || (size_t) written > formatted.size()) {
+            LOGW("llama_chat_apply_template failed on retry");
+            return nullptr;
+        }
+    }
+    formatted.resize((size_t) written);
+    return env->NewStringUTF(formatted.c_str());
+}
+
+/**
  * Run a real decode loop: tokenize, prefill, then sample-and-decode one token
  * at a time, pushing each piece to the Kotlin TokenCallback as it is produced.
  *
@@ -476,7 +537,9 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
     jobject /* this */,
     jlong handle,
     jstring prompt_str,
-    jobject callback_obj
+    jobject callback_obj,
+    jboolean add_special,
+    jboolean parse_special
 ) {
     auto * ctx = reinterpret_cast<LlamaAndroidContext *>(handle);
     if (ctx == nullptr || !ctx->initialized) {
@@ -513,8 +576,12 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
     }
 
     // --- tokenize ---
-    // add_special = true lets the GGUF's own BOS/EOS handling apply, which
-    // varies per architecture and is required for correct logits.
+    // A chat-templated prompt (ChatML/Llama3/Gemma/...) is built from special
+    // marker tokens (<|im_start|>, <|begin_of_text|>, ...). They must be parsed
+    // as special tokens, and BOS must NOT be added again because the template
+    // already includes it. Raw completion keeps the opposite policy.
+    const bool add_bos = add_special == JNI_TRUE;
+    const bool parse_specials = parse_special == JNI_TRUE;
     const int32_t prompt_cap = ctx->n_ctx - ctx->n_predict - 1;
     if (prompt_cap <= 0) {
         return env->NewStringUTF("Error: n_ctx too small for the requested n_predict");
@@ -523,7 +590,7 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
     std::vector<llama_token> prompt_tokens((size_t) prompt_cap);
     int32_t n_prompt = llama_tokenize(
         ctx->vocab, prompt.c_str(), (int32_t) prompt.size(),
-        prompt_tokens.data(), prompt_cap, /* add_special */ true, /* parse_special */ false);
+        prompt_tokens.data(), prompt_cap, add_bos, parse_specials);
 
     if (n_prompt < 0) {
         // Negative return means "this many tokens would have been produced".
@@ -537,7 +604,7 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
         }
         n_prompt = llama_tokenize(
             ctx->vocab, prompt.c_str(), (int32_t) prompt.size(),
-            prompt_tokens.data(), needed, true, false);
+            prompt_tokens.data(), needed, add_bos, parse_specials);
     }
     if (n_prompt <= 0) {
         return env->NewStringUTF("Error: prompt tokenized to zero tokens");

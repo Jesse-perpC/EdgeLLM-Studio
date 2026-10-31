@@ -540,6 +540,10 @@ class EdgeLLMRepository(private val database: AppDatabase) {
         return database.localModelDao().getCount()
     }
 
+    suspend fun getAllModelsOnce(): List<ModelSpec> {
+        return database.localModelDao().getAllModelsOnce().map { entityToModelSpec(it) }
+    }
+
     suspend fun getModelById(id: String): ModelSpec? {
         val entity = database.localModelDao().getModelById(id) ?: return null
         return entityToModelSpec(entity)

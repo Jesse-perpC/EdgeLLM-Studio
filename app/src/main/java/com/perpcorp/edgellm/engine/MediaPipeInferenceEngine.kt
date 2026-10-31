@@ -144,13 +144,13 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
             }
             val text = raw.trim()
             if (text.isEmpty()) {
-                Log.w(TAG, "Native returned empty text; using grounded fallback")
+                Log.w(TAG, "Native returned empty text; reporting unavailability")
                 null
             } else {
                 OutputVerificationEngine.verifyAndSanitizeText(text, isKnowledgeBase = false)
             }
         } catch (e: Throwable) {
-            Log.w(TAG, "Real inference unavailable (${e.message}); using grounded fallback")
+            Log.w(TAG, "Real inference unavailable (${e.message}); reporting unavailability")
             closeQuietly()
             null
         } finally {
@@ -202,9 +202,9 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
     }
 
     /**
-     * Streaming generation: real weight inference first, grounded KB fallback.
-     * The blocking native call runs on Dispatchers.IO; UI streaming is preserved
-     * by re-emitting the full response as word chunks with live telemetry.
+     * Streaming generation over real MediaPipe weights. When the native
+     * runtime cannot load the checkpoint, an explicit error is streamed; no
+     * knowledge-base text is ever substituted for model output.
      */
     fun generateStreamingResponse(
         prompt: String,
@@ -222,7 +222,7 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
         val nativeText = tryRealLlmInference(prompt, options)
         val usedFallback = nativeText == null
         val responseText = nativeText
-            ?: generateMediaPipeKnowledge(prompt, options, model, persona)
+            ?: mediaPipeUnavailableMessage(options, model)
         val inferenceElapsedMs = System.currentTimeMillis() - startTime
 
         val words = responseText.split(" ")
@@ -271,40 +271,22 @@ class MediaPipeInferenceEngine(private val context: Context? = null) {
     }
 
     /**
-     * Grounded generation: answer the ACTUAL user query using the shared
-     * knowledge base. Answer-only: no runtime marketing copy in chat text.
+     * Explicit failure text when MediaPipe weights cannot be loaded.
+     * Reporting the real reason is better than answering from a canned table.
      */
-    private fun generateMediaPipeKnowledge(
-        prompt: String,
+    private fun mediaPipeUnavailableMessage(
         options: MediaPipeLlmOptions,
-        model: ModelSpec? = null,
-        persona: AiPersona? = null
+        model: ModelSpec? = null
     ): String {
-        val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-
-        // Code questions keep a useful config snippet AND a grounded answer.
-        if (model != null && (userQuery.contains("code", ignoreCase = true) || userQuery.contains("function", ignoreCase = true)) && userQuery.contains("mediapipe", ignoreCase = true)) {
-            return "```kotlin\n" +
-                    "// MediaPipe LLM Inference Configuration\n" +
-                    "val options = LlmInference.LlmInferenceOptions.builder()\n" +
-                    "    .setModelPath(\"${options.modelPath.ifBlank { "/data/local/tmp/gemma-2b-it-gpu.bin" }}\")\n" +
-                    "    .setMaxTokens(${options.maxTokens})\n" +
-                    "    .setTemperature(${options.temperature}f)\n" +
-                    "    .build()\n" +
-                    "```\n\n" +
-                    OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
+        val reason = when {
+            context == null -> "the Android context is unavailable"
+            options.modelPath.isBlank() -> "no model file path was configured"
+            !File(options.modelPath).isFile -> "the model file is missing at ${options.modelPath}"
+            else -> "MediaPipe could not load this checkpoint (it must be a MediaPipe LLM .task/.tflite bundle)"
         }
-
-        // Default: full grounded answer for ANY model type. Answer-only: no
-        // runtime/telemetry footer in chat text (metadata travels via chunk fields).
-        if (model != null) {
-            return OutputVerificationEngine.verifyAndSanitizeText(
-                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona),
-                isKnowledgeBase = true
-            )
-        }
-
-        // Legacy fallback (no model handle): stay on-topic without echoing the jail.
-        return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
+        return "**No response generated**\n\n" +
+            "${model?.name ?: "The selected model"} did not run: $reason. " +
+            "No answer was fabricated."
     }
 }
+

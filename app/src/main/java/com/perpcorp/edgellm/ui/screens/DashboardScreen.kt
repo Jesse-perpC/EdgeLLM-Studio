@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.perpcorp.edgellm.ui.MainViewModel
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Hub
+import com.perpcorp.edgellm.ui.components.CapabilityLatticeCard
 import com.perpcorp.edgellm.ui.components.HardwareBenchmarkSheet
 import com.perpcorp.edgellm.ui.components.HardwareDashboardComponent
 import com.perpcorp.edgellm.ui.components.ModelDownloadProgressBanner
@@ -84,6 +85,7 @@ fun DashboardScreen(
     val telemetryState by viewModel.telemetryState.collectAsState()
     val hardware by viewModel.hardwareInfo.collectAsState()
     val models by viewModel.models.collectAsState()
+    val apiStats by viewModel.apiServerStats.collectAsState()
     val importProgress by viewModel.importProgress.collectAsState()
     val isDefaultAssistant by viewModel.isDefaultAssistant.collectAsState()
     var showBenchmarkSheet by remember { mutableStateOf(false) }
@@ -141,6 +143,22 @@ fun DashboardScreen(
                     )
                 }
             }
+        }
+
+        // Aether Grid capability lattice hero
+        item {
+            val activeModel = models.firstOrNull { it.isActive } ?: models.firstOrNull { it.isDownloaded }
+            CapabilityLatticeCard(
+                modelName = activeModel?.name,
+                modelReady = activeModel?.isDownloaded == true,
+                apiRunning = apiStats.isRunning,
+                assistantReady = isDefaultAssistant,
+                tokensPerSecond = telemetryState.currentTokensPerSec,
+                timeToFirstTokenMs = telemetryState.timeToFirstTokenMs,
+                gpuPercent = telemetryState.currentGpuPercent,
+                onOpenModels = onNavigateToModels,
+                onOpenApi = onNavigateToApi
+            )
         }
 
         // Android System-Level Voice Assistant Integration Card
@@ -251,7 +269,6 @@ fun DashboardScreen(
 
         // Ollama API Inference Server Card
         item {
-            val apiStats by viewModel.apiServerStats.collectAsState()
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(

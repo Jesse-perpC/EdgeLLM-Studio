@@ -134,8 +134,8 @@ class AlibabaMnnEngine(private val context: Context? = null) {
     }
 
     /**
-     * Grounded generation: answer the ACTUAL user query using the shared
-     * knowledge base. Answer-only: no runtime marketing copy in chat text.
+     * MNN-LLM has no verified inference path in this build, so it reports that
+     * plainly. It does not answer from a knowledge-base lookup table.
      */
     private fun generateMnnResponseContent(
         prompt: String,
@@ -143,16 +143,15 @@ class AlibabaMnnEngine(private val context: Context? = null) {
         model: ModelSpec? = null,
         persona: AiPersona? = null
     ): String {
-        val userQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-
-        if (model != null) {
-            return OutputVerificationEngine.verifyAndSanitizeText(
-                OfflineKnowledgeEngine.answerQuery(userQuery, model, persona)
-            )
+        val reason = when {
+            model == null -> "no model was selected"
+            !nativeLibraryLoaded -> "the MNN native runtime is unavailable (${nativeLibraryError ?: "unknown link error"})"
+            model.localFilePath.isBlank() -> "the model path is empty"
+            !java.io.File(model.localFilePath).isFile -> "the model file is missing at ${model.localFilePath}"
+            else -> "MNN-LLM execution is not wired to a verified backend in this build"
         }
-
-        // Legacy fallback without model handle: stay on-topic, no jail echo.
-        return "Direct answer for \"$userQuery\": please load a model to receive full grounded answers."
+        return "**No response generated**\n\n" +
+            "${model?.name ?: "The selected model"} did not run: $reason. No answer was fabricated."
     }
 
     companion object {

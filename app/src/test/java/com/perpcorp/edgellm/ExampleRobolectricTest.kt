@@ -40,7 +40,8 @@ class ExampleRobolectricTest {
     org.junit.Assert.assertTrue(ggufSpec?.parameterCount?.contains("1.5") == true)
     assertEquals("Q4_K_M", ggufSpec?.quantization)
     org.junit.Assert.assertTrue(ggufSpec?.isImported == true)
-    org.junit.Assert.assertTrue(ggufSpec?.isDownloaded == true)
+    org.junit.Assert.assertFalse("Parsed specs are placeholders until bytes are copied", ggufSpec?.isDownloaded == true)
+    org.junit.Assert.assertTrue(ggufSpec?.localFilePath?.isBlank() == true)
 
     val onnxSpec = manager.parseModelSpecFromFileName(
       fileName = "whisper-tiny-fp16.onnx",
@@ -68,6 +69,15 @@ class ExampleRobolectricTest {
       "All imported models should be marked as downloaded/ready",
       importedModels.all { it.isDownloaded }
     )
+    org.junit.Assert.assertTrue(
+      "Imported weights must be copied into app-private storage",
+      importedModels.all { model ->
+        model.localFilePath.isNotBlank() &&
+          java.io.File(model.localFilePath).isFile &&
+          java.io.File(model.localFilePath).length() > 0L
+      }
+    )
+    org.junit.Assert.assertNotNull("First imported model should become active", manager.getUsableActiveModel())
   }
 
   @Test
@@ -355,7 +365,7 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `offline knowledge engine generates accurate response for java objects and technical queries`() {
+  fun `offline engine reports missing weights instead of fabricating an answer`() {
     val dummyModel = com.perpcorp.edgellm.data.model.ModelSpec(
       id = "test-model",
       name = "Llama 3.2 1B",
@@ -368,8 +378,7 @@ class ExampleRobolectricTest {
       description = "Test model",
       category = com.perpcorp.edgellm.data.model.ModelCategory.CHAT_REASONING,
       downloadUrl = "https://example.com/test.gguf",
-      sha256Checksum = "dummy-sha",
-      isDownloaded = true
+      sha256Checksum = "dummy-sha"
     )
 
     val engine = com.perpcorp.edgellm.engine.LocalInferenceEngine()
@@ -379,10 +388,18 @@ class ExampleRobolectricTest {
       params = com.perpcorp.edgellm.data.model.GenerationParameters()
     )
 
-    org.junit.Assert.assertTrue("Response should explain instance of a class", response.contains("instance of a class", ignoreCase = true))
-    org.junit.Assert.assertTrue("Response should explain state and behavior", response.contains("state", ignoreCase = true) && response.contains("behavior", ignoreCase = true))
-    org.junit.Assert.assertTrue("Response should mention heap memory", response.contains("Heap", ignoreCase = true))
-    org.junit.Assert.assertTrue("Response should include Java code snippet", response.contains("public class") || response.contains("new "))
+    org.junit.Assert.assertTrue(
+      "Missing weights must be reported honestly",
+      response.contains("No response generated", ignoreCase = true)
+    )
+    org.junit.Assert.assertTrue(
+      "The failure must name the model that did not run",
+      response.contains("Llama 3.2 1B", ignoreCase = true)
+    )
+    org.junit.Assert.assertFalse(
+      "No canned Java explanation may be fabricated",
+      response.contains("instance of a class", ignoreCase = true)
+    )
   }
 
   @Test
@@ -405,7 +422,7 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `precise response engine delivers direct on-point answers for factual and math queries`() {
+  fun `precise response engine never answers factual or math queries without weights`() {
     val dummyModel = com.perpcorp.edgellm.data.model.ModelSpec(
       id = "test-model",
       name = "Test Model",
@@ -419,44 +436,34 @@ class ExampleRobolectricTest {
       category = com.perpcorp.edgellm.data.model.ModelCategory.CHAT_REASONING,
       downloadUrl = "https://example.com/test",
       sha256Checksum = "abc",
+      localFilePath = "/nonexistent/weights.gguf",
       isDownloaded = true,
       isActive = true
     )
     val engine = com.perpcorp.edgellm.engine.LocalInferenceEngine()
 
-    // 1. Factual query
-    val capitalResponse = engine.generateOfflineIntelligence(
-      prompt = "what is the capital of France?",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
+    val queries = listOf(
+      "what is the capital of France?",
+      "calculate 25 * 14",
+      "what is the speed of light?",
+      "write code in python to process data"
     )
-    org.junit.Assert.assertTrue("Capital of France should be Paris", capitalResponse.contains("Paris", ignoreCase = true))
+    for (query in queries) {
+      val response = engine.generateOfflineIntelligence(
+        prompt = query,
+        model = dummyModel,
+        params = com.perpcorp.edgellm.data.model.GenerationParameters()
+      )
+      org.junit.Assert.assertTrue(
+        "Query '$query' must fail honestly when no weights exist",
+        response.contains("No response generated", ignoreCase = true)
+      )
+      org.junit.Assert.assertFalse("Query '$query' must not return Paris", response.contains("Paris", ignoreCase = true))
+      org.junit.Assert.assertFalse("Query '$query' must not return 350", response.contains("350"))
+      org.junit.Assert.assertFalse("Query '$query' must not return the speed of light", response.contains("299,792,458"))
+      org.junit.Assert.assertFalse("Query '$query' must not emit canned Python", response.contains("```python"))
+    }
 
-    // 2. Math calculation
-    val mathResponse = engine.generateOfflineIntelligence(
-      prompt = "calculate 25 * 14",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
-    org.junit.Assert.assertTrue("Calculation should equal 350", mathResponse.contains("350"))
-
-    // 3. Physical constant
-    val physicsResponse = engine.generateOfflineIntelligence(
-      prompt = "what is the speed of light?",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
-    org.junit.Assert.assertTrue("Speed of light should mention 299,792,458", physicsResponse.contains("299,792,458"))
-
-    // 4. Code snippet
-    val codeResponse = engine.generateOfflineIntelligence(
-      prompt = "write code in python to process data",
-      model = dummyModel,
-      params = com.perpcorp.edgellm.data.model.GenerationParameters()
-    )
-    org.junit.Assert.assertTrue("Code response should contain python block", codeResponse.contains("```python"))
-
-    // 5. Default parameters verify precision configuration
     val defaultParams = com.perpcorp.edgellm.data.model.GenerationParameters()
     org.junit.Assert.assertEquals(0.3f, defaultParams.temperature, 0.01f)
     org.junit.Assert.assertTrue("System prompt should enforce staying on topic", defaultParams.systemPrompt.contains("strictly on topic", ignoreCase = true))
@@ -924,7 +931,7 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `local inference engine multimodal vision analyzes attached image`() {
+  fun `local inference engine refuses image analysis without a vision model`() {
     val engine = com.perpcorp.edgellm.engine.LocalInferenceEngine()
     val model = com.perpcorp.edgellm.data.model.ModelSpec(
       id = "llama3.2-vision",
@@ -950,8 +957,18 @@ class ExampleRobolectricTest {
       attachedImageLabel = "Invoice_2026.png"
     )
 
-    org.junit.Assert.assertTrue(visionResponse.contains("Multimodal Vision Analysis"))
-    org.junit.Assert.assertTrue(visionResponse.contains("Invoice_2026.png"))
+    org.junit.Assert.assertTrue(
+      "Vision must fail honestly without multimodal weights",
+      visionResponse.contains("No response generated", ignoreCase = true)
+    )
+    org.junit.Assert.assertTrue(
+      "Failure must explain that a vision model is required",
+      visionResponse.contains("image understanding", ignoreCase = true)
+    )
+    org.junit.Assert.assertFalse(
+      "No fabricated visual analysis may be produced",
+      visionResponse.contains("Visual Architecture Inspection", ignoreCase = true)
+    )
   }
 
   @Test

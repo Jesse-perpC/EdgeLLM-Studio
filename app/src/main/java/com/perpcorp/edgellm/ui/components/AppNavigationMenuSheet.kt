@@ -106,7 +106,8 @@ fun AppNavigationMenuSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val hardware by viewModel.hardwareInfo.collectAsState()
     val models by viewModel.models.collectAsState()
-    val activeModel = models.firstOrNull { it.isActive } ?: models.firstOrNull()
+    val activeModel = models.firstOrNull { it.isActive && it.isDownloaded }
+        ?: models.firstOrNull { it.isDownloaded }
     val isAirGapped by viewModel.isAirGappedMode.collectAsState()
     val apiStats by viewModel.apiServerStats.collectAsState()
 

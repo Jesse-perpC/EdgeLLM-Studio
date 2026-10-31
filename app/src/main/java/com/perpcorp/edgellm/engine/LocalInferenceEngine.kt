@@ -11,6 +11,7 @@ import com.perpcorp.edgellm.data.model.ModelSpec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import java.util.Locale
 
 data class StreamTokenChunk(
     val token: String,
@@ -146,7 +147,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                 val loraBadge = if (chunk.loraRank != null) " (LoRA r=${chunk.loraRank})" else ""
                 val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
                 val backend = if (chunk.usedFallback) {
-                    "MediaPipe KB fallback (weights unavailable)"
+                    "MediaPipe (weights unavailable)"
                 } else {
                     "MediaPipe GenAI • ${chunk.delegateUsed.displayName}$loraBadge"
                 }
@@ -177,7 +178,10 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             emit(
                 StreamTokenChunk(
                     token = "",
-                    accumulatedText = "",
+                    accumulatedText = unavailableMessage(
+                        model,
+                        "The MNN-LLM native runtime is not linked into this build."
+                    ),
                     tokenCount = 0,
                     tokensPerSecond = 0f,
                     timeToFirstTokenMs = 0L,
@@ -191,8 +195,28 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         }
 
         if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.GGUF &&
-            attachedImageUri == null && attachedImageLabel == null &&
-            !params.enforceJsonSchema) {
+            (attachedImageUri != null || attachedImageLabel != null)) {
+            emit(
+                StreamTokenChunk(
+                    token = "",
+                    accumulatedText = unavailableMessage(
+                        model,
+                        "The loaded GGUF is a text model and cannot see images. " +
+                            "Load a multimodal GGUF together with its vision projector to analyse images."
+                    ),
+                    tokenCount = 0,
+                    tokensPerSecond = 0f,
+                    timeToFirstTokenMs = 0L,
+                    isComplete = true,
+                    backendUsed = "GGUF (text-only)",
+                    samplerName = "N/A",
+                    grammarModeUsed = GrammarMode.NONE
+                )
+            )
+            return@flow
+        }
+
+        if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.GGUF) {
             val useGbnf = params.grammarMode == GrammarMode.GBNF_STRICT_FACTUAL
             var emittedAny = false
             var failure: Throwable? = null
@@ -205,9 +229,7 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
                     useGbnfGrammar = useGbnf
                 ).collect { chunk ->
                     emittedAny = true
-                    if (useGbnf && params.enforceJsonSchema) {
-                        emit(chunk)
-                    } else if (useGbnf) {
+                    if (useGbnf) {
                         emit(chunk)
                     } else {
                         val displayText = sanitizeNonGbnfChunk(chunk.accumulatedText, prompt, effectivePrompt, nonGbnfStrictPrompt)
@@ -267,7 +289,8 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return@flow
         }
 
-        if (params.grammarMode == GrammarMode.GBNF_STRICT_FACTUAL) {
+        if (params.grammarMode == GrammarMode.GBNF_STRICT_FACTUAL &&
+            model.format == com.perpcorp.edgellm.data.model.ModelFormat.GGUF) {
             llamaCppEngine.streamLlamaCppResponse(
                 prompt = effectivePrompt,
                 model = model,
@@ -288,36 +311,23 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return@flow
         }
 
-        val isCloudCandidate = !isAirGapped && geminiClient.isApiKeyConfigured() && attachedImageUri == null && attachedDoc == null && !params.enableToolCalling && !params.enforceJsonSchema && params.grammarMode == GrammarMode.NONE
-
-        val (responseText, backendUsed, isOfflineFallback) = if (isCloudCandidate) {
-            val geminiRes = geminiClient.generateContent(
-                prompt = effectivePrompt,
-                persona = persona,
-                systemInstructionOverride = params.systemPrompt,
-                temperature = params.temperature.coerceIn(0.1f, 1.0f),
-                topP = params.topP.coerceIn(0.1f, 1.0f),
-                maxOutputTokens = params.maxNewTokens.coerceAtLeast(256)
-            )
-            if (geminiRes.isSuccess) {
-                Triple(geminiRes.getOrThrow(), "Cloud Assist • Gemini 3.5 Flash", false)
-            } else {
-                Triple(
-                    generateOfflineIntelligence(strictExecutionPrompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
-                    "Offline Knowledge Base",
-                    true
-                )
-            }
-        } else {
-            val loraBadge = if (loraAdapter != null) " • LoRA: ${loraAdapter.name} (r=${loraAdapter.rank})" else ""
-            Triple(
-                generateOfflineIntelligence(strictExecutionPrompt, model, params, persona, attachedDoc, attachedImageUri, attachedImageLabel, recalledMemories, loraAdapter),
-                "Offline Knowledge Base$loraBadge",
-                true
-            )
+        // Every format with a real runtime returned above. If execution reaches
+        // here there is no engine that can answer, so say that plainly instead
+        // of fabricating a plausible-sounding response from a lookup table.
+        val reason = when {
+            model.localFilePath.isBlank() -> "the model file path is empty"
+            !java.io.File(model.localFilePath).isFile -> "the model file is missing at ${model.localFilePath}"
+            else -> "no inference backend handles ${model.format.displayName}"
         }
+        val honestFailure = unavailableMessage(
+            model,
+            "No on-device engine produced a response because $reason. " +
+                "Download or import a supported model to get real answers."
+        )
+        val (responseText, backendUsed, isOfflineFallback) =
+            Triple(honestFailure, "Unavailable", true)
 
-        val specResult = if (!isOfflineFallback && !isCloudCandidate &&
+        val specResult = if (!isOfflineFallback &&
             (settings.enableSpeculativeDecoding || isTurbo)) {
             SpeculativeDecodingEngine.evaluateSpeculativeBatch(
                 draftModel = null,
@@ -414,6 +424,13 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         )
     }
 
+    /**
+     * Non-streaming helper for code paths that cannot collect a Flow.
+     *
+     * This never invents an answer. It either executes a deterministic tool
+     * call, returns real recalled data, quotes an attached document, or runs
+     * the actual GGUF engine. Otherwise it reports that nothing ran.
+     */
     fun generateOfflineIntelligence(
         prompt: String,
         model: ModelSpec,
@@ -425,29 +442,20 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
         recalledMemories: List<String> = emptyList(),
         loraAdapter: com.perpcorp.edgellm.data.model.LoraAdapter? = null
     ): String {
-        val lower = prompt.trim().lowercase()
+        val lower = prompt.trim().lowercase(Locale.US)
+
+        if (params.enableToolCalling) {
+            val toolCall = OnDeviceToolEngine.parseToolCallFromPrompt(prompt)
+            if (toolCall != null) {
+                return toolCall.outputResult
+            }
+        }
 
         if (attachedImageUri != null || attachedImageLabel != null) {
-            val label = attachedImageLabel ?: "Visual Input"
-            val analysis = when {
-                lower.contains("diagram") || lower.contains("architecture") || lower.contains("flow") -> {
-                    "**Visual Architecture Inspection:**\n\n" +
-                        "- **File:** $label\n" +
-                        "- **Analysis:** Visual image attachment confirmed. Identified system architecture topology diagram.\n" +
-                        "- **Notice:** Full pixel-level vision tensor decoding requires a multimodal on-device vision checkpoint (such as MobileVLM or Qwen2-VL)."
-                }
-                lower.contains("ocr") || lower.contains("text") || lower.contains("extract") || lower.contains("read") -> {
-                    "**Visual Text Inspection:**\n\n" +
-                        "- **File:** $label\n" +
-                        "- **Analysis:** Image attachment detected ($label). Local on-device OCR requires a loaded vision/OCR model checkpoint."
-                }
-                else -> {
-                    "**Visual Input Inspection:**\n\n" +
-                        "- **File:** $label\n" +
-                        "- **Analysis:** Visual input received ($label). Ready for processing with on-device multimodal vision weights."
-                }
-            }
-            return "### 👁️ Multimodal Vision Analysis ($label)\n\n$analysis"
+            return unavailableMessage(
+                model,
+                "image understanding needs a multimodal vision model, and the loaded checkpoint is ${model.format.displayName}"
+            )
         }
 
         if (prompt.contains("[SCREEN_CONTEXT]")) {
@@ -458,76 +466,44 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             return "For \"$userQuestion\":\n\n$entityBullets"
         }
 
-        if (params.enableToolCalling) {
-            val toolCall = OnDeviceToolEngine.parseToolCallFromPrompt(prompt)
-            if (toolCall != null) {
-                return toolCall.outputResult
+        val isMemoryQuery = lower.contains("what do you remember") || lower.contains("do you remember") ||
+            lower.contains("my preference") || lower.contains("my memory") || lower.contains("remember me")
+        if (isMemoryQuery) {
+            return if (recalledMemories.isNotEmpty()) {
+                recalledMemories.joinToString("\n") { "• $it" }
+            } else {
+                "No saved memories matched this query."
             }
         }
 
-        if (params.enforceJsonSchema) {
-            val cleanQuery = OfflineKnowledgeEngine.extractUserQuery(prompt)
-            val answer = OfflineKnowledgeEngine.answerQuery(cleanQuery, model, persona)
-            val safeAnswer = answer.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-            val safeQuery = cleanQuery.replace("\\", "\\\\").replace("\"", "\\\"").take(100)
-            return "{\n" +
-                "  \"status\": \"success\",\n" +
-                "  \"query\": \"$safeQuery\",\n" +
-                "  \"answer\": \"$safeAnswer\",\n" +
-                "  \"data\": {\n" +
-                "    \"type\": \"factual_response\",\n" +
-                "    \"verified\": false,\n" +
-                "    \"source\": \"offline_knowledge\",\n" +
-                "  }\n" +
-                "}"
+        val hasWeights = model.localFilePath.isNotBlank() && java.io.File(model.localFilePath).isFile
+        if (model.format == com.perpcorp.edgellm.data.model.ModelFormat.GGUF && hasWeights) {
+            val factual = llamaCppEngine.generateStrictFactualResponse(prompt, model)
+            return when (params.grammarMode) {
+                GrammarMode.GBNF_STRICT_FACTUAL, GrammarMode.JSON_STRICT -> factual.toJsonString()
+                else -> factual.answer
+            }
         }
 
         if (attachedDoc != null) {
             val docPreview = attachedDoc.content.take(400).replace("\n", " ")
             return "From `${attachedDoc.title}`:\n\n" +
-                "- **Focus:** ${attachedDoc.summary}\n" +
+                "- **Summary:** ${attachedDoc.summary}\n" +
                 "> \"$docPreview...\""
         }
 
-        val rawBody = when {
-            lower.contains("what do you remember") || lower.contains("do you remember") || lower.contains("my preference") || lower.contains("my memory") || lower.contains("remember me") -> {
-                if (recalledMemories.isNotEmpty()) {
-                    recalledMemories.joinToString("\n") { "• $it" }
-                } else {
-                    "I don't have any saved memories yet."
-                }
-            }
-            lower.contains("hello") || lower.contains("hi") || lower == "hey" -> {
-                "Hello! How can I help you today?"
-            }
-            else -> {
-                OfflineKnowledgeEngine.answerQuery(prompt, model, persona)
-            }
+        val reason = when {
+            !hasWeights -> "its weight file is not present at ${model.localFilePath.ifBlank { "(empty path)" }}"
+            else -> "no on-device runtime is available for ${model.format.displayName}"
         }
-
-        val body = when (params.grammarMode) {
-            GrammarMode.JSON_STRICT -> {
-                val safePrompt = prompt.replace("\"", "\\\"").take(60)
-                "{\n  \"status\": \"success\",\n  \"query\": \"$safePrompt\",\n  \"grammar_mode\": \"JSON_STRICT\",\n  \"data\": {\n    \"content\": \"${rawBody.lines().firstOrNull()?.replace("\"", "\\\"") ?: ""}\"\n  }\n}"
-            }
-            GrammarMode.PYTHON_CODE -> {
-                if (rawBody.contains("```python")) rawBody else "```python\n# Constrained Python 3 Output\ndef solution():\n    \"\"\"Generated on-device without cloud API\"\"\"\n    return True\n```"
-            }
-            GrammarMode.SQL_QUERY -> {
-                "SELECT id, model_name, inference_speed, accuracy_score\nFROM on_device_models\nWHERE is_active = 1\nORDER BY inference_speed DESC;"
-            }
-            GrammarMode.REGEX_PATTERN -> {
-                if (params.customRegexPattern.isNotBlank()) "2026-09-15" else rawBody
-            }
-            GrammarMode.GBNF_STRICT_FACTUAL -> {
-                val factual = llamaCppEngine.generateStrictFactualResponse(prompt, model)
-                factual.toJsonString()
-            }
-            else -> rawBody
-        }
-
-        return body
+        return unavailableMessage(
+            model,
+            "$reason. No answer was fabricated; download or import a supported model and retry."
+        )
     }
+
+    private fun unavailableMessage(model: ModelSpec, detail: String): String =
+        "**No response generated**\n\n${model.name} (${model.format.displayName}) did not run: $detail"
 
     fun clearPrefixCache() {
         PrefixKVCacheManager.clearCache()

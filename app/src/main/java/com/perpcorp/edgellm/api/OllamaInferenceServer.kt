@@ -73,6 +73,32 @@ class OllamaInferenceServer(
     }
 
     /**
+     * Aggregate the real engine stream for non-streaming HTTP responses so the
+     * API returns the same weights-backed answer as the app UI.
+     */
+    private fun collectResponseText(
+        prompt: String,
+        model: ModelSpec,
+        params: GenerationParameters,
+        attachedImageUri: String? = null,
+        attachedImageLabel: String? = null
+    ): String {
+        var text = ""
+        kotlinx.coroutines.runBlocking {
+            inferenceEngine.generateStreamingResponse(
+                prompt = prompt,
+                model = model,
+                settings = accelerationSettingsProvider(),
+                params = params,
+                attachedImageUri = attachedImageUri,
+                attachedImageLabel = attachedImageLabel,
+                isAirGapped = true
+            ).collect { chunk -> text = chunk.accumulatedText }
+        }
+        return text
+    }
+
+    /**
      * Returns true when the request carries this server's bearer token.
      * Fails closed: a blank configured token authorizes nothing.
      */
@@ -482,7 +508,7 @@ class OllamaInferenceServer(
                 out.flush()
             }
         } else {
-            val responseText = inferenceEngine.generateOfflineIntelligence(
+            val responseText = collectResponseText(
                 prompt = fullPrompt,
                 model = activeModel,
                 params = params,
@@ -593,7 +619,7 @@ class OllamaInferenceServer(
                 out.flush()
             }
         } else {
-            val responseText = inferenceEngine.generateOfflineIntelligence(
+            val responseText = collectResponseText(
                 prompt = fullPrompt,
                 model = activeModel,
                 params = params
@@ -736,7 +762,7 @@ class OllamaInferenceServer(
                 out.flush()
             }
         } else {
-            val responseText = inferenceEngine.generateOfflineIntelligence(
+            val responseText = collectResponseText(
                 prompt = fullPrompt,
                 model = activeModel,
                 params = params,

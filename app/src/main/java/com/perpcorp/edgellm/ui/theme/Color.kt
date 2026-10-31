@@ -26,6 +26,19 @@ enum class AccentPalette(
     val gradientMid: Color,
     val gradientEnd: Color,
 ) {
+    AETHER_ION(
+        title = "Aether Grid",
+        subtitle = "Ion Cyan • Iridescent Violet • Solar Gold",
+        primaryPreview = Color(0xFF6FE7FF),
+        secondaryPreview = Color(0xFF9F8CFF),
+        accentGlow = Color(0xFFFFC978),
+        lightPrimary = Color(0xFF007C97),
+        lightSecondary = Color(0xFF5B4BD6),
+        lightTertiary = Color(0xFFA66A00),
+        gradientStart = Color(0xFF4FD8FF),
+        gradientMid = Color(0xFF8E7BFF),
+        gradientEnd = Color(0xFFFFD08A),
+    ),
     CYBER_CYAN(
         title = "Quantum Cyber",
         subtitle = "Electric Cyan • Indigo Pulse • Hyper Magenta",
@@ -106,17 +119,18 @@ enum class AccentPalette(
     ),
 }
 
-// Shared deep-space neutrals. Kept almost black so neon accents carry the UI.
-val VoidBlack = Color(0xFF05060E)
-val VoidSurface = Color(0xFF0A0C1A)
-val VoidSurfaceVariant = Color(0xFF141830)
-val VoidOutline = Color(0xFF2A3252)
-val VoidOutlineVariant = Color(0xFF1A2038)
-val VoidTextHigh = Color(0xFFF2F5FF)
-val VoidTextMid = Color(0xFFAEB9D9)
+// Shared deep-space neutrals. Cool graphite rather than pure black so the
+// lattice grid and luminous accents retain depth on OLED panels.
+val VoidBlack = Color(0xFF05070E)
+val VoidSurface = Color(0xFF0A0E18)
+val VoidSurfaceVariant = Color(0xFF131A2B)
+val VoidOutline = Color(0xFF28324C)
+val VoidOutlineVariant = Color(0xFF182036)
+val VoidTextHigh = Color(0xFFF3F7FF)
+val VoidTextMid = Color(0xFFA6B4D6)
 
 // Shared porcelain neutrals for the light theme.
-val PorcelainBackground = Color(0xFFF2F5FC)
+val PorcelainBackground = Color(0xFFF3F6FC)
 val PorcelainSurface = Color(0xFFFFFFFF)
 val PorcelainSurfaceVariant = Color(0xFFE6EBF7)
 val PorcelainOutline = Color(0xFFB9C3DB)
