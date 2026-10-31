@@ -272,6 +272,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isBattling = false
             )
         }
+    }
 
     fun voteArenaWinner(winner: com.perpcorp.edgellm.data.model.ArenaWinner) {
         val currentMatch = _activeArenaMatch.value ?: return
