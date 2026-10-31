@@ -63,3 +63,7 @@
 
 # BuildConfig is read reflectively by BillingRepository; keep its fields.
 -keep class com.perpcorp.edgellm.BuildConfig { *; }
+
+# Firebase AI (generativeai) references optional Ktor client plugin classes
+# that are not bundled in the app; they are never touched at runtime.
+-dontwarn io.ktor.**
