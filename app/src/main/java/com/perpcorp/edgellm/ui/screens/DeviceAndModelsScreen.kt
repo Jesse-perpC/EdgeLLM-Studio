@@ -627,7 +627,7 @@ fun DeviceAndModelsScreen(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = "${models.count { it.isDownloaded }} of ${models.size} Ready • 100% Offline in RAM",
+                                text = "${models.count { it.isDownloaded }} of ${models.size} downloaded • offline once loaded",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold

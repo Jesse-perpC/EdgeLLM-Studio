@@ -280,7 +280,7 @@ fun LinuxWorkspaceCard(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "Embedded Linux Workspace (PRoot)",
+                            text = "Local Shell Workspace",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )

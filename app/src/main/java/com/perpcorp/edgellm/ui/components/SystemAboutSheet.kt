@@ -134,9 +134,9 @@ fun SystemAboutSheet(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            SpecRow("Target Platform", "Android 14+ (API 34 / 35)")
-                            SpecRow("Compute Kernels", "Vulkan 1.3 / NNAPI HTP / ARM NEON")
-                            SpecRow("Speculative Engine", "Eagle-2 Tree Candidate Drafting")
+                            SpecRow("Target Platform", "Android 7.0+ (minSdk 24); AICore on Android 14+")
+                            SpecRow("Compute Kernels", "Vulkan / NNAPI / ARM NEON where supported")
+                            SpecRow("Speculative Engine", "Optional draft-model speculative decoding")
                             SpecRow("Attention KV Buffer", "Dynamic FP16 / Q8_0 / Q4_0 Quantized")
                             SpecRow("Prefix KV Cache", "Persistent Content-Addressed Hash Ring")
                             SpecRow("Grammar Enforcement", "GBNF Pushdown Automaton (Strict JSON/SQL)")
@@ -144,7 +144,7 @@ fun SystemAboutSheet(
                     }
                 }
 
-                // Air-Gapped Privacy & Security Guarantee Card
+                // Local-first privacy and security card
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -162,7 +162,7 @@ fun SystemAboutSheet(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Zero-Telemetry Cryptographic Guarantee",
+                                    text = "Local-first privacy",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF10B981)
@@ -170,7 +170,7 @@ fun SystemAboutSheet(
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "EdgeLLM Studio runs 100% locally. Chat history and model weights are sealed with AES-256-GCM hardware-backed keys stored exclusively within the Android Keystore StrongBox/TEE. No analytics, tokens, or prompt payloads leave this device.",
+                                text = "Local inference stays on-device. Chat history and model metadata are stored in the app sandbox. Cloud assist, Gemini image generation, model downloads, and any configured third-party bridges are opt-in and send data only when you enable them.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

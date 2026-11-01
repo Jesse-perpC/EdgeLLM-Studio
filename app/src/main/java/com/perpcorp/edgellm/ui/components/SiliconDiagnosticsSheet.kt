@@ -111,7 +111,7 @@ fun SiliconDiagnosticsSheet(
         [CRYPTOGRAPHIC SECURITY]
         Hardware Vault: Android Keystore StrongBox / TEE
         Cipher: AES-256-GCM (128-bit Authentication Tag)
-        Network Egress: 100% Air-Gapped (Zero Telemetry)
+        Network Egress: Offline by default; cloud assist is opt-in
         ================================================================
         """.trimIndent()
     }
@@ -220,13 +220,13 @@ fun SiliconDiagnosticsSheet(
                 // Cryptographic Keystore Security Card
                 item {
                     AuditSectionCard(
-                        title = "Cryptographic Keystore (Air-Gapped)",
+                        title = "Cryptographic Keystore",
                         icon = Icons.Default.Security,
                         accentColor = Color(0xFFF59E0B)
                     ) {
-                        AuditRow("Hardware Keystore", "Android Keystore TEE / StrongBox")
+                        AuditRow("Hardware Keystore", "Android Keystore TEE / StrongBox where available")
                         AuditRow("Symmetric Encryption", "AES-256-GCM (128-bit MAC)")
-                        AuditRow("Network Telemetry", "0 Bytes Transmitted (Air-Gapped)")
+                        AuditRow("Network Telemetry", "None from local inference; opt-in cloud features use the network")
                     }
                 }
             }

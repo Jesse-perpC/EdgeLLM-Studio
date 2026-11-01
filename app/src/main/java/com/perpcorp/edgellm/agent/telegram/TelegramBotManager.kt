@@ -30,8 +30,8 @@ data class TelegramBotConfig(
     val botToken: String = "",
     val authorizedChatId: String = "",
     val isEnabled: Boolean = false,
-    val forwardInferenceResults: Boolean = true,
-    val allowRemoteCommands: Boolean = true,
+    val forwardInferenceResults: Boolean = false,
+    val allowRemoteCommands: Boolean = false,
     val pollingIntervalSeconds: Int = 10
 )
 

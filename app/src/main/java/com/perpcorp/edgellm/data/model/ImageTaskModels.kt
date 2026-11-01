@@ -14,10 +14,10 @@ enum class SdModel(
     val speedRating: String,
     val resolution: Int
 ) {
-    SD_1_5("sd_1_5", "Stable Diffusion 1.5 (Q4)", "MNN / QNN", "3.2 it/s", 512),
-    SD_TURBO("sd_turbo", "SD Turbo (1-Step Realtime)", "NPU / QNN", "12.4 it/s", 512),
-    SD_XS("sd_xs", "Stable Diffusion XS (Edge)", "Vulkan GPU", "7.1 it/s", 512),
-    LCM_DREAM("lcm_dream", "LCM Latent Consistency 4-Step", "NPU / CPU", "8.6 it/s", 512)
+    SD_1_5("sd_1_5", "Stable Diffusion 1.5 (Q4)", "Not bundled", "unavailable", 512),
+    SD_TURBO("sd_turbo", "SD Turbo (1-Step Realtime)", "Not bundled", "unavailable", 512),
+    SD_XS("sd_xs", "Stable Diffusion XS (Edge)", "Not bundled", "unavailable", 512),
+    LCM_DREAM("lcm_dream", "LCM Latent Consistency 4-Step", "Not bundled", "unavailable", 512)
 }
 
 enum class AspectRatioOption(val label: String, val width: Int, val height: Int, val ratioFloat: Float) {

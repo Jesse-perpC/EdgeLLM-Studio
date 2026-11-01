@@ -111,8 +111,6 @@ fun AppNavigationMenuSheet(
     val isAirGapped by viewModel.isAirGappedMode.collectAsState()
     val apiStats by viewModel.apiServerStats.collectAsState()
 
-    var showRankDialog by remember { mutableStateOf(false) }
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -160,7 +158,7 @@ fun AppNavigationMenuSheet(
                                 border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f))
                             ) {
                                 Text(
-                                    text = "#1 RANKED",
+                                    text = "BETA",
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF10B981),
@@ -169,7 +167,7 @@ fun AppNavigationMenuSheet(
                             }
                         }
                         Text(
-                            text = "Ultimate On-Device AI Suite",
+                            text = "On-Device AI Runtime",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -372,16 +370,6 @@ fun AppNavigationMenuSheet(
                             isAction = true,
                             actionType = "settings"
                         ),
-                        NavMenuItem(
-                            destination = null,
-                            title = "Why EdgeLLM Ranks #1",
-                            subtitle = "Feature matrix vs ToolNeuron, Edge Gallery, Layla, LM Studio",
-                            icon = Icons.Default.Info,
-                            badge = "SPEC MATRIX",
-                            badgeColor = Color(0xFFF59E0B),
-                            isAction = true,
-                            actionType = "rank_matrix"
-                        )
                     )
                 )
             )
@@ -440,9 +428,6 @@ fun AppNavigationMenuSheet(
                                                         "settings" -> {
                                                             onDismiss()
                                                             onOpenSettings()
-                                                        }
-                                                        "rank_matrix" -> {
-                                                            showRankDialog = true
                                                         }
                                                     }
                                                 } else if (item.destination != null) {
@@ -519,160 +504,4 @@ fun AppNavigationMenuSheet(
         }
     }
 
-    if (showRankDialog) {
-        CompetitiveRankingDialog(
-            onDismiss = { showRankDialog = false }
-        )
-    }
-}
-
-@Composable
-fun CompetitiveRankingDialog(
-    onDismiss: () -> Unit
-) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .testTag("competitive_ranking_dialog")
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Category Leaderboard #1",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0xFF10B981).copy(alpha = 0.2f)
-                            ) {
-                                Text(
-                                    text = "RANK #1",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF10B981),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Text(
-                            text = "EdgeLLM Studio vs All Mobile AI Apps",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = false),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    val appRankings = listOf(
-                        Triple(
-                            "EdgeLLM Studio",
-                            "Score: 9.9/10 • Rank #1",
-                            "Universal GGUF+MediaPipe+ONNX+MNN runtime, Hugging Face Hub explorer, Stable Diffusion on-device image AI, RAG semantic chunk inspector, background OpenAI HTTP server (8080/11434), blind A/B model arena, straight-to-the-point multi-lingual output, zero unsolicited CoT, AES-256 encrypted vault, silicon governor thermal controls."
-                        ),
-                        Triple(
-                            "ToolNeuron",
-                            "Score: 8.6/10 • Rank #2",
-                            "Has GGUF inference, HuggingFace explorer, Stable Diffusion, and OpenAI server. Lacks blind Elo arena, system assistant overlay, speculative decoding, multi-lingual precision engine, and zero-knowledge encrypted vault."
-                        ),
-                        Triple(
-                            "Google AI Edge Gallery",
-                            "Score: 8.2/10 • Rank #3",
-                            "Official Google benchmark app for Gemma 2/LiteRT. Lacks GGUF/llama.cpp support, lacks OpenAI remote server, lacks Stable Diffusion image generation, lacks sandboxed plugin hub, and lacks document RAG."
-                        ),
-                        Triple(
-                            "Layla Companion",
-                            "Score: 7.9/10 • Rank #4",
-                            "Popular paid companion app. Good character personas, but closed-source, high cost, lacks developer OpenAI server, lacks HuggingFace Hub live explorer, lacks RAG chunk debugging, lacks Stable Diffusion studio."
-                        ),
-                        Triple(
-                            "Private LLM / Ollama Mobile",
-                            "Score: 7.4/10 • Rank #5",
-                            "Clean UI for basic chat, but lacks multi-modal diffusion, lacks fine-grained silicon governor, lacks model arena, and has rigid quantized model choices."
-                        )
-                    )
-
-                    items(appRankings) { (name, score, details) ->
-                        val isLeader = name.startsWith("EdgeLLM")
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isLeader) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                            ),
-                            border = BorderStroke(
-                                1.dp,
-                                if (isLeader) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = name,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isLeader) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = score,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isLeader) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = details,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                androidx.compose.material3.Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Got It • Top Performing Studio")
-                }
-            }
-        }
-    }
 }

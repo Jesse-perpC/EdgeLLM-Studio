@@ -66,7 +66,7 @@ object AgentCommandParser {
         // Linux Userland execution shortcut
         if (input.startsWith("$ ") || input.startsWith("sh ") || input.startsWith("bash ")) {
             val cmd = input.removePrefix("$ ").removePrefix("sh ").removePrefix("bash ")
-            return DetectedToolInvocation("linux_shell_exec", mapOf("command" to cmd), "Executing POSIX shell command in Linux PRoot")
+            return DetectedToolInvocation("linux_shell_exec", mapOf("command" to cmd), "Executing POSIX shell command in the local shell workspace")
         }
 
         // Web Search

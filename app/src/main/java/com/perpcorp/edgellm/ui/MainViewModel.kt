@@ -348,6 +348,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _linuxShellOutput = MutableStateFlow<String?>(null)
     val linuxShellOutput: StateFlow<String?> = _linuxShellOutput.asStateFlow()
 
+    private val _linuxWorkspaceStatus =
+        MutableStateFlow(agentToolRegistry.linuxManager.getStatus())
+    val linuxWorkspaceStatus: StateFlow<com.perpcorp.edgellm.agent.linux.LinuxWorkspaceStatus> =
+        _linuxWorkspaceStatus.asStateFlow()
+
+    fun refreshLinuxWorkspaceStatus() {
+        _linuxWorkspaceStatus.value = agentToolRegistry.linuxManager.getStatus()
+    }
+
     private val _telegramTestResult = MutableStateFlow<String?>(null)
     val telegramTestResult: StateFlow<String?> = _telegramTestResult.asStateFlow()
 
@@ -392,11 +401,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 "Error (${res.exitCode}): ${res.stderr.ifBlank { res.stdout }}"
             }
+            refreshLinuxWorkspaceStatus()
         }
     }
 
     fun initializeLinuxWorkspace() {
         agentToolRegistry.linuxManager.installMinimalWorkspace()
+        refreshLinuxWorkspaceStatus()
     }
 
     fun updateTelegramBotConfig(config: com.perpcorp.edgellm.agent.telegram.TelegramBotConfig) {

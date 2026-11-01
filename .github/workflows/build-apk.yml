@@ -64,6 +64,19 @@ jobs:
           }
           install_sdk "platforms;android-36" "ndk;27.3.13750724" "cmake;3.22.1"
 
+      - name: Reject committed signing material and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -Ei '\.(jks|keystore|p12|pem)$'; then
+            echo "::error::Signing material must not be committed to the repository"
+            exit 1
+          fi
+          if git grep -nE '(AIza[0-9A-Za-z_-]{35}|sk_live_[0-9A-Za-z]+|-----BEGIN [A-Z ]*PRIVATE KEY-----)' -- ':!*.md' ':!docs' ':!.github'; then
+            echo "::error::Possible hardcoded secret found"
+            exit 1
+          fi
+
       - name: Prepare non-secret build configuration
         shell: bash
         run: |
@@ -171,26 +184,42 @@ jobs:
           if [[ -f .env.example ]]; then cp .env.example .env; else touch .env; fi
           chmod +x ./gradlew
 
-      - name: Build signed production APK
+      - name: Build signed production APK and AAB
         run: |
           ./gradlew --no-daemon --stacktrace \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
-            assembleRelease
+            assembleRelease bundleRelease
 
-      - name: Verify APK and calculate checksum
+      - name: Verify release artifacts and calculate checksums
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          AAB="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print -quit)"
           test -n "$APK" && test -s "$APK"
+          test -n "$AAB" && test -s "$AAB"
+
+          APKSIGNER="$(command -v apksigner || true)"
+          if [[ -z "$APKSIGNER" ]]; then
+            APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          fi
+
           mkdir -p dist
           cp "$APK" "dist/EdgeLLM-Studio-${GITHUB_REF_NAME}-release.apk"
-          sha256sum dist/*.apk > dist/SHA256SUMS.txt
-          if command -v apksigner >/dev/null 2>&1; then
-            apksigner verify --verbose dist/*.apk
-          else
-            "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --verbose dist/*.apk
-          fi
+          cp "$AAB" "dist/EdgeLLM-Studio-${GITHUB_REF_NAME}-release.aab"
+
+          "$APKSIGNER" verify --verbose --print-certs dist/*.apk
+          CERT_DN="$("$APKSIGNER" verify --print-certs dist/*.apk | sed -n 's/^Signer #1 certificate DN: //p')"
+          echo "Release signer: $CERT_DN"
+          case "$CERT_DN" in
+            *"CN=Android Debug"*|*"O=Android"*)
+              echo "::error::Refusing to publish a debug-signed release APK"
+              exit 1
+              ;;
+          esac
+
+          jarsigner -verify -verbose dist/*.aab >/dev/null
+          sha256sum dist/* > dist/SHA256SUMS.txt
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
@@ -207,6 +236,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.apk
+            dist/*.aab
             dist/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -980,7 +980,7 @@ fun ConversationalEmptyState(
             color = Color(0xFF10B981).copy(alpha = 0.15f)
         ) {
             Text(
-                text = "100% PRIVATE • AIR-GAPPED ON-DEVICE",
+                text = "LOCAL-FIRST • CLOUD ASSIST OPT-IN",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF10B981),

@@ -29,7 +29,7 @@ data class AgentApprovalRequest(
 /**
  * Central registry and dispatcher for all RikkaHub Agent features, tools, and services:
  * - 30+ Device, Communication, Productivity, and Diagnostic tools
- * - Linux Workspace & PRoot execution
+ * - Local shell workspace execution
  * - Telegram Bot Integration
  * - SSH Remote Host Manager
  */
@@ -47,12 +47,7 @@ class AgentToolRegistry(private val context: Context) {
     private val _telegramConfig = MutableStateFlow(TelegramBotConfig())
     val telegramConfig: StateFlow<TelegramBotConfig> = _telegramConfig.asStateFlow()
 
-    private val _sshProfiles = MutableStateFlow<List<SshProfile>>(
-        listOf(
-            SshProfile(name = "Home Raspberry Pi 5", host = "192.168.1.150", port = 22, username = "pi"),
-            SshProfile(name = "Cloud GPU Cluster", host = "gpu.internal.net", port = 2222, username = "ubuntu")
-        )
-    )
+    private val _sshProfiles = MutableStateFlow<List<SshProfile>>(emptyList())
     val sshProfiles: StateFlow<List<SshProfile>> = _sshProfiles.asStateFlow()
 
     private val _lastExecutionLog = MutableStateFlow<String?>(null)
@@ -186,8 +181,8 @@ class AgentToolRegistry(private val context: Context) {
 
     inner class LinuxDistroStatusTool : AgentTool {
         override val id = "linux_distro_status"
-        override val name = "Linux PRoot Environment Status"
-        override val description = "Checks whether Debian/Alpine rootfs is provisioned and inspects disk space."
+        override val name = "Local Shell Workspace Status"
+        override val description = "Checks whether the local shell workspace is initialized and inspects disk usage."
         override val category = AgentToolCategory.LINUX_WORKSPACE
         override val securityLevel = AgentSecurityLevel.SAFE
         override val parameters = emptyList<AgentToolParameter>()
@@ -196,9 +191,9 @@ class AgentToolRegistry(private val context: Context) {
             val start = System.currentTimeMillis()
             val status = linuxManager.getStatus()
             val text = if (status.isInstalled) {
-                "Linux Workspace: Installed (${status.distro}). Sandbox path: ${status.rootFsPath} (${status.diskUsageMb} MB used)."
+                "Local shell workspace: initialized (${status.distro}). Path: ${status.rootFsPath} (${status.diskUsageMb} MB used)."
             } else {
-                "Linux Workspace: Not provisioned yet. Ready to initialize Debian/Alpine rootfs."
+                "Local shell workspace: not initialized yet."
             }
             return AgentToolResult(
                 isSuccess = true,

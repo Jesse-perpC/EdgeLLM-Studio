@@ -264,7 +264,7 @@ private fun AndroidAICoreDetailsView(onFilterModels: () -> Unit) {
             )
             AICoreSpecItem(
                 title = "Zero Egress",
-                subtitle = "100% Private",
+                subtitle = "Local-first",
                 modifier = Modifier.weight(1f)
             )
         }

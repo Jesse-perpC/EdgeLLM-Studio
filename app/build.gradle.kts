@@ -13,6 +13,9 @@ plugins {
 val releaseKeystorePath = System.getenv("KEYSTORE_PATH") ?: "$rootDir/my-upload-key.jks"
 val hasReleaseKeystore = file(releaseKeystorePath).exists()
 val allowDebugSignedRelease = System.getenv("ALLOW_DEBUG_SIGNED_RELEASE") == "true"
+val releaseStorePassword = System.getenv("STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("KEY_ALIAS") ?: "upload"
+val releaseKeyPassword = System.getenv("KEY_PASSWORD")
 
 android {
   namespace = "com.perpcorp.edgellm"
@@ -48,9 +51,12 @@ android {
     create("release") {
       if (hasReleaseKeystore) {
         storeFile = file(releaseKeystorePath)
-        storePassword = System.getenv("STORE_PASSWORD")
-        keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-        keyPassword = System.getenv("KEY_PASSWORD")
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+        enableV1Signing = false
+        enableV2Signing = true
+        enableV3Signing = true
       }
     }
   }
@@ -60,6 +66,7 @@ android {
       signingConfig = signingConfigs.getByName("debugConfig")
     }
     release {
+      isDebuggable = false
       isCrunchPngs = true
       isMinifyEnabled = true
       isShrinkResources = true
@@ -97,16 +104,24 @@ android {
   }
 }
 
-// Fail loudly only when a release APK is actually packaged without a real key,
-// so debug, lint, and test tasks work on machines without signing material.
+// Fail loudly only when a release APK/AAB is actually packaged without a real
+// key, so debug, lint, and test tasks work on machines without signing material.
 tasks.configureEach {
-  if (name.startsWith("package") && name.endsWith("Release") && !hasReleaseKeystore && !allowDebugSignedRelease) {
+  if (name == "packageRelease" || name == "packageReleaseBundle") {
     doFirst {
-      throw GradleException(
-        "Release keystore not found at $releaseKeystorePath. Provide a real upload key " +
-          "via KEYSTORE_PATH (+ STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD), or set " +
-          "ALLOW_DEBUG_SIGNED_RELEASE=true for CI-only debug-signed artifacts.",
-      )
+      if (!hasReleaseKeystore && !allowDebugSignedRelease) {
+        throw GradleException(
+          "Release keystore not found at $releaseKeystorePath. Provide a real upload key " +
+            "via KEYSTORE_PATH (+ STORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD), or set " +
+            "ALLOW_DEBUG_SIGNED_RELEASE=true for CI-only debug-signed artifacts.",
+        )
+      }
+      if (hasReleaseKeystore && (releaseStorePassword.isNullOrBlank() || releaseKeyPassword.isNullOrBlank())) {
+        throw GradleException(
+          "Release keystore found at $releaseKeystorePath but STORE_PASSWORD and KEY_PASSWORD " +
+            "must both be set for a signed release build.",
+        )
+      }
     }
   }
 }

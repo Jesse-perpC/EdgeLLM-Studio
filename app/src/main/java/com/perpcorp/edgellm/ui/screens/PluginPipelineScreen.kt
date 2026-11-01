@@ -89,6 +89,7 @@ fun PluginPipelineScreen(
     val agentTools by viewModel.agentTools.collectAsState()
     val lastAgentResult by viewModel.lastAgentToolResult.collectAsState()
     val linuxOutput by viewModel.linuxShellOutput.collectAsState()
+    val linuxWorkspaceStatus by viewModel.linuxWorkspaceStatus.collectAsState()
     val pendingShellApproval by viewModel.pendingShellApproval.collectAsState()
     val telegramConfig by viewModel.agentTelegramConfig.collectAsState()
     val telegramTestRes by viewModel.telegramTestResult.collectAsState()
@@ -531,11 +532,11 @@ fun PluginPipelineScreen(
             }
         }
 
-        // TAB 3: RIKKAHUB AGENT HUB (Tools, Linux PRoot, Telegram, SSH)
+        // TAB 3: AGENT HUB (Tools, local shell workspace, Telegram, SSH)
         if (selectedTabIndex == 3) {
             item {
                 Text(
-                    text = "Linux Userland Workspace (PRoot)",
+                    text = "Local Shell Workspace",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -544,9 +545,9 @@ fun PluginPipelineScreen(
 
             item {
                 LinuxWorkspaceCard(
-                    isInstalled = true,
-                    distro = "Debian 12 Bookworm (ARM64)",
-                    diskUsageMb = 84L,
+                    isInstalled = linuxWorkspaceStatus.isInstalled,
+                    distro = linuxWorkspaceStatus.distro,
+                    diskUsageMb = linuxWorkspaceStatus.diskUsageMb,
                     lastShellOutput = linuxOutput,
                     onInstallMinimal = { viewModel.initializeLinuxWorkspace() },
                     onExecuteCommand = { cmd -> viewModel.executeLinuxCommand(cmd) }

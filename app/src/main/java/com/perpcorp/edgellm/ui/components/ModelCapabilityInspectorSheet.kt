@@ -211,7 +211,7 @@ fun ModelCapabilityInspectorSheet(
                 item {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "On-Device Accuracy & Fidelity Benchmark",
+                        text = "Published Capability Estimates",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -229,7 +229,7 @@ fun ModelCapabilityInspectorSheet(
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Text(
-                                text = "Benchmark evaluates GSM8K (Math), HumanEval (Coding), MMLU (Knowledge), and JSON syntax validity directly on this mobile device.",
+                                text = "These values come from the model catalog metadata. They are estimates, not a benchmark run on this device.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -279,7 +279,7 @@ fun ModelCapabilityInspectorSheet(
                                                 )
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = "Overall Accuracy Fidelity: ${res.overallAccuracyScore}%",
+                                                    text = "Estimated Overall Score: ${res.overallAccuracyScore}%",
                                                     fontWeight = FontWeight.Bold,
                                                     color = Color(0xFF10B981)
                                                 )
@@ -289,7 +289,7 @@ fun ModelCapabilityInspectorSheet(
                                                 color = Color(0xFF10B981)
                                             ) {
                                                 Text(
-                                                    text = "VERIFIED",
+                                                    text = "ESTIMATE",
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = Color.White,
@@ -309,12 +309,12 @@ fun ModelCapabilityInspectorSheet(
                                             ScorePill("GSM8K Math", "${res.gsm8kScore}%")
                                             ScorePill("HumanEval", "${res.humanEvalScore}%")
                                             ScorePill("MMLU", "${res.mmluScore}%")
-                                            ScorePill("JSON AST", "${res.structuredJsonValidity.toInt()}%")
+                                            ScorePill("JSON grammar", "supported")
                                         }
 
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            text = "⚡ Peak Turbo Speed: ${res.averageTurboSpeedTokPerSec} tok/s • TTFT: ${res.prefillLatencyMs}ms",
+                                            text = "⚡ Catalog peak speed: ${res.averageTurboSpeedTokPerSec} tok/s • ${res.source}",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onSurface
@@ -352,7 +352,7 @@ fun ModelCapabilityInspectorSheet(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (isRunningBenchmark) "Evaluating Model Accuracy..." else "Run On-Device Accuracy Benchmark")
+                                Text(if (isRunningBenchmark) "Loading catalog estimates..." else "Show Capability Estimates")
                             }
                         }
                     }

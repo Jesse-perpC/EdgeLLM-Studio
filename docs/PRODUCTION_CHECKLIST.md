@@ -10,12 +10,14 @@ repository, not merely planned.
 - [x] CI workflow uses the restored `cpu` / `vulkan` flavors
   (`assembleCpuDebug`, `assembleCpuRelease`).
 - [x] R8 minification and resource shrinking enabled for release.
-- [x] `versionCode` derived from commit count; `versionName` from the build.
-- [x] Codemagic workflows defined in `codemagic.yaml` (verify + signed release).
-- [ ] Codemagic verify workflow green on hosted infrastructure.
-- [ ] Signed release APK produced by CI (requires signing secrets).
-- [ ] Full `assembleCpuDebug` / `assembleCpuRelease` verified (blocked by
-  musl-based CI environment; requires a glibc/Android-native toolchain).
+- [x] `versionCode` derived from the CI run number; `versionName` from the build.
+- [x] CI verifies debug/release builds, lint, ktlint, and unit tests.
+- [x] Release job builds both an APK and an AAB (`bundleRelease`).
+- [x] Release job rejects APKs signed with the Android debug certificate.
+- [x] CI rejects committed signing material and common hardcoded-secret patterns.
+- [ ] Signed release APK/AAB produced by CI (requires signing secrets).
+- [ ] Full `assembleCpuDebug` / `assembleCpuRelease` verified on a glibc/Android
+  toolchain (the local sandbox uses musl).
 
 ## Secrets & Configuration
 
@@ -46,14 +48,16 @@ repository, not merely planned.
 
 ## Data Integrity
 
-- [x] No simulated downloads, fake progress, or fabricated metrics.
+- [x] No simulated downloads or fake progress; model capability cards are
+  labelled as catalog estimates rather than on-device measurements.
 - [x] Token rate measured from real emission timing.
 - [x] Device metrics read from `/proc/stat`, thermal sysfs, and BatteryManager.
 - [ ] End-to-end checksum verification for all downloadable models.
-- [ ] Backup/restore validated against `allowBackup = false`.
+- [x] `allowBackup=false` and backup/DTR extraction rules exclude app data.
 
 ## Testing
 
 - [x] Unit/instrumentation scaffolding for the inference flow.
-- [ ] Coverage for the approval gate (approve / deny paths).
-- [ ] Coverage for the shell timeout and deadlock paths.
+- [x] Coverage for the approval gate (approve / deny paths).
+- [x] Coverage for the shell timeout, blocklist, and output paths.
+- [ ] Physical-device coverage for GGUF, ONNX, MediaPipe, Vulkan, and AICore.

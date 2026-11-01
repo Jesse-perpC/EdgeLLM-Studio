@@ -9,7 +9,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * Execution result of a Linux shell or PRoot command.
+ * Execution result of a local shell command.
  */
 data class ShellCommandResult(
     val exitCode: Int,
@@ -19,11 +19,14 @@ data class ShellCommandResult(
 )
 
 /**
- * Status and configuration of the Linux (PRoot / Chroot) userland workspace.
+ * Status and configuration of the local shell workspace.
+ *
+ * This is an app-private directory for user scripts. It is NOT a PRoot or
+ * chroot filesystem, and no Linux distribution is bundled or downloaded.
  */
 data class LinuxWorkspaceStatus(
     val isInstalled: Boolean,
-    val distro: String = "Debian 12 (Bookworm)",
+    val distro: String = "Local shell workspace",
     val rootFsPath: String = "",
     val totalPackagesInstalled: Int = 0,
     val diskUsageMb: Long = 0L,
@@ -31,17 +34,19 @@ data class LinuxWorkspaceStatus(
 )
 
 /**
- * Manages the embedded Linux userland workspace (inspired by rikkahub-agent & Termux PRoot).
- * Allows executing shell commands, managing virtual environment packages, and running scripts.
+ * Manages the app-private shell workspace.
+ *
+ * Commands run through Android's `sh` inside the app sandbox and always
+ * require explicit user approval at the tool/UI layer. The blocklist below is
+ * defense-in-depth only; it is not a substitute for approval or OS isolation.
  */
-class LinuxWorkspaceManager(private val context: Context) {
+class LinuxWorkspaceManager internal constructor(private val workspaceDir: File) {
 
-    private val workspaceDir: File by lazy {
-        File(context.filesDir, "linux_workspace").apply { if (!exists()) mkdirs() }
-    }
+    constructor(context: Context) : this(File(context.filesDir, "linux_workspace"))
 
-    private val scriptsDir: File by lazy {
-        File(workspaceDir, "scripts").apply { if (!exists()) mkdirs() }
+    private val scriptsDir: File = File(workspaceDir, "scripts").apply {
+        if (!workspaceDir.exists()) workspaceDir.mkdirs()
+        if (!exists()) mkdirs()
     }
 
     fun getStatus(): LinuxWorkspaceStatus {
@@ -51,9 +56,9 @@ class LinuxWorkspaceManager(private val context: Context) {
 
         return LinuxWorkspaceStatus(
             isInstalled = isInstalled,
-            distro = "Debian / Alpine Hybrid PRoot",
+            distro = "Local shell workspace (no bundled distro)",
             rootFsPath = workspaceDir.absolutePath,
-            totalPackagesInstalled = if (isInstalled) 42 else 0,
+            totalPackagesInstalled = 0,
             diskUsageMb = diskMb,
             isDaemonRunning = false
         )
@@ -62,7 +67,7 @@ class LinuxWorkspaceManager(private val context: Context) {
     fun installMinimalWorkspace(): Boolean {
         return try {
             val marker = File(workspaceDir, ".installed")
-            marker.writeText("distro=debian_arm64\ninstalled_at=${System.currentTimeMillis()}")
+            marker.writeText("workspace=local_shell\ninstalled_at=${System.currentTimeMillis()}")
 
             // Create sample user scripts
             val sampleScript = File(scriptsDir, "system_info.sh")
@@ -85,15 +90,26 @@ echo "Workspace: ${workspaceDir.absolutePath}"
     suspend fun executeCommand(command: String, timeoutMs: Long = 8000L): ShellCommandResult = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
 
-        // Security check against dangerous brick commands
-        val lower = command.trim().lowercase()
-        val blockedPatterns = listOf("rm -rf /", "mkfs", "dd if=/dev/zero", ":(){ :|:& };:", "reboot -f", "> /dev/block")
+        // Defense-in-depth only. Approval at the tool/UI layer is the primary
+        // control; this list reduces the blast radius of accidental paste-ins.
+        val normalized = command.trim().lowercase().replace(Regex("\\s+"), " ")
+        val blockedPatterns = listOf(
+            Regex("""(^|[;&|]\s*)rm\s+(-[a-z]*[rf][a-z]*\s+)+/(\s|$)"""),
+            Regex("""(^|[;&|]\s*)(mkfs|mkswap|wipefs|fdisk|parted)\b"""),
+            Regex("""(^|[;&|]\s*)(reboot|shutdown)\b"""),
+            Regex("""dd\s+if=/dev/zero"""),
+            Regex("""dd\s+of=/dev/block"""),
+            Regex(""":\(\)\s*\{\s*:\|:&\s*\}\s*;:"""),
+            Regex(""">\s*/dev/block"""),
+            Regex("""mount\s+-o\s+remount,rw\s+/system"""),
+            Regex("""chmod\s+-r\s+777\s+/"""),
+        )
         for (pattern in blockedPatterns) {
-            if (lower.contains(pattern)) {
+            if (pattern.containsMatchIn(normalized)) {
                 return@withContext ShellCommandResult(
                     exitCode = 126,
                     stdout = "",
-                    stderr = "BLOCKED: Safety Sandbox prevented execution of dangerous destructive command pattern: \"$pattern\"",
+                    stderr = "BLOCKED: Safety Sandbox prevented execution of dangerous destructive command pattern: \"${pattern.pattern}\"",
                     durationMs = System.currentTimeMillis() - start
                 )
             }

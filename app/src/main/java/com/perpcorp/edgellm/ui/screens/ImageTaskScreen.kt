@@ -545,7 +545,7 @@ fun ImageTaskScreen(
                 )
                 if (imageHistory.isNotEmpty()) {
                     Text(
-                        text = "100% On-Device Vault",
+                        text = "Local-first • cloud image generation opt-in",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF10B981)
                     )

@@ -11,7 +11,7 @@ enum class AgentToolCategory(val title: String, val iconLabel: String) {
     COMMUNICATION("Communication", "💬"),
     PRODUCTIVITY("Productivity & PIM", "📅"),
     TELEGRAM_BOT("Telegram Bot Service", "✈️"),
-    LINUX_WORKSPACE("Linux Workspace & PRoot", "🐧"),
+    LINUX_WORKSPACE("Local Shell Workspace", "🐧"),
     SSH_REMOTE("SSH & Remote Server", "🔑"),
     SYSTEM_DIAGNOSTICS("Diagnostics & Sensors", "📊"),
     SECURITY_PRIVACY("Security & Vault", "🛡️")
