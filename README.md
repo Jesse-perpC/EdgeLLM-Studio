@@ -33,10 +33,13 @@ git submodule update --init --depth 1 -- llama.cpp
 ./gradlew assembleDebug
 ./gradlew testDebugUnitTest
 ./gradlew lintDebug ktlintCheck
+unzip -l app/build/outputs/apk/debug/*.apk | grep libllama-android.so
 ```
 
 The application ID is `com.aistudio.edgellm.qvmxrp`; the source namespace is
-`com.perpcorp.edgellm`. GGUF uses the ARM NEON backend by default.
+`com.perpcorp.edgellm`. GGUF uses the ARM NEON backend by default. The APK must
+contain `libllama-android.so`; otherwise GGUF inference reports an
+`UnsatisfiedLinkError` and produces no output. See `INSTALL.md` for details.
 
 ## Release signing
 

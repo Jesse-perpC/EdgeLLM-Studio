@@ -6,9 +6,11 @@ repository, not merely planned.
 
 ## Build & CI
 
-- [x] Kotlin compile gate (`compileCpuDebugKotlin`) passes.
-- [x] CI workflow uses the restored `cpu` / `vulkan` flavors
-  (`assembleCpuDebug`, `assembleCpuRelease`).
+- [x] Kotlin compile gate (`compileDebugKotlin`) passes.
+- [x] CMake is wired through `externalNativeBuild` and builds
+  `libllama-android.so` from the `llama.cpp` submodule.
+- [x] CI verifies the debug APK and release AAB contain `libllama-android.so`
+  for `arm64-v8a` and `x86_64`.
 - [x] R8 minification and resource shrinking enabled for release.
 - [x] `versionCode` derived from the CI run number; `versionName` from the build.
 - [x] CI verifies debug/release builds, lint, ktlint, and unit tests.
@@ -16,8 +18,8 @@ repository, not merely planned.
 - [x] Release job rejects APKs signed with the Android debug certificate.
 - [x] CI rejects committed signing material and common hardcoded-secret patterns.
 - [ ] Signed release APK/AAB produced by CI (requires signing secrets).
-- [ ] Full `assembleCpuDebug` / `assembleCpuRelease` verified on a glibc/Android
-  toolchain (the local sandbox uses musl).
+- [ ] Full `assembleDebug` / `assembleRelease` verified on a glibc/x86_64
+  toolchain (the local sandbox is aarch64 and cannot run the x86_64 NDK).
 
 ## Secrets & Configuration
 

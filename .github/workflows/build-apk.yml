@@ -91,6 +91,16 @@ jobs:
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
             assembleDebug assembleRelease lintDebug ktlintCheck testDebugUnitTest
 
+      - name: Verify GGUF native library is packaged
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          unzip -l "$APK" | tee /tmp/debug-apk-contents.txt
+          grep -q 'lib/arm64-v8a/libllama-android.so' /tmp/debug-apk-contents.txt
+          grep -q 'lib/x86_64/libllama-android.so' /tmp/debug-apk-contents.txt
+
       - name: Upload lint report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -219,6 +229,9 @@ jobs:
           esac
 
           jarsigner -verify -verbose dist/*.aab >/dev/null
+          unzip -l dist/*.aab | tee /tmp/release-aab-contents.txt
+          grep -q 'lib/arm64-v8a/libllama-android.so' /tmp/release-aab-contents.txt
+          grep -q 'lib/x86_64/libllama-android.so' /tmp/release-aab-contents.txt
           sha256sum dist/* > dist/SHA256SUMS.txt
 
       - name: Upload release artifact
