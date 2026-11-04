@@ -37,8 +37,10 @@ unzip -l app/build/outputs/apk/debug/*.apk | grep libllama-android.so
 ```
 
 The application ID is `com.aistudio.edgellm.qvmxrp`; the source namespace is
-`com.perpcorp.edgellm`. GGUF uses the ARM NEON backend by default. The APK must
-contain `libllama-android.so`; otherwise GGUF inference reports an
+`com.perpcorp.edgellm`. The shipped APK is a single variant (no `cpu`/`vulkan`
+product flavors); GGUF uses the ARM NEON backend by default. Vulkan is an opt-in
+CMake flag (`EDGELLM_GPU_VULKAN`), not a separate APK. The APK must contain
+`libllama-android.so`; otherwise GGUF inference reports an
 `UnsatisfiedLinkError` and produces no output. See `INSTALL.md` for details.
 
 ## Release signing
