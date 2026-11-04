@@ -631,6 +631,7 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
 
         const int32_t chunk = std::min(ctx->prefill_chunk, n_prompt - n_processed);
         llama_batch batch = llama_batch_init(chunk, 0, 1);
+        batch.n_tokens = chunk;
         for (int32_t i = 0; i < chunk; ++i) {
             batch.token[i]     = prompt_tokens[(size_t)(n_processed + i)];
             batch.pos[i]       = n_processed + i;
@@ -646,7 +647,9 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
 
         if (rc != 0) {
             std::ostringstream ss;
-            ss << "Error: llama_decode failed on prompt chunk (" << rc << ")";
+            ss << "Error: llama_decode failed on prompt chunk (" << rc
+               << ", tokens=" << chunk << ", n_ctx=" << ctx->n_ctx
+               << ", n_batch=" << ctx->n_batch << ")";
             LOGE("%s", ss.str().c_str());
             return env->NewStringUTF(ss.str().c_str());
         }
@@ -733,6 +736,7 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
 
         // Feed the sampled token back in to advance the KV cache.
         llama_batch batch = llama_batch_init(1, 0, 1);
+        batch.n_tokens    = 1;
         batch.token[0]     = id;
         batch.pos[0]       = n_prompt + n_generated - 1;
         batch.n_seq_id[0]  = 1;
