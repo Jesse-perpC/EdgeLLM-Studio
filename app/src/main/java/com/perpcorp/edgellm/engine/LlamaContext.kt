@@ -291,10 +291,12 @@ class LlamaContext private constructor(
             nativeCompletion(nativePtr, prompt, callback, addSpecial, parseSpecial)
         } catch (e: Throwable) {
             Log.e(TAG, "nativeCompletion threw", e)
+            lastError = e.message ?: "nativeCompletion threw ${e.javaClass.simpleName}"
             return null
         }
 
         if (result.startsWith("Error:")) {
+            lastError = result.removePrefix("Error:").trim()
             Log.w(TAG, "native completion failed: $result")
             return null
         }
@@ -337,7 +339,10 @@ class LlamaContext private constructor(
             }, addSpecial, parseSpecial)
             val stats = ctx.stats()
             if (result == null) {
-                close(IllegalStateException("native decode failed for prompt (${prompt.length} chars)"))
+                val reason = lastError.ifBlank {
+                    "native decode failed for prompt (${prompt.length} chars)"
+                }
+                close(IllegalStateException(reason))
             } else {
                 runBlocking { scope.send(TokensEvent.Complete(result, stats)) }
             }

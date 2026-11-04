@@ -473,15 +473,24 @@ escape-sequence ::= "\\" [btnfr"\\/] | "\\u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]
     ): Flow<StreamTokenChunk> = flow {
         val modelPath = model.localFilePath
         if (modelPath.isBlank()) {
-            Log.e(TAG, "ModelSpec.localFilePath is blank; no GGUF to load")
-            return@flow
+            throw IllegalStateException("No GGUF file is configured for ${model.name}")
+        }
+        if (!File(modelPath).isFile) {
+            throw IllegalStateException("GGUF file not found: $modelPath")
+        }
+        if (!LlamaContext.isNativeLoaded) {
+            throw IllegalStateException(
+                "libllama-android.so is not loaded. Rebuild with the llama.cpp submodule (see INSTALL.md)."
+            )
         }
 
         val ctx = obtainContext(modelPath, model, settings)
-        if (ctx == null) {
-            Log.e(TAG, "No usable llama.cpp context for $modelPath")
-            return@flow
-        }
+            ?: throw IllegalStateException(
+                "Failed to create llama.cpp context: " +
+                    LlamaContext.lastErrorMessage().ifBlank {
+                        "nativeInit returned 0 (check logcat tag $TAG)"
+                    }
+            )
 
         // Greedy when a grammar is constraining the output: a grammar plus
         // sampling can wander into a dead end and stall.

@@ -242,15 +242,16 @@ class LocalInferenceEngine(private val context: android.content.Context? = null)
             }
             if (!emittedAny) {
                 val reason = failure?.message?.takeIf { it.isNotBlank() }
+                    ?: LlamaContext.lastErrorMessage().takeIf { it.isNotBlank() }
                     ?: when {
                         model.localFilePath.isBlank() ->
                             "no model file configured (localFilePath is blank)"
                         !java.io.File(model.localFilePath).isFile ->
                             "model file not found: ${model.localFilePath}"
+                        !LlamaContext.isNativeLoaded ->
+                            "libllama-android.so is not loaded; rebuild with the llama.cpp submodule"
                         else ->
-                            "native decode produced no output " +
-                                "(UnsatisfiedLinkError means libllama-android.so is missing; " +
-                                "otherwise see logcat for $TAG)"
+                            "native decode produced no output (see logcat tag $TAG)"
                     }
                 emit(
                     StreamTokenChunk(

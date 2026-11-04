@@ -257,8 +257,10 @@ static LlamaAndroidContext * create_context(
     cparams.n_ubatch      = (uint32_t) ctx->n_batch;
     cparams.n_threads     = ctx->n_threads;
     cparams.n_threads_batch = ctx->n_threads;
+    // AUTO lets llama.cpp disable flash attention on backends/models that do
+    // not support it instead of failing context creation outright.
     cparams.flash_attn_type = flash_attn
-        ? LLAMA_FLASH_ATTN_TYPE_ENABLED
+        ? LLAMA_FLASH_ATTN_TYPE_AUTO
         : LLAMA_FLASH_ATTN_TYPE_DISABLED;
     // The SoC is a phone: offloading the KV cache to a slow mobile GPU often
     // loses to staying on CPU, so leave KQV on the host by default.
@@ -767,6 +769,10 @@ Java_com_perpcorp_edgellm_engine_LlamaContext_nativeCompletion(
     LOGI("gen tokens=%d prompt_tokens=%d prefill=%.1fms decode=%.1fms tps=%.2f",
          n_generated, n_prompt, ctx->last_prompt_ms, ctx->last_decode_ms,
          ctx->last_decode_ms > 0.0 ? n_generated / (ctx->last_decode_ms / 1000.0) : 0.0);
+
+    if (result.empty() && n_generated == 0 && !ctx->last_stop_cancelled) {
+        return env->NewStringUTF("Error: model produced no tokens (immediate EOG or sampler failure)");
+    }
 
     return env->NewStringUTF(result.c_str());
 }
