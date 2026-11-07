@@ -92,10 +92,13 @@ android {
     buildConfig = true
   }
 
-  externalNativeBuild {
-    cmake {
-      path = file("src/main/cpp/CMakeLists.txt")
-      version = "3.22.1"
+  val hasLlamaCpp = file("$rootDir/llama.cpp/CMakeLists.txt").exists()
+  if (hasLlamaCpp) {
+    externalNativeBuild {
+      cmake {
+        path = file("src/main/cpp/CMakeLists.txt")
+        version = "3.22.1"
+      }
     }
   }
 
